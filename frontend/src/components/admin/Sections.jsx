@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
+const BASE_URL = "http://127.0.0.1:8000";
+
 const TAG_COLORS = {
   POLICY: { bg: "#ebf8ff", color: "#2b6cb0" },
   PROCEDURE: { bg: "#f0fff4", color: "#276749" },
@@ -35,8 +37,12 @@ export default function Sections() {
   const [manuals, setManuals] = useState([]);
   const [selectedManual, setSelectedManual] = useState(null);
   const [sections, setSections] = useState([]);
+  const [manualVersion, setManualVersion] = useState(1);
+  const [manualFileUrl, setManualFileUrl] = useState(null);
+  const [manualFileName, setManualFileName] = useState(null);
+  const [showOriginal, setShowOriginal] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
-  const [isFullDoc, setIsFullDoc] = useState(false); // ✅ full doc mode
+  const [isFullDoc, setIsFullDoc] = useState(false);
   const [form, setForm] = useState({ subtitle: "", content: "", page_number: "", order: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingSection, setEditingSection] = useState(null);
@@ -49,7 +55,7 @@ export default function Sections() {
   const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/api/manuals/", getAuth())
+    axios.get(`${BASE_URL}/api/manuals/`, getAuth())
       .then((res) => setManuals(res.data))
       .catch(console.error);
   }, []);
@@ -60,14 +66,19 @@ export default function Sections() {
     setIsFullDoc(false);
     setHistory([]);
     setShowDiff(false);
+    setShowOriginal(false);
     try {
       const res = await axios.get(
-        `http://127.0.0.1:8000/api/manuals/${manualId}/sections/`,
+        `${BASE_URL}/api/manuals/${manualId}/sections/`,
         getAuth()
       );
-      setSections(res.data);
-      // ✅ Default to full doc view on load
-      if (res.data.length > 0) setIsFullDoc(true);
+      const sectionList = res.data.sections;
+      const docVersion = res.data.manual_version;
+      setSections(sectionList);
+      setManualVersion(docVersion);
+      setManualFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
+      setManualFileName(res.data.file_name);
+      if (sectionList.length > 0) setIsFullDoc(true);
     } catch (err) {
       console.error(err);
     } finally {
@@ -78,7 +89,7 @@ export default function Sections() {
   const fetchHistory = async (sectionId) => {
     try {
       const res = await axios.get(
-        `http://127.0.0.1:8000/api/sections/${sectionId}/history/`,
+        `${BASE_URL}/api/sections/${sectionId}/history/`,
         getAuth()
       );
       setHistory(res.data);
@@ -96,6 +107,9 @@ export default function Sections() {
     if (!id) {
       setSelectedManual(null);
       setSections([]);
+      setManualVersion(1);
+      setManualFileUrl(null);
+      setManualFileName(null);
       setActiveSection(null);
       setIsFullDoc(false);
       return;
@@ -141,7 +155,7 @@ export default function Sections() {
     if (!selectedManual) return;
     try {
       const res = await axios.post(
-        `http://127.0.0.1:8000/api/manuals/${selectedManual.id}/sections/create/`,
+        `${BASE_URL}/api/manuals/${selectedManual.id}/sections/create/`,
         {
           subtitle: form.subtitle,
           content: form.content,
@@ -177,7 +191,7 @@ export default function Sections() {
     e.preventDefault();
     try {
       const res = await axios.patch(
-        `http://127.0.0.1:8000/api/sections/${editingSection}/update/`,
+        `${BASE_URL}/api/sections/${editingSection}/update/`,
         {
           subtitle: editForm.subtitle,
           content: editForm.content,
@@ -186,7 +200,7 @@ export default function Sections() {
         },
         getAuth()
       );
-      showMsg(`✅ Section updated — v${res.data.version} — Re-tagged: ${res.data.tag}`);
+      showMsg(`✅ Section updated — Section v${res.data.version} · Document v${res.data.manual_version} — Re-tagged: ${res.data.tag}`);
       setEditingSection(null);
       await fetchSections(selectedManual.id);
     } catch (err) {
@@ -197,7 +211,7 @@ export default function Sections() {
   const handleDeleteSection = async (id, subtitle) => {
     if (!confirm(`Delete section "${subtitle}"?`)) return;
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/sections/${id}/delete/`, getAuth());
+      await axios.delete(`${BASE_URL}/api/sections/${id}/delete/`, getAuth());
       showMsg("🗑️ Section deleted.");
       if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
       await fetchSections(selectedManual.id);
@@ -263,11 +277,11 @@ export default function Sections() {
             <div style={styles.manualCard}>
               <div style={styles.manualTitle}>{selectedManual.title}</div>
               <div style={styles.manualDept}>🏢 {selectedManual.department}</div>
+              <div style={styles.manualVersion}>Document v{manualVersion}</div>
             </div>
 
             <div style={styles.tocLabel}>TABLE OF CONTENTS</div>
 
-            {/* ✅ Full Document entry — always first */}
             {sections.length > 0 && (
               <div
                 style={{
@@ -277,11 +291,17 @@ export default function Sections() {
                   border: "1px solid #c7d2fe",
                   fontWeight: "700",
                 }}
-                onClick={() => { setIsFullDoc(true); setActiveSection(null); setEditingSection(null); setShowDiff(false); }}
+                onClick={() => {
+                  setIsFullDoc(true);
+                  setActiveSection(null);
+                  setEditingSection(null);
+                  setShowDiff(false);
+                  setShowOriginal(false);
+                }}
               >
                 <div style={styles.tocSubtitle}>📄 Full Document</div>
                 <div style={{ fontSize: "0.75rem", marginTop: "0.2rem", opacity: 0.8 }}>
-                  {sections.length} sections · scroll view
+                  {sections.length} sections · v{manualVersion}
                 </div>
               </div>
             )}
@@ -322,9 +342,9 @@ export default function Sections() {
           {/* ── Right Panel ── */}
           <div style={styles.content}>
 
-            {/* ✅ Full Document View */}
+            {/* ── Full Document View ── */}
             {isFullDoc ? (
-              <div>
+              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                 <div style={styles.contentHeader}>
                   <div>
                     <h3 style={styles.contentTitle}>📄 {selectedManual.title}</h3>
@@ -332,39 +352,86 @@ export default function Sections() {
                       Full document · {sections.length} sections
                     </p>
                   </div>
-                  <span style={{ ...styles.tag, backgroundColor: "#f0f4ff", color: "#4f46e5", fontSize: "0.8rem", padding: "0.3rem 0.8rem", border: "1px solid #c7d2fe" }}>
-                    Read Only
-                  </span>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={styles.versionBadgeLarge}>Document v{manualVersion}</span>
+                    {manualFileUrl && (
+                      <button
+                        style={{
+                          ...styles.addBtn,
+                          backgroundColor: showOriginal ? "#718096" : "#2d6a4f",
+                          fontSize: "0.85rem",
+                          padding: "0.4rem 0.9rem",
+                        }}
+                        onClick={() => setShowOriginal(!showOriginal)}
+                      >
+                        {showOriginal ? "📝 View Extracted Text" : "📎 View Original File"}
+                      </button>
+                    )}
+                    <span style={{ ...styles.tag, backgroundColor: "#f0f4ff", color: "#4f46e5", fontSize: "0.8rem", padding: "0.3rem 0.8rem", border: "1px solid #c7d2fe" }}>
+                      Read Only
+                    </span>
+                  </div>
                 </div>
-                <div style={styles.fullDocBody}>
-                  {sections.map((s, idx) => (
-                    <div key={s.id} style={styles.fullDocSection}>
-                      {/* Section heading */}
-                      <div style={styles.fullDocHeading}>
-                        <span>{s.subtitle}</span>
-                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                          <span style={{ ...styles.tag, backgroundColor: (TAG_COLORS[s.tag] || TAG_COLORS.UNTAGGED).bg, color: (TAG_COLORS[s.tag] || TAG_COLORS.UNTAGGED).color }}>
-                            {s.tag}
-                          </span>
-                          {s.version > 1 && (
-                            <span style={styles.versionBadge2}>v{s.version}</span>
-                          )}
+
+                {/* ✅ File Viewer — uses <object> to bypass X-Frame-Options */}
+                {showOriginal && manualFileUrl ? (
+                  <div style={styles.fileViewerWrapper}>
+                    {manualFileUrl.toLowerCase().includes('.pdf') ? (
+                      <object
+                        data={manualFileUrl}
+                        type="application/pdf"
+                        style={styles.pdfViewer}
+                      >
+                        <div style={styles.unsupportedFile}>
+                          <p>⚠️ Browser cannot preview this PDF inline.</p>
+                          <a href={manualFileUrl} target="_blank" rel="noreferrer" style={{ color: "#4f46e5", fontWeight: "600" }}>
+                            📥 Open PDF in New Tab
+                          </a>
                         </div>
+                      </object>
+                    ) : manualFileUrl.match(/\.(png|jpg|jpeg)$/i) ? (
+                      <img
+                        src={manualFileUrl}
+                        alt="Original Manual"
+                        style={styles.imageViewer}
+                      />
+                    ) : (
+                      <div style={styles.unsupportedFile}>
+                        <p>⚠️ Cannot preview this file type.</p>
+                        <a href={manualFileUrl} target="_blank" rel="noreferrer" style={{ color: "#4f46e5", fontWeight: "600" }}>
+                          📥 Download Original File
+                        </a>
                       </div>
-                      {/* Section content */}
-                      <div style={styles.fullDocContent}>
-                        {s.content.split("\n").filter(l => l.trim()).map((line, i) => (
-                          <p key={i} style={styles.contentParagraph}>{line}</p>
-                        ))}
+                    )}
+                  </div>
+                ) : (
+                  <div style={styles.fullDocBody}>
+                    {sections.map((s, idx) => (
+                      <div key={s.id} style={styles.fullDocSection}>
+                        <div style={styles.fullDocHeading}>
+                          <span>{s.subtitle}</span>
+                          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            <span style={{ ...styles.tag, backgroundColor: (TAG_COLORS[s.tag] || TAG_COLORS.UNTAGGED).bg, color: (TAG_COLORS[s.tag] || TAG_COLORS.UNTAGGED).color }}>
+                              {s.tag}
+                            </span>
+                            {s.version > 1 && (
+                              <span style={styles.versionBadge2}>v{s.version}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.fullDocContent}>
+                          {s.content.split("\n").filter(l => l.trim()).map((line, i) => (
+                            <p key={i} style={styles.contentParagraph}>{line}</p>
+                          ))}
+                        </div>
+                        {idx < sections.length - 1 && <hr style={styles.sectionDivider} />}
                       </div>
-                      {idx < sections.length - 1 && <hr style={styles.sectionDivider} />}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
             ) : editingSection ? (
-              // ── Edit Form ──
               <div>
                 <div style={styles.contentHeader}>
                   <h3 style={styles.contentTitle}>✏️ Editing Section</h3>
@@ -407,7 +474,6 @@ export default function Sections() {
               </div>
 
             ) : (
-              // ── Single Section Read + Diff View ──
               <div>
                 <div style={styles.contentHeader}>
                   <div>
@@ -469,7 +535,9 @@ export default function Sections() {
                           backgroundColor: line.type === "added" ? "#f0fff4" : line.type === "removed" ? "#fff5f5" : "transparent",
                           color: line.type === "added" ? "#276749" : line.type === "removed" ? "#c53030" : "#333",
                           textDecoration: line.type === "removed" ? "line-through" : "none",
-                          borderLeft: line.type === "added" ? "3px solid #48bb78" : line.type === "removed" ? "3px solid #fc8181" : "3px solid transparent",
+                          borderLeftWidth: "3px",
+                          borderLeftStyle: "solid",
+                          borderLeftColor: line.type === "added" ? "#48bb78" : line.type === "removed" ? "#fc8181" : "transparent",
                         }}>
                           <span style={styles.diffMarker}>
                             {line.type === "added" ? "+" : line.type === "removed" ? "−" : " "}
@@ -516,6 +584,7 @@ const styles = {
   manualCard: { backgroundColor: "#1a1a2e", borderRadius: "10px", padding: "1rem", marginBottom: "0.5rem" },
   manualTitle: { color: "#fff", fontWeight: "700", fontSize: "1rem" },
   manualDept: { color: "#8888aa", fontSize: "0.8rem", marginTop: "0.25rem" },
+  manualVersion: { color: "#a5b4fc", fontSize: "0.75rem", fontWeight: "600", marginTop: "0.4rem" },
   tocLabel: { fontSize: "0.7rem", fontWeight: "700", color: "#aaa", letterSpacing: "1px", padding: "0.25rem 0" },
   tocItem: { padding: "0.75rem 1rem", borderRadius: "8px", cursor: "pointer", border: "1px solid #eee", transition: "all 0.15s" },
   tocSubtitle: { fontWeight: "600", fontSize: "0.88rem", marginBottom: "0.35rem" },
@@ -535,7 +604,6 @@ const styles = {
   contentHeader: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.5rem" },
   contentTitle: { margin: 0, color: "#1a1a2e", fontSize: "1.2rem" },
   pageLabel: { color: "#aaa", fontSize: "0.8rem", margin: "0 0 1rem 0" },
-  // ✅ Full doc styles
   fullDocBody: { marginTop: "1rem", overflowY: "auto" },
   fullDocSection: { marginBottom: "1.5rem" },
   fullDocHeading: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0.75rem", backgroundColor: "#f7f8fc", borderRadius: "6px", marginBottom: "0.75rem", fontWeight: "700", fontSize: "0.95rem", color: "#1a1a2e", border: "1px solid #e2e8f0" },
@@ -554,4 +622,8 @@ const styles = {
   diffMarker: { display: "inline-block", width: "1.2rem", fontWeight: "700" },
   contentBody: { fontSize: "0.95rem", lineHeight: "1.9", color: "#333", borderTop: "1px solid #f0f0f0", paddingTop: "1rem", maxWidth: "720px" },
   contentParagraph: { margin: "0 0 1rem 0", textAlign: "justify", wordBreak: "break-word" },
+  fileViewerWrapper: { marginTop: "1rem", borderRadius: "8px", overflow: "hidden", border: "1px solid #e2e8f0", height: "72vh", display: "flex", flexDirection: "column" },
+  pdfViewer: { width: "100%", height: "100%", border: "none", flex: 1 },
+  imageViewer: { width: "100%", height: "auto", display: "block", objectFit: "contain" },
+  unsupportedFile: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "1rem", color: "#888", fontSize: "0.95rem" },
 };

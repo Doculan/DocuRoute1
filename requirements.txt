@@ -1,0 +1,11 @@
+django
+djangorestframework
+djangorestframework-simplejwt
+django-cors-headers
+django-extensions
+Pillow
+pytesseract
+pdf2image
+pymupdf
+scikit-learn
+joblib

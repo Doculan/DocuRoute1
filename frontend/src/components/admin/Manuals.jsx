@@ -51,7 +51,12 @@ export default function Manuals() {
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      showMessage(`✅ "${res.data.title}" uploaded. Now go to Sections to define its sections.`);
+      // ✅ Show auto-section result
+      showMessage(
+        res.data.sections_created > 0
+          ? `✅ "${res.data.title}" uploaded — ${res.data.sections_created} sections auto-detected! Go to Sections to review them.`
+          : `✅ "${res.data.title}" uploaded — No sections detected. Go to Sections to add them manually.`
+      );
       setForm({ title: "", department_id: "", file: null });
       fetchData();
     } catch (err) {
@@ -106,7 +111,7 @@ export default function Manuals() {
             required
           />
           <button style={styles.uploadBtn} type="submit" disabled={uploading}>
-            {uploading ? "Uploading..." : "Upload"}
+            {uploading ? "⏳ Extracting & auto-sectioning..." : "Upload"}
           </button>
         </form>
       </div>
@@ -124,6 +129,7 @@ export default function Manuals() {
               <th style={styles.th}>Title</th>
               <th style={styles.th}>Department</th>
               <th style={styles.th}>Sections</th>
+              <th style={styles.th}>Version</th>
               <th style={styles.th}>Uploaded By</th>
               <th style={styles.th}>Date</th>
               <th style={styles.th}>Actions</th>
@@ -136,6 +142,10 @@ export default function Manuals() {
                 <td style={styles.td}>{m.department}</td>
                 <td style={styles.td}>
                   <span style={styles.badge}>{m.section_count} sections</span>
+                </td>
+                {/* ✅ Document version column */}
+                <td style={styles.td}>
+                  <span style={styles.versionBadge}>v{m.version}</span>
                 </td>
                 <td style={styles.td}>{m.uploaded_by}</td>
                 <td style={styles.td}>
@@ -197,6 +207,13 @@ const styles = {
     padding: "0.25rem 0.6rem", backgroundColor: "#ebf4ff",
     color: "#4f46e5", borderRadius: "20px",
     fontSize: "0.78rem", fontWeight: "600",
+  },
+  // ✅ NEW
+  versionBadge: {
+    padding: "0.25rem 0.6rem", backgroundColor: "#fefcbf",
+    color: "#b7791f", borderRadius: "20px",
+    fontSize: "0.78rem", fontWeight: "700",
+    border: "1px solid #f6e05e",
   },
   deleteBtn: {
     padding: "0.35rem 0.85rem", backgroundColor: "#e53e3e",

@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
-
 class Department(models.Model):
     name = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -44,6 +43,7 @@ class Manual(models.Model):
     )
     file = models.FileField(upload_to='mastercopies/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    version = models.IntegerField(default=1)  # ✅ manual-level version
 
     def __str__(self):
         return f"{self.title} ({self.department.name})"
@@ -62,21 +62,23 @@ class ManualSection(models.Model):
         on_delete=models.CASCADE,
         related_name='sections'
     )
-    subtitle = models.CharField(max_length=255)  # admin defines this
-    content = models.TextField()                  # OCR extracted text
+    subtitle = models.CharField(max_length=255)
+    content = models.TextField()
     tag = models.CharField(
         max_length=50,
         choices=TAG_CHOICES,
         default='UNTAGGED'
-    )                                             # SVM auto-tags this
+    )
     page_number = models.IntegerField(null=True, blank=True)
-    order = models.IntegerField(default=0)        # section order in manual
-    version = models.IntegerField(default=1)
+    order = models.IntegerField(default=0)
+    version = models.IntegerField(default=1)  # ✅ section-level version
 
     def __str__(self):
         return f"{self.subtitle} [{self.tag}] — {self.manual.title}"
 
+
 class SectionHistory(models.Model):
+    """Snapshot of a section before each edit."""
     section = models.ForeignKey(
         ManualSection,
         on_delete=models.CASCADE,

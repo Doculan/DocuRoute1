@@ -112,7 +112,9 @@ const styles = {
   navItemActive: {
     background: "rgba(79, 70, 229, 0.2)",
     border: "none",
-    borderLeft: "3px solid #4f46e5",
+    borderLeftWidth: "3px",
+    borderLeftStyle: "solid",
+    borderLeftColor: "#48bb78",
     color: "#fff",
     padding: "0.75rem 1.5rem",
     textAlign: "left",

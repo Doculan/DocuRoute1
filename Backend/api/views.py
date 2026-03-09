@@ -12,56 +12,56 @@ import difflib
 import re
 
 
-
 # ─── HELPERS ─────────────────────────────────────────────────
 
-
-def split_into_sections(text):
-    heading_pattern = re.compile(
-        r'^('
-        r'CHAPTER\s+[\dIVXivx]+'
-        r'|SECTION\s+[\dIVXivx]+'
-        r'|ARTICLE\s+[\dIVXivx]+'
-        r'|\d+(\.\d+)*\.?\s+[A-Z][\w\s]{2,}'
-        r'|[A-Z][A-Z\s]{3,50}$'
-        r')',
-        re.MULTILINE
-    )
-
-    lines = text.splitlines()
+def _split_into_sections(text, fallback_title='Full Document'):
+    lines = text.split('\n')
     sections = []
-    current_heading = "Introduction"
+    current_subtitle = None
     current_content = []
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
-            current_content.append("")
             continue
-        if heading_pattern.match(stripped):
-            if current_content:
-                content_text = "\n".join(current_content).strip()
-                if content_text:
-                    sections.append((current_heading, content_text))
-            current_heading = stripped
+
+        is_heading = bool(
+            len(stripped) < 80 and (
+                re.match(r'^\d+[\.\)]\s+\w+', stripped) or
+                re.match(r'^[A-Z][A-Z\s]{2,60}$', stripped) or
+                re.match(r'^[A-Z][a-z]+(\s[A-Z][a-z]+){0,6}$', stripped)
+            )
+        )
+
+        if is_heading:
+            if current_subtitle and current_content:
+                sections.append({
+                    'subtitle': current_subtitle,
+                    'content': '\n'.join(current_content).strip()
+                })
+            current_subtitle = stripped
             current_content = []
         else:
+            if current_subtitle is None:
+                current_subtitle = 'Introduction'
             current_content.append(stripped)
 
-    if current_content:
-        content_text = "\n".join(current_content).strip()
-        if content_text:
-            sections.append((current_heading, content_text))
+    if current_subtitle and current_content:
+        sections.append({
+            'subtitle': current_subtitle,
+            'content': '\n'.join(current_content).strip()
+        })
 
     if not sections:
-        sections = [("Full Content", text)]
+        sections.append({
+            'subtitle': fallback_title,
+            'content': text.strip()
+        })
 
     return sections
 
 
-
 # ─── AUTH ────────────────────────────────────────────────────
-
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -117,9 +117,7 @@ def login(request):
     })
 
 
-
 # ─── ADMIN: USERS ────────────────────────────────────────────
-
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
@@ -163,9 +161,7 @@ def reject_user(request, user_id):
     return Response({'message': 'User rejected and removed.'})
 
 
-
 # ─── DEPARTMENTS ─────────────────────────────────────────────
-
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -198,9 +194,7 @@ def delete_department(request, dept_id):
     return Response({'message': f'{dept.name} deleted.'})
 
 
-
 # ─── MANUALS ─────────────────────────────────────────────────
-
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
@@ -212,7 +206,8 @@ def list_manuals(request):
         'department': m.department.name if m.department else 'N/A',
         'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
         'uploaded_at': m.uploaded_at,
-        'section_count': m.sections.count()
+        'section_count': m.sections.count(),
+        'version': m.version,
     } for m in manuals]
     return Response(data)
 
@@ -247,31 +242,33 @@ def upload_manual(request):
     except Exception:
         extracted_text = ""
 
-    # ── Auto-detect and create sections ──
-    sections_created = 0
-    if extracted_text:
-        sections_data = split_into_sections(extracted_text)
-        for i, (heading, content) in enumerate(sections_data):
+    sections_created = []
+    if extracted_text.strip():
+        blocks = _split_into_sections(extracted_text, title)
+        for idx, block in enumerate(blocks):
             try:
-                tag = predict(content)[0] if content.strip() else 'UNTAGGED'
+                tag = predict(block['content'])[0] if block['content'].strip() else 'UNTAGGED'
             except Exception:
                 tag = 'UNTAGGED'
-            ManualSection.objects.create(
+            section = ManualSection.objects.create(
                 manual=manual,
-                subtitle=heading,
-                content=content.strip(),
+                subtitle=block['subtitle'],
+                content=block['content'],
                 tag=tag,
-                page_number=None,
-                order=i
+                order=idx,
             )
-            sections_created += 1
+            sections_created.append({
+                'id': section.id,
+                'subtitle': section.subtitle,
+                'tag': section.tag,
+            })
 
     return Response({
         'id': manual.id,
         'title': manual.title,
         'department': department.name,
-        'sections_created': sections_created,
-        'message': f'Manual uploaded. {sections_created} sections auto-detected.'
+        'sections_created': len(sections_created),
+        'message': f'Manual uploaded with {len(sections_created)} auto-detected sections.'
     }, status=201)
 
 
@@ -311,9 +308,7 @@ def ocr_extract_manual(request, manual_id):
     })
 
 
-
 # ─── MANUAL SECTIONS ─────────────────────────────────────────
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -329,17 +324,22 @@ def list_sections(request, manual_id):
 
     sections = manual.sections.all().order_by('order')
     data = [{
-    'id': s.id,
-    'subtitle': s.subtitle,
-    'tag': s.tag,
-    'page_number': s.page_number,
-    'order': s.order,
-    'content': s.content,
-    'content_preview': s.content[:200],
-    'version': s.version,  # ✅ ADD THIS
-} for s in sections]
+        'id': s.id,
+        'subtitle': s.subtitle,
+        'tag': s.tag,
+        'page_number': s.page_number,
+        'order': s.order,
+        'content': s.content,
+        'content_preview': s.content[:200],
+        'version': s.version,
+    } for s in sections]
 
-    return Response(data)
+    return Response({
+        'manual_version': manual.version,
+        'sections': data,
+        'file_url': manual.file.url if manual.file else None,  # ✅ relative path only
+        'file_name': manual.file.name if manual.file else None,
+    })
 
 
 @api_view(['POST'])
@@ -378,7 +378,6 @@ def create_section(request, manual_id):
         'tag': section.tag,
         'page_number': section.page_number,
         'order': section.order
-        
     }, status=201)
 
 
@@ -390,7 +389,6 @@ def update_section(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    # ✅ Snapshot current version before overwriting
     SectionHistory.objects.create(
         section=section,
         version=section.version,
@@ -413,14 +411,32 @@ def update_section(request, section_id):
             section.tag = 'UNTAGGED'
 
     section.save()
+
+    manual = section.manual
+    manual.version += 1
+    manual.save()
+
     return Response({
         'message': 'Section updated.',
         'tag': section.tag,
-        'version': section.version
+        'version': section.version,
+        'manual_version': manual.version,
     })
 
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def delete_section(request, section_id):
+    try:
+        section = ManualSection.objects.get(id=section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Section not found'}, status=404)
+    section.delete()
+    return Response({'message': 'Section deleted.'})
+
+
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def section_history(request, section_id):
     try:
         section = ManualSection.objects.get(id=section_id)
@@ -437,7 +453,6 @@ def section_history(request, section_id):
         'edited_at': h.edited_at,
     } for h in history]
 
-    # ✅ Always append current version at the end
     data.append({
         'version': section.version,
         'subtitle': section.subtitle,
@@ -449,20 +464,8 @@ def section_history(request, section_id):
 
     return Response(data)
 
-@api_view(['DELETE'])
-@permission_classes([IsAdminUser])
-def delete_section(request, section_id):
-    try:
-        section = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-    section.delete()
-    return Response({'message': 'Section deleted.'})
-
-
 
 # ─── REVISIONS ───────────────────────────────────────────────
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -480,6 +483,7 @@ def upload_revision(request, section_id):
 
     uploaded_file = request.FILES['file']
     file_bytes = uploaded_file.read()
+    uploaded_file.seek(0)
     text_new = extract_text(file_bytes, uploaded_file.name)
 
     diff = "\n".join(difflib.unified_diff(
@@ -547,8 +551,29 @@ def review_revision(request, revision_id):
             with revision.uploaded_file.open('rb') as f:
                 file_bytes = f.read()
             new_text = extract_text(file_bytes, revision.uploaded_file.name)
-            revision.section.content = new_text
-            revision.section.save()
+            section = revision.section
+
+            SectionHistory.objects.create(
+                section=section,
+                version=section.version,
+                subtitle=section.subtitle,
+                content=section.content,
+                tag=section.tag,
+                edited_by=revision.submitted_by,
+            )
+
+            section.content = new_text
+            try:
+                section.tag = predict(new_text)[0]
+            except Exception:
+                section.tag = 'UNTAGGED'
+            section.version += 1
+            section.save()
+
+            manual = section.manual
+            manual.version += 1
+            manual.save()
+
         except Exception:
             pass
 
