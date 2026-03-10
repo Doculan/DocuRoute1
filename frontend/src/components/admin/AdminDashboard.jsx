@@ -33,7 +33,7 @@ export default function AdminDashboard({ onLogout }) {
       {/* Sidebar */}
       <div style={styles.sidebar}>
         <div style={styles.sidebarTitle}>
-          <img src={logo} alt="DocuRoute logo" style={{ height: '40px' }} />
+          <img src={logo} alt="DocuRoute logo" style={{ height: '60px', width: 'auto' }} />
           </div>
 
         <div style={styles.sidebarSubtitle}>Admin Panel</div>
