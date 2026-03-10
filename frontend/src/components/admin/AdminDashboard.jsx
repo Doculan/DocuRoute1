@@ -126,7 +126,7 @@ const styles = {
     padding: "0.75rem 1.5rem",
     textAlign: "left",
     cursor: "pointer",
-    fontSize: "0.9rem",
+    fontSize: "0.75rem",
     fontWeight: "500",
     transition: "all 0.2s",
     height: "60px",
