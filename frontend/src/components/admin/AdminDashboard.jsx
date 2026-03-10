@@ -4,6 +4,7 @@ import Departments from "./Departments";
 import Manuals from "./Manuals";
 import Sections from "./Sections";
 import RevisionReview from "./RevisionReview";
+import logo from '../../assets/QMS.png';
 
 const NAV_ITEMS = [
   { key: "users", label: "👥 User Management" },
@@ -31,7 +32,10 @@ export default function AdminDashboard({ onLogout }) {
     <div style={styles.wrapper}>
       {/* Sidebar */}
       <div style={styles.sidebar}>
-        <div style={styles.sidebarTitle}>DocuRoute</div>
+        <div style={styles.sidebarTitle}>
+          <img src={logo} alt="DocuRoute logo" style={{ height: '40px' }} />
+          </div>
+
         <div style={styles.sidebarSubtitle}>Admin Panel</div>
         <nav style={styles.nav}>
           {NAV_ITEMS.map((item) => (
