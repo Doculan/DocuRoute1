@@ -5,13 +5,18 @@ import Manuals from "./Manuals";
 import Sections from "./Sections";
 import RevisionReview from "./RevisionReview";
 import logo from '../../assets/QMS.png';
+import usersIcon from '../../assets/nav/users.svg';
+import departmentsIcon from '../../assets/nav/departments.svg';
+import manualsIcon from '../../assets/nav/manuals.svg';
+import sectionsIcon from '../../assets/nav/sections.svg';
+import reviewIcon from '../../assets/nav/review.svg';
 
 const NAV_ITEMS = [
-  { key: "users", label: "👥 User Management" },
-  { key: "departments", label: "🏢 Departments" },
-  { key: "manuals", label: "📄 Manuals" },
-  { key: "sections", label: "📑 Sections" },
-  { key: "revisions", label: "🔍 Revision Review" },
+  { key: "users",       icon: usersIcon,       label: "User Management" },
+  { key: "departments", icon: departmentsIcon, label: "Departments" },
+  { key: "manuals",     icon: manualsIcon,     label: "Manuals" },
+  { key: "sections",    icon: sectionsIcon,    label: "Sections" },
+  { key: "review",   icon: reviewIcon,   label: "Revision Review" },
 ];
 
 export default function AdminDashboard({ onLogout }) {
@@ -33,21 +38,32 @@ export default function AdminDashboard({ onLogout }) {
       {/* Sidebar */}
       <div style={styles.sidebar}>
         <div style={styles.sidebarTitle}>
-          <img src={logo} alt="DocuRoute logo" style={{ height: '60px', width: 'auto' }} />
+          <img src={logo} alt="DocuRoute logo" style={{ height: '80px', width: 'auto' }} />
           </div>
 
         <div style={styles.sidebarSubtitle}>Admin Panel</div>
         <nav style={styles.nav}>
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              style={activePage === item.key ? styles.navItemActive : styles.navItem}
-              onClick={() => setActivePage(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
+  {NAV_ITEMS.map((item) => (
+    <button
+      key={item.key}
+      style={activePage === item.key ? styles.navItemActive : styles.navItem}
+      onClick={() => setActivePage(item.key)}
+    >
+      <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <img
+          src={item.icon}
+          alt=""
+          style={{
+            width: "25px",
+            height: "25px",
+            filter: "brightness(0) invert(1)", // makes dark SVG appear white
+          }}
+        />
+        <span>{item.label}</span>
+      </span>
+    </button>
+  ))}
+</nav>
         <div style={styles.sidebarBottom}>
           <span style={styles.adminName}>
             {localStorage.getItem("username")}
@@ -72,11 +88,12 @@ const styles = {
     height: "100vh",
     backgroundColor: "#f0f2f5",
     overflow: "hidden",
+    width: '100vw'
   },
   sidebar: {
     width: "240px",
     minWidth: "240px",
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#080552",
     display: "flex",
     flexDirection: "column",
     padding: "1.5rem 0",
@@ -112,6 +129,7 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: "500",
     transition: "all 0.2s",
+    height: "60px",
   },
   navItemActive: {
     background: "rgba(79, 70, 229, 0.2)",
@@ -125,6 +143,7 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
     fontWeight: "600",
+    height: "60px",
   },
   sidebarBottom: {
     padding: "1rem 1.5rem",
