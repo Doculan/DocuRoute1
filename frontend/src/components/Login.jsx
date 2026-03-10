@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import logo from '../assets/QMS.png';
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState("");
@@ -36,8 +37,8 @@ export default function Login({ onLoginSuccess }) {
     <div style={styles.page}>
       <div style={styles.left}>
         <div style={styles.brand}>
-          <h1 style={styles.brandTitle}>DocuRoute</h1>
-          <p style={styles.brandSub}>ML-Assisted Inter-Office Document Routing System</p>
+          <img src={logo} alt="DocuRoute logo" style={{ height: '250px', width: 'auto' }} />
+          <p style={styles.brandSub}>QUALITY MANAGEMENT SYSTEM ON ADMINISTRATIVE SERVICES <br></br>Controlled Document Management System</p>
         </div>
       </div>
 
@@ -99,7 +100,7 @@ const styles = {
   },
   left: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#090749",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -119,7 +120,7 @@ const styles = {
     color: "#8888aa",
     fontSize: "1rem",
     lineHeight: "1.6",
-    maxWidth: "300px",
+    maxWidth: "600px",
     margin: "0 auto",
   },
   right: {
@@ -163,7 +164,7 @@ const styles = {
   label: {
     fontSize: "0.85rem",
     fontWeight: "600",
-    color: "#333",
+    color: "#182549",
   },
   input: {
     padding: "0.75rem 1rem",
@@ -176,7 +177,7 @@ const styles = {
   button: {
     marginTop: "0.5rem",
     padding: "0.85rem",
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#090749",
     color: "#fff",
     border: "none",
     borderRadius: "8px",
@@ -199,9 +200,9 @@ const styles = {
     marginTop: "1.2rem",
     fontSize: "0.875rem",
     color: "#666",
-  },
+  }, 
   link: {
-    color: "#4f46e5",
+    color: "#100c80",
     cursor: "pointer",
     fontWeight: "600",
   },

@@ -93,7 +93,7 @@ const styles = {
   sidebar: {
     width: "240px",
     minWidth: "240px",
-    backgroundColor: "#080552",
+    backgroundColor: "#090749",
     display: "flex",
     flexDirection: "column",
     padding: "1.5rem 0",
@@ -143,7 +143,7 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
     fontWeight: "600",
-    height: "60px",
+    height: "63px",
   },
   sidebarBottom: {
     padding: "1rem 1.5rem",
