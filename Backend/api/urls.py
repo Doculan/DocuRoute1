@@ -3,8 +3,8 @@ from .views import (
     register, login,
     pending_users, approved_users, approve_user, reject_user,
     list_departments, create_department, delete_department,
-    list_manuals, upload_manual, delete_manual, ocr_extract_manual,
-    list_sections, create_section, update_section, delete_section,
+    list_manuals, upload_manual, preview_manual_sections, confirm_manual_sections, delete_manual, ocr_extract_manual,
+    list_sections, create_section, update_section, delete_section, review_section,
     section_history,  # ✅ NEW
     upload_revision, list_revisions, review_revision,
 )
@@ -28,12 +28,15 @@ urlpatterns = [
     # Manuals
     path('manuals/', list_manuals),
     path('manuals/upload/', upload_manual),
+    path('manuals/upload-preview/', preview_manual_sections),
+    path('manuals/<int:manual_id>/confirm-sections/', confirm_manual_sections),
     path('manuals/<int:manual_id>/delete/', delete_manual),
     path('manuals/<int:manual_id>/ocr-extract/', ocr_extract_manual),
 
     # Sections
     path('manuals/<int:manual_id>/sections/', list_sections),
     path('manuals/<int:manual_id>/sections/create/', create_section),
+    path('sections/<int:section_id>/review/', review_section),
     path('sections/<int:section_id>/update/', update_section),
     path('sections/<int:section_id>/delete/', delete_section),
     path('sections/<int:section_id>/history/', section_history),  # ✅ NEW

@@ -51,12 +51,14 @@ class Manual(models.Model):
 
 class ManualSection(models.Model):
     TAG_CHOICES = [
-        ('POLICY', 'Policy'),
-        ('PROCEDURE', 'Procedure'),
-        ('RESPONSIBILITY', 'Responsibility'),
-        ('WORKING INSTRUCTION', 'Working Instruction'),
-        ('UNTAGGED', 'Untagged'),
-    ]
+    ('POLICY', 'Policy'),
+    ('PROCEDURE', 'Procedure'),
+    ('RESPONSIBILITY', 'Responsibility'),
+    ('WORKING INSTRUCTION', 'Working Instruction'),
+    ('PAGE_HEADER', 'Page Header'),
+    ('UNTAGGED', 'Untagged'),
+]
+
     manual = models.ForeignKey(
         Manual,
         on_delete=models.CASCADE,
@@ -72,6 +74,26 @@ class ManualSection(models.Model):
     page_number = models.IntegerField(null=True, blank=True)
     order = models.IntegerField(default=0)
     version = models.IntegerField(default=1)  # ✅ section-level version
+
+    # Hierarchy (parent/child sections)
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children'
+    )
+
+    # Review workflow
+    is_reviewed = models.BooleanField(default=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_sections'
+    )
 
     def __str__(self):
         return f"{self.subtitle} [{self.tag}] — {self.manual.title}"

@@ -15,48 +15,126 @@ import re
 # ─── HELPERS ─────────────────────────────────────────────────
 
 def _split_into_sections(text, fallback_title='Full Document'):
+    INLINE_TAGS = re.compile(
+        r'(?<!\w)(WORKING INSTRUCTIONS?|RESPONSIBILITIES?|PROCEDURES?|POLICIES?|POLICY'
+        r'|PREPARED BY|APPROVED BY|NOTED BY|REVIEWED BY)(?!\w)',
+        flags=re.IGNORECASE
+    )
+
     lines = text.split('\n')
     sections = []
     current_subtitle = None
     current_content = []
+    current_page = None
+    current_is_chapter = False
 
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-
-        is_heading = bool(
-            len(stripped) < 80 and (
-                re.match(r'^\d+[\.\)]\s+\w+', stripped) or
-                re.match(r'^[A-Z][A-Z\s]{2,60}$', stripped) or
-                re.match(r'^[A-Z][a-z]+(\s[A-Z][a-z]+){0,6}$', stripped)
-            )
-        )
-
-        if is_heading:
-            if current_subtitle and current_content:
+    def flush():
+        nonlocal current_subtitle, current_content, current_is_chapter
+        if current_subtitle and current_content:
+            content = '\n'.join(l for l in current_content if l.strip()).strip()
+            if content:
                 sections.append({
                     'subtitle': current_subtitle,
-                    'content': '\n'.join(current_content).strip()
+                    'content': content,
+                    'page_number': current_page,
+                    'is_chapter': current_is_chapter,
                 })
-            current_subtitle = stripped
-            current_content = []
-        else:
-            if current_subtitle is None:
-                current_subtitle = 'Introduction'
-            current_content.append(stripped)
+        current_subtitle = None
+        current_content = []
+        current_is_chapter = False
 
-    if current_subtitle and current_content:
-        sections.append({
-            'subtitle': current_subtitle,
-            'content': '\n'.join(current_content).strip()
-        })
+    # Pre-process: rejoin orphaned number lines with next line
+    # e.g. "1.\nOBJECTIVES" → "1 OBJECTIVES" or "1.0\nOBJECTIVES" → "1.0 OBJECTIVES"
+    joined_lines = []
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip().replace('\u200b', '').strip()
+        if not s:
+            i += 1
+            continue
+        if re.match(r'^\d+(?:\.\d+)*\.?$', s) and i + 1 < len(lines):
+            next_s = lines[i + 1].strip().replace('\u200b', '').strip()
+            if next_s and not next_s.startswith('##') and not re.match(r'^\d+(?:\.\d+)*\.?$', next_s):
+                joined_num = s.rstrip('.')
+                joined_lines.append(f"{joined_num} {next_s}")
+                i += 2
+                continue
+        joined_lines.append(s)
+        i += 1
+
+    for line in joined_lines:
+        # Strip inline tags from every line first
+        s = INLINE_TAGS.sub('', line.strip())
+        s = re.sub(r'\s{2,}', ' ', s).strip()
+        if not s:
+            continue
+
+        # PAGE_HEADER marker
+        ph = re.match(r'^##PAGE_HEADER\s+(\d+)\s+FOR\s+.+##$', s)
+        if ph:
+            current_page = int(ph.group(1))
+            continue
+
+        # Drop leftover metadata lines
+        if re.search(r'VERSION NO\.|DOCUMENT NO\.|EFFECTIVITY DATE|MANUAL TITLE', s, re.IGNORECASE):
+            continue
+
+        # Drop artifact lines
+        if re.match(r'^[\s:|\-\.]+$', s):
+            continue
+
+        # CHAPTER headings: treat as top-level section and make subsequent sections children
+        chapter_match = re.match(r'^(CHAPTER\s+\d+(?:\.\d+)*)(?:\s*[:\.\-]?\s*(.*))?$', s, re.IGNORECASE)
+        if chapter_match and len(s) < 150:
+            flush()
+            chapter_label = chapter_match.group(1).upper()
+            chapter_title = chapter_match.group(2) or ''
+            if chapter_title:
+                current_subtitle = f"{chapter_label} - {chapter_title.strip()}"
+            else:
+                current_subtitle = chapter_label
+            current_is_chapter = True
+            current_content = []
+            continue
+
+        # TOP-LEVEL section: numbered headings like "1.", "1.0", "1.1", "1.1.1", etc.
+        # This is intentionally loose to handle manuals that use either "1." or "1.0" style numbering.
+        top_level = re.match(r'^(\d+(?:\.\d+)*\.?)\s*(\S+.*)?$', s)
+        if top_level and len(s) < 120:
+            flush()
+            num = top_level.group(1).rstrip('.')
+            title = top_level.group(2)
+            if title:
+                current_subtitle = f"{num} {title.strip()}"
+            else:
+                current_subtitle = f"{num} [Section]"
+            current_content = []
+            continue
+
+        # Everything else is content
+        if current_subtitle is None:
+            current_subtitle = fallback_title
+        current_content.append(s)
+
+    flush()
 
     if not sections:
         sections.append({
             'subtitle': fallback_title,
-            'content': text.strip()
+            'content': text.strip(),
+            'page_number': None,
+            'is_chapter': False,
+            'parent_index': None,
         })
+
+    # Post-process to set parent pointer for hierarchy
+    current_chapter = None
+    for idx, sec in enumerate(sections):
+        if sec.get('is_chapter'):
+            current_chapter = idx
+            sec['parent_index'] = None
+        else:
+            sec['parent_index'] = current_chapter
 
     return sections
 
@@ -245,18 +323,29 @@ def upload_manual(request):
     sections_created = []
     if extracted_text.strip():
         blocks = _split_into_sections(extracted_text, title)
+        created_sections = []
         for idx, block in enumerate(blocks):
             try:
                 tag = predict(block['content'])[0] if block['content'].strip() else 'UNTAGGED'
             except Exception:
                 tag = 'UNTAGGED'
+
+            parent = None
+            parent_index = block.get('parent_index')
+            if parent_index is not None and 0 <= parent_index < len(created_sections):
+                parent = created_sections[parent_index]
+
             section = ManualSection.objects.create(
                 manual=manual,
                 subtitle=block['subtitle'],
                 content=block['content'],
                 tag=tag,
+                page_number=block.get('page_number'),
                 order=idx,
+                parent=parent,
+                is_reviewed=False,
             )
+            created_sections.append(section)
             sections_created.append({
                 'id': section.id,
                 'subtitle': section.subtitle,
@@ -269,6 +358,105 @@ def upload_manual(request):
         'department': department.name,
         'sections_created': len(sections_created),
         'message': f'Manual uploaded with {len(sections_created)} auto-detected sections.'
+    }, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def preview_manual_sections(request):
+    """Upload a file and return computed sectioning without saving sections."""
+    title = request.data.get('title')
+    department_id = request.data.get('department_id')
+    file = request.FILES.get('file')
+
+    if not all([title, department_id, file]):
+        return Response({'error': 'Title, department, and file are required'}, status=400)
+
+    try:
+        department = Department.objects.get(id=department_id)
+    except Department.DoesNotExist:
+        return Response({'error': 'Department not found'}, status=404)
+
+    file_bytes = file.read()
+    file.seek(0)
+
+    manual = Manual.objects.create(
+        title=title,
+        department=department,
+        uploaded_by=request.user,
+        file=file
+    )
+
+    try:
+        extracted_text = extract_text(file_bytes, file.name)
+    except Exception:
+        extracted_text = ""
+
+    preview = []
+    if extracted_text.strip():
+        blocks = _split_into_sections(extracted_text, title)
+        for idx, block in enumerate(blocks):
+            try:
+                tag = predict(block['content'])[0] if block['content'].strip() else 'UNTAGGED'
+            except Exception:
+                tag = 'UNTAGGED'
+
+            preview.append({
+                'preview_index': idx,
+                'subtitle': block['subtitle'],
+                'content': block['content'],
+                'tag': tag,
+                'page_number': block.get('page_number'),
+                'is_chapter': block.get('is_chapter', False),
+                'parent_index': block.get('parent_index'),
+            })
+
+    return Response({
+        'manual_id': manual.id,
+        'title': manual.title,
+        'department': department.name,
+        'sections_preview': preview,
+    }, status=200)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def confirm_manual_sections(request, manual_id):
+    """Create sections for a manual from a reviewed preview list."""
+    try:
+        manual = Manual.objects.get(id=manual_id)
+    except Manual.DoesNotExist:
+        return Response({'error': 'Manual not found'}, status=404)
+
+    sections = request.data.get('sections')
+    if not isinstance(sections, list):
+        return Response({'error': 'Sections must be a list.'}, status=400)
+
+    created_sections = []
+    for idx, sec in enumerate(sections):
+        parent = None
+        parent_index = sec.get('parent_index')
+        if parent_index is not None and 0 <= parent_index < len(created_sections):
+            parent = created_sections[parent_index]
+
+        section = ManualSection.objects.create(
+            manual=manual,
+            subtitle=sec.get('subtitle', ''),
+            content=sec.get('content', ''),
+            tag=sec.get('tag', 'UNTAGGED'),
+            page_number=sec.get('page_number'),
+            order=idx,
+            parent=parent,
+            is_reviewed=sec.get('is_reviewed', False),
+        )
+        created_sections.append(section)
+
+    manual.version += 1
+    manual.save()
+
+    return Response({
+        'manual_id': manual.id,
+        'sections_created': len(created_sections),
     }, status=201)
 
 
@@ -322,23 +510,83 @@ def list_sections(request, manual_id):
         if manual.department != request.user.department:
             return Response({'error': 'Access denied'}, status=403)
 
-    sections = manual.sections.all().order_by('order')
+    pending = request.query_params.get('pending')
+    sections_qs = manual.sections.all().order_by('order')
+    if pending and pending.lower() in ('1', 'true', 'yes'):
+        sections_qs = sections_qs.filter(is_reviewed=False)
+
     data = [{
         'id': s.id,
         'subtitle': s.subtitle,
         'tag': s.tag,
         'page_number': s.page_number,
         'order': s.order,
+        'parent_id': s.parent.id if s.parent else None,
         'content': s.content,
         'content_preview': s.content[:200],
         'version': s.version,
-    } for s in sections]
+        'is_reviewed': s.is_reviewed,
+        'reviewed_at': s.reviewed_at,
+        'reviewed_by': s.reviewed_by.username if s.reviewed_by else None,
+    } for s in sections_qs]
 
     return Response({
         'manual_version': manual.version,
         'sections': data,
-        'file_url': manual.file.url if manual.file else None,  # ✅ relative path only
+        'file_url': manual.file.url if manual.file else None,
         'file_name': manual.file.name if manual.file else None,
+    })
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def review_section(request, section_id):
+    """Review or edit a section before final approval."""
+    try:
+        section = ManualSection.objects.get(id=section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Section not found'}, status=404)
+
+    # Only allow access by staff in the same department (or admins)
+    if not request.user.is_staff and section.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+
+    # Update content/metadata if provided
+    section.subtitle = request.data.get('subtitle', section.subtitle)
+    section.content = request.data.get('content', section.content)
+    section.tag = request.data.get('tag', section.tag)
+    section.page_number = request.data.get('page_number', section.page_number)
+    section.order = request.data.get('order', section.order)
+
+    approve = request.data.get('approve', True)
+    if isinstance(approve, str):
+        approve = approve.lower() in ('1', 'true', 'yes')
+
+    if approve:
+        section.is_reviewed = True
+        section.reviewed_by = request.user
+        section.reviewed_at = timezone.now()
+    else:
+        section.is_reviewed = False
+        section.reviewed_by = None
+        section.reviewed_at = None
+
+    # Re-tag if content updated
+    if 'content' in request.data:
+        try:
+            section.tag = predict(section.content)[0]
+        except Exception:
+            section.tag = 'UNTAGGED'
+
+    section.save()
+
+    return Response({
+        'id': section.id,
+        'subtitle': section.subtitle,
+        'tag': section.tag,
+        'is_reviewed': section.is_reviewed,
+        'reviewed_at': section.reviewed_at,
+        'reviewed_by': section.reviewed_by.username if section.reviewed_by else None,
     })
 
 

@@ -9,6 +9,11 @@ export default function Manuals() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
+  // Preview state (review sectioning before finalizing)
+  const [previewManual, setPreviewManual] = useState(null);
+  const [previewSections, setPreviewSections] = useState([]);
+  const [confirming, setConfirming] = useState(false);
+
   const fetchData = async () => {
     setLoading(true);
     const token = localStorage.getItem("access_token");
@@ -46,21 +51,26 @@ export default function Manuals() {
     formData.append("file", form.file);
 
     try {
+      // Use the preview endpoint so user can review/edit sectioning before finalizing
       const res = await axios.post(
-        "http://127.0.0.1:8000/api/manuals/upload/",
+        "http://127.0.0.1:8000/api/manuals/upload-preview/",
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // ✅ Show auto-section result
-      showMessage(
-        res.data.sections_created > 0
-          ? `✅ "${res.data.title}" uploaded — ${res.data.sections_created} sections auto-detected! Go to Sections to review them.`
-          : `✅ "${res.data.title}" uploaded — No sections detected. Go to Sections to add them manually.`
+
+      setPreviewManual({ id: res.data.manual_id, title: res.data.title });
+      setPreviewSections(
+        res.data.sections_preview.map((s) => ({
+          ...s,
+          subtitle: s.subtitle,
+          content: s.content,
+          tag: s.tag,
+        }))
       );
+      showMessage(`✅ Preview ready — review before confirming.`);
       setForm({ title: "", department_id: "", file: null });
-      fetchData();
     } catch (err) {
-      showMessage(err.response?.data?.error || "❌ Upload failed.");
+      showMessage(err.response?.data?.error || "❌ Upload preview failed.");
     } finally {
       setUploading(false);
     }
@@ -75,6 +85,56 @@ export default function Manuals() {
       showMessage(`🗑️ "${title}" deleted.`);
       fetchData();
     } catch { showMessage("❌ Failed to delete."); }
+  };
+
+  const getDepth = (index) => {
+    const visited = new Set();
+    let depth = 0;
+    let current = previewSections[index];
+    while (current && current.parent_index !== null && !visited.has(current.parent_index)) {
+      visited.add(current.parent_index);
+      depth += 1;
+      current = previewSections[current.parent_index];
+    }
+    return depth;
+  };
+
+  const handleConfirmSections = async () => {
+    if (!previewManual) return;
+    setConfirming(true);
+    const token = localStorage.getItem("access_token");
+    try {
+      await axios.post(
+        `http://127.0.0.1:8000/api/manuals/${previewManual.id}/confirm-sections/`,
+        { sections: previewSections },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      showMessage("✅ Sections confirmed. You can now review them in the Sections tab.");
+      setPreviewManual(null);
+      setPreviewSections([]);
+      fetchData();
+    } catch (err) {
+      showMessage(err.response?.data?.error || "❌ Failed to confirm sections.");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleCancelPreview = async () => {
+    if (!previewManual) return;
+    if (!confirm("Cancel preview and remove the uploaded manual?")) return;
+    const token = localStorage.getItem("access_token");
+    try {
+      await axios.delete(
+        `http://127.0.0.1:8000/api/manuals/${previewManual.id}/delete/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (err) {
+      console.error(err);
+    }
+    setPreviewManual(null);
+    setPreviewSections([]);
+    showMessage("Preview canceled.");
   };
 
   return (
@@ -111,9 +171,77 @@ export default function Manuals() {
             required
           />
           <button style={styles.uploadBtn} type="submit" disabled={uploading}>
-            {uploading ? "⏳ Extracting & auto-sectioning..." : "Upload"}
+            {uploading ? "⏳ Extracting & previewing..." : "Upload & Preview"}
           </button>
         </form>
+
+        {previewManual && (
+          <div style={{ marginTop: "1rem", padding: "1rem", background: "#f7fafc", borderRadius: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <strong>Preview for:</strong> {previewManual.title}
+              </div>
+              <div>
+                <button style={styles.cancelButton} onClick={handleCancelPreview}>
+                  Cancel preview
+                </button>
+                <button style={styles.confirmButton} onClick={handleConfirmSections} disabled={confirming}>
+                  {confirming ? "Confirming..." : "Confirm sections"}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: "1rem" }}>
+              {previewSections.length === 0 ? (
+                <p style={{ margin: 0 }}>No sections detected in preview.</p>
+              ) : (
+                previewSections.map((s, idx) => {
+                  const depth = getDepth(idx);
+                  return (
+                    <div key={idx} style={{ ...styles.sectionCard, marginLeft: depth * 18 }}>
+                      <div style={styles.previewRow}>
+                        <input
+                          style={styles.previewInput}
+                          value={s.subtitle}
+                          onChange={(e) => {
+                            const updated = [...previewSections];
+                            updated[idx] = { ...updated[idx], subtitle: e.target.value };
+                            setPreviewSections(updated);
+                          }}
+                        />
+                        {s.is_chapter && <span style={styles.chapterBadge}>CHAPTER</span>}
+                      </div>
+                      <div style={styles.previewMeta}>
+                        <label style={styles.metaLabel}>
+                          Tag:
+                          <input
+                            style={styles.previewMetaInput}
+                            value={s.tag}
+                            onChange={(e) => {
+                              const updated = [...previewSections];
+                              updated[idx] = { ...updated[idx], tag: e.target.value };
+                              setPreviewSections(updated);
+                            }}
+                          />
+                        </label>
+                        <span>Page: {s.page_number ?? "—"}</span>
+                      </div>
+                      <textarea
+                        style={styles.previewTextarea}
+                        value={s.content}
+                        onChange={(e) => {
+                          const updated = [...previewSections];
+                          updated[idx] = { ...updated[idx], content: e.target.value };
+                          setPreviewSections(updated);
+                        }}
+                      />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {message && <div style={styles.toast}>{message}</div>}
@@ -219,6 +347,75 @@ const styles = {
     padding: "0.35rem 0.85rem", backgroundColor: "#e53e3e",
     color: "#fff", border: "none", borderRadius: "6px",
     cursor: "pointer", fontWeight: "600",
+  },
+  confirmButton: {
+    marginLeft: "0.5rem",
+    padding: "0.35rem 0.85rem", backgroundColor: "#22c55e",
+    color: "#0f172a", border: "none", borderRadius: "6px",
+    cursor: "pointer", fontWeight: "600",
+  },
+  cancelButton: {
+    padding: "0.35rem 0.85rem", backgroundColor: "#fbbf24",
+    color: "#0f172a", border: "none", borderRadius: "6px",
+    cursor: "pointer", fontWeight: "600",
+  },
+  sectionCard: {
+    padding: "0.9rem",
+    marginBottom: "0.8rem",
+    backgroundColor: "#fff",
+    borderRadius: "10px",
+    border: "1px solid #e2e8f0",
+  },
+  previewRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "0.5rem",
+  },
+  previewMeta: {
+    fontSize: "0.85rem",
+    color: "#555",
+    display: "flex",
+    gap: "1rem",
+    marginTop: "0.35rem",
+    alignItems: "center",
+  },
+  metaLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    fontSize: "0.85rem",
+    color: "#555",
+  },
+  previewMetaInput: {
+    padding: "0.25rem 0.5rem",
+    borderRadius: "6px",
+    border: "1px solid #cbd5e1",
+    fontSize: "0.85rem",
+  },
+  previewInput: {
+    width: "60%",
+    padding: "0.35rem 0.6rem",
+    borderRadius: "8px",
+    border: "1px solid #cbd5e1",
+    fontSize: "0.95rem",
+  },
+  previewTextarea: {
+    width: "100%",
+    minHeight: "120px",
+    marginTop: "0.6rem",
+    borderRadius: "8px",
+    border: "1px solid #cbd5e1",
+    padding: "0.6rem",
+    fontFamily: "inherit",
+  },
+  chapterBadge: {
+    backgroundColor: "#f1f5f9",
+    color: "#1e3a8a",
+    borderRadius: "12px",
+    padding: "0.2rem 0.6rem",
+    fontSize: "0.75rem",
+    fontWeight: "700",
   },
   empty: {
     textAlign: "center", padding: "3rem", color: "#888",
