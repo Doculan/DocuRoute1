@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 const BASE_URL = "http://127.0.0.1:8000";
@@ -21,13 +21,16 @@ function computeDiff(oldText, newText) {
   const result = [];
   const maxLen = Math.max(oldLines.length, newLines.length);
   for (let i = 0; i < maxLen; i++) {
-    const o = oldLines[i] ?? null;
-    const n = newLines[i] ?? null;
+    const o = oldLines[i] ?? "";
+    const n = newLines[i] ?? "";
     if (o === n) {
-      result.push({ type: "same", text: o });
+      result.push({ type: "same", old: o, new: n });
+    } else if (o && !n) {
+      result.push({ type: "removed", old: o, new: "" });
+    } else if (!o && n) {
+      result.push({ type: "added", old: "", new: n });
     } else {
-      if (o !== null) result.push({ type: "removed", text: o });
-      if (n !== null) result.push({ type: "added", text: n });
+      result.push({ type: "changed", old: o, new: n });
     }
   }
   return result;
@@ -47,6 +50,8 @@ export default function Sections() {
   const [showForm, setShowForm] = useState(false);
   const [editingSection, setEditingSection] = useState(null);
   const [editForm, setEditForm] = useState({ subtitle: "", content: "", page_number: "", order: "", tag: "" });
+  const [mergeSource, setMergeSource] = useState(null);
+  const [mergeTarget, setMergeTarget] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
@@ -119,6 +124,8 @@ export default function Sections() {
     fetchSections(id);
     setShowForm(false);
     setEditingSection(null);
+    setMergeSource(null);
+    setMergeTarget(null);
   };
 
   const handleSectionClick = (s) => {
@@ -127,6 +134,8 @@ export default function Sections() {
     setEditingSection(null);
     setShowDiff(false);
     setDiffLines([]);
+    setMergeSource(null);
+    setMergeTarget(null);
     fetchHistory(s.id);
   };
 
@@ -211,14 +220,52 @@ export default function Sections() {
   const handleDeleteSection = async (id, subtitle) => {
     if (!confirm(`Delete section "${subtitle}"?`)) return;
     try {
-      await axios.delete(`${BASE_URL}/api/sections/${id}/delete/`, getAuth());
+      // Prefer review-delete endpoint so staff can delete during review.
+      await axios.delete(`${BASE_URL}/api/sections/${id}/review-delete/`, getAuth());
       showMsg("🗑️ Section deleted.");
       if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
       await fetchSections(selectedManual.id);
     } catch {
-      showMsg("❌ Failed to delete.");
+      try {
+        // Fallback to admin delete endpoint
+        await axios.delete(`${BASE_URL}/api/sections/${id}/delete/`, getAuth());
+        showMsg("🗑️ Section deleted.");
+        if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
+        await fetchSections(selectedManual.id);
+      } catch {
+        showMsg("❌ Failed to delete.");
+      }
     }
   };
+
+  const handleStartMerge = (sourceSection) => {
+    setMergeSource(sourceSection);
+    setMergeTarget(null);
+  };
+
+  const handleMergeConfirm = async () => {
+    if (!mergeSource || !mergeTarget) {
+      showMsg("❌ Select both source and target sections to merge.");
+      return;
+    }
+
+    if (!confirm(`Merge "${mergeSource.subtitle}" into "${mergeTarget.subtitle}"?`)) return;
+
+    try {
+      const res = await axios.post(
+        `${BASE_URL}/api/sections/${mergeSource.id}/merge/`,
+        { target_id: mergeTarget.id },
+        getAuth()
+      );
+      showMsg(`✅ Merged: ${res.data.message}`);
+      setMergeSource(null);
+      setMergeTarget(null);
+      await fetchSections(selectedManual.id);
+    } catch (err) {
+      showMsg(err.response?.data?.error || "❌ Merge failed.");
+    }
+  };
+
 
   return (
     <div style={styles.wrapper}>
@@ -306,6 +353,45 @@ export default function Sections() {
               </div>
             )}
 
+            {mergeSource && (
+              <div style={{ ...styles.tocItem, borderColor: "#60a5fa", backgroundColor: "#eff6ff" }}>
+                <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                  🔀 Merge "{mergeSource.subtitle}" into:
+                </div>
+                <select
+                  style={{ ...styles.input, marginBottom: "0.5rem" }}
+                  value={mergeTarget?.id || ""}
+                  onChange={(e) => {
+                    const target = sections.find((s) => s.id === parseInt(e.target.value));
+                    setMergeTarget(target || null);
+                  }}
+                >
+                  <option value="">Select target section</option>
+                  {sections
+                    .filter((s) => s.id !== mergeSource.id)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.subtitle}
+                      </option>
+                    ))}
+                </select>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button style={styles.mergeBtn} onClick={handleMergeConfirm}>
+                    Confirm merge
+                  </button>
+                  <button
+                    style={styles.deleteBtn}
+                    onClick={() => {
+                      setMergeSource(null);
+                      setMergeTarget(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <p style={styles.loadingText}>Loading...</p>
             ) : sections.length === 0 ? (
@@ -332,6 +418,7 @@ export default function Sections() {
                       {s.page_number && <span style={styles.pageNum}>p.{s.page_number}</span>}
                       <button style={styles.editBtn} onClick={(e) => { e.stopPropagation(); handleEditClick(s); setActiveSection(s); }} title="Edit">✏️</button>
                       <button style={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); handleDeleteSection(s.id, s.subtitle); }} title="Delete">🗑️</button>
+                      <button style={styles.mergeBtn} onClick={(e) => { e.stopPropagation(); handleStartMerge(s); }} title="Merge">🔀</button>
                     </div>
                   </div>
                 );
@@ -526,24 +613,31 @@ export default function Sections() {
                     <div style={styles.diffLegend}>
                       <span style={styles.diffAdded}>■ Added</span>
                       <span style={styles.diffRemoved}>■ Removed</span>
+                      <span style={styles.diffChanged}>■ Changed</span>
                       <span style={styles.diffSame}>■ Unchanged</span>
                     </div>
-                    <div style={styles.diffBody}>
-                      {diffLines.map((line, i) => (
-                        <p key={i} style={{
-                          ...styles.diffLine,
-                          backgroundColor: line.type === "added" ? "#f0fff4" : line.type === "removed" ? "#fff5f5" : "transparent",
-                          color: line.type === "added" ? "#276749" : line.type === "removed" ? "#c53030" : "#333",
-                          textDecoration: line.type === "removed" ? "line-through" : "none",
-                          borderLeftWidth: "3px",
-                          borderLeftStyle: "solid",
-                          borderLeftColor: line.type === "added" ? "#48bb78" : line.type === "removed" ? "#fc8181" : "transparent",
-                        }}>
-                          <span style={styles.diffMarker}>
-                            {line.type === "added" ? "+" : line.type === "removed" ? "−" : " "}
-                          </span>
-                          {line.text}
-                        </p>
+                    <div style={styles.diffTable}>
+                      <div style={styles.diffHeader}>Previous</div>
+                      <div style={styles.diffHeader}>Selected</div>
+                      {diffLines.map((row, i) => (
+                        <React.Fragment key={i}>
+                          <div style={{
+                            ...styles.diffCell,
+                            ...(row.type === "removed" ? styles.diffRemovedCell : {}),
+                            ...(row.type === "changed" ? styles.diffChangedOldCell : {}),
+                            ...(row.type === "same" ? styles.diffSameCell : {}),
+                          }}>
+                            {row.old}
+                          </div>
+                          <div style={{
+                            ...styles.diffCell,
+                            ...(row.type === "added" ? styles.diffAddedCell : {}),
+                            ...(row.type === "changed" ? styles.diffChangedNewCell : {}),
+                            ...(row.type === "same" ? styles.diffSameCell : {}),
+                          }}>
+                            {row.new}
+                          </div>
+                        </React.Fragment>
                       ))}
                     </div>
                   </div>
@@ -597,6 +691,7 @@ const styles = {
   pageNum: { fontSize: "0.75rem", color: "#aaa" },
   editBtn: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", padding: "0", marginLeft: "auto" },
   deleteBtn: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", padding: "0" },
+  mergeBtn: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", padding: "0", marginLeft: "0.25rem" },
   loadingText: { color: "#888", textAlign: "center", padding: "1rem" },
   emptyToc: { color: "#aaa", fontSize: "0.85rem", textAlign: "center", padding: "1rem" },
   content: { flex: 1, backgroundColor: "#fff", borderRadius: "10px", padding: "1.5rem", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowY: "auto" },
@@ -616,7 +711,16 @@ const styles = {
   diffLegend: { display: "flex", gap: "1.5rem", marginBottom: "0.75rem", fontSize: "0.8rem", fontWeight: "600" },
   diffAdded: { color: "#276749" },
   diffRemoved: { color: "#c53030" },
+  diffChanged: { color: "#b7791f" },
   diffSame: { color: "#aaa" },
+  diffTable: { display: "grid", gridTemplateColumns: "1fr 1fr", borderRadius: "8px", border: "1px solid #e2e8f0", overflow: "hidden", fontFamily: "monospace", fontSize: "0.9rem" },
+  diffHeader: { padding: "0.75rem 1rem", backgroundColor: "#f7f8fc", borderBottom: "1px solid #e2e8f0", fontWeight: "700", color: "#1a1a2e" },
+  diffCell: { padding: "0.45rem 0.75rem", borderBottom: "1px solid #f0f0f0", whiteSpace: "pre-wrap", wordBreak: "break-word", minHeight: "1.4rem" },
+  diffAddedCell: { backgroundColor: "#f0fff4", color: "#22543d" },
+  diffRemovedCell: { backgroundColor: "#fff5f5", color: "#742a2a" },
+  diffChangedOldCell: { backgroundColor: "#fffbeb", color: "#975a16" },
+  diffChangedNewCell: { backgroundColor: "#ecfdf5", color: "#22543d" },
+  diffSameCell: { backgroundColor: "transparent", color: "#333" },
   diffBody: { fontFamily: "monospace", fontSize: "0.9rem", lineHeight: "1.8", borderRadius: "8px", border: "1px solid #e2e8f0", overflow: "hidden" },
   diffLine: { margin: 0, padding: "0.2rem 1rem", wordBreak: "break-word" },
   diffMarker: { display: "inline-block", width: "1.2rem", fontWeight: "700" },

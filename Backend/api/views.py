@@ -21,6 +21,9 @@ def _split_into_sections(text, fallback_title='Full Document'):
         flags=re.IGNORECASE
     )
 
+    def is_top_level_number(num_tuple):
+        return len(num_tuple) == 2 and num_tuple[1] == 0
+
     lines = text.split('\n')
     sections = []
     current_subtitle = None
@@ -83,7 +86,7 @@ def _split_into_sections(text, fallback_title='Full Document'):
         if re.match(r'^[\s:|\-\.]+$', s):
             continue
 
-        # CHAPTER headings: treat as top-level section and make subsequent sections children
+        # CHAPTER headings: treat as top-level section
         chapter_match = re.match(r'^(CHAPTER\s+\d+(?:\.\d+)*)(?:\s*[:\.\-]?\s*(.*))?$', s, re.IGNORECASE)
         if chapter_match and len(s) < 150:
             flush()
@@ -97,19 +100,24 @@ def _split_into_sections(text, fallback_title='Full Document'):
             current_content = []
             continue
 
-        # TOP-LEVEL section: numbered headings like "1.", "1.0", "1.1", "1.1.1", etc.
-        # This is intentionally loose to handle manuals that use either "1." or "1.0" style numbering.
+        # NUMBERED section: headings like "1.", "1.0", "1.1", "1.1.1", etc.
         top_level = re.match(r'^(\d+(?:\.\d+)*\.?)\s*(\S+.*)?$', s)
         if top_level and len(s) < 120:
-            flush()
-            num = top_level.group(1).rstrip('.')
+            num_str = top_level.group(1).rstrip('.')
+            num_tuple = tuple(int(x) for x in num_str.split('.'))
             title = top_level.group(2)
-            if title:
-                current_subtitle = f"{num} {title.strip()}"
+            full_heading = f"{num_str} {title.strip()}" if title else num_str
+
+            if is_top_level_number(num_tuple):
+                # Top-level: start new section
+                flush()
+                current_subtitle = full_heading
+                current_content = []
             else:
-                current_subtitle = f"{num} [Section]"
-            current_content = []
-            continue
+                # Sub-section: add to current section's content
+                if current_subtitle:
+                    current_content.append(full_heading)
+                continue
 
         # Everything else is content
         if current_subtitle is None:
@@ -124,17 +132,7 @@ def _split_into_sections(text, fallback_title='Full Document'):
             'content': text.strip(),
             'page_number': None,
             'is_chapter': False,
-            'parent_index': None,
         })
-
-    # Post-process to set parent pointer for hierarchy
-    current_chapter = None
-    for idx, sec in enumerate(sections):
-        if sec.get('is_chapter'):
-            current_chapter = idx
-            sec['parent_index'] = None
-        else:
-            sec['parent_index'] = current_chapter
 
     return sections
 
@@ -411,10 +409,23 @@ def preview_manual_sections(request):
                 'parent_index': block.get('parent_index'),
             })
 
+    # `manual.file.url` can raise if the file is not yet saved or storage is misconfigured.
+    file_url = None
+    file_name = None
+    try:
+        file_url = manual.file.url
+        file_name = manual.file.name
+    except Exception:
+        # Fall back to None so the preview still works
+        file_url = None
+        file_name = None
+
     return Response({
         'manual_id': manual.id,
         'title': manual.title,
         'department': department.name,
+        'file_url': file_url,
+        'file_name': file_name,
         'sections_preview': preview,
     }, status=200)
 
@@ -681,6 +692,89 @@ def delete_section(request, section_id):
         return Response({'error': 'Section not found'}, status=404)
     section.delete()
     return Response({'message': 'Section deleted.'})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def review_delete_section(request, section_id):
+    """Delete a section during review (staff can delete within their department)."""
+    try:
+        section = ManualSection.objects.get(id=section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Section not found'}, status=404)
+
+    if not request.user.is_staff and section.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+
+    section.delete()
+    return Response({'message': 'Section deleted.'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def merge_sections(request, section_id):
+    """Merge one section into another. The source is section_id.
+
+    Payload:
+      {
+        "target_id": <other_section_id>
+      }
+
+    The source section is deleted after merging.
+    """
+    try:
+        source = ManualSection.objects.get(id=section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Source section not found'}, status=404)
+
+    target_id = request.data.get('target_id')
+    if not target_id:
+        return Response({'error': 'target_id is required'}, status=400)
+
+    try:
+        target = ManualSection.objects.get(id=target_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Target section not found'}, status=404)
+
+    # Only allow merge within same manual
+    if source.manual_id != target.manual_id:
+        return Response({'error': 'Sections must belong to the same manual'}, status=400)
+
+    if not request.user.is_staff and source.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+
+    # Save history for target
+    SectionHistory.objects.create(
+        section=target,
+        version=target.version,
+        subtitle=target.subtitle,
+        content=target.content,
+        tag=target.tag,
+        edited_by=request.user,
+    )
+
+    # Merge: append source subtitle + content to target (keep source title as part of merged section)
+    separator = "\n\n" if target.content and (source.subtitle or source.content) else ""
+    source_header = f"{source.subtitle}\n\n" if source.subtitle else ""
+    target.content = f"{target.content}{separator}{source_header}{source.content}"
+    try:
+        target.tag = predict(target.content)[0]
+    except Exception:
+        target.tag = 'UNTAGGED'
+
+    target.version += 1
+    target.save()
+
+    # Delete source after merging
+    source.delete()
+
+    return Response({
+        'message': 'Sections merged successfully.',
+        'target_id': target.id,
+        'target_subtitle': target.subtitle,
+        'target_tag': target.tag,
+        'target_version': target.version,
+    })
 
 
 @api_view(['GET'])

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
+const BASE_URL = "http://127.0.0.1:8000";
+
 export default function Manuals() {
   const [manuals, setManuals] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -12,7 +14,10 @@ export default function Manuals() {
   // Preview state (review sectioning before finalizing)
   const [previewManual, setPreviewManual] = useState(null);
   const [previewSections, setPreviewSections] = useState([]);
+  const [previewFileUrl, setPreviewFileUrl] = useState(null);
+  const [previewFileName, setPreviewFileName] = useState(null);
   const [confirming, setConfirming] = useState(false);
+  const [mergeSourceIndex, setMergeSourceIndex] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -20,8 +25,8 @@ export default function Manuals() {
     const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
     try {
       const [manualsRes, deptsRes] = await Promise.all([
-        axios.get("http://127.0.0.1:8000/api/manuals/", authHeaders),
-        axios.get("http://127.0.0.1:8000/api/departments/", authHeaders),
+        axios.get(`${BASE_URL}/api/manuals/`, authHeaders),
+        axios.get(`${BASE_URL}/api/departments/`, authHeaders),
       ]);
       setManuals(manualsRes.data);
       setDepartments(deptsRes.data);
@@ -37,6 +42,71 @@ export default function Manuals() {
   const showMessage = (msg) => {
     setMessage(msg);
     setTimeout(() => setMessage(""), 4000);
+  };
+
+  const reindexParentIndices = (sections, removedIndex, removedParentIndex) => {
+    return sections.map((sec, idx) => {
+      if (sec?.parent_index === removedIndex) {
+        return { ...sec, parent_index: removedParentIndex };
+      }
+      if (typeof sec?.parent_index === "number" && sec.parent_index > removedIndex) {
+        return { ...sec, parent_index: sec.parent_index - 1 };
+      }
+      return sec;
+    });
+  };
+
+  const cancelMerge = () => setMergeSourceIndex(null);
+
+  const handleMerge = (targetIndex) => {
+    if (mergeSourceIndex === null || mergeSourceIndex === targetIndex) {
+      setMergeSourceIndex(null);
+      return;
+    }
+
+    const source = previewSections[mergeSourceIndex];
+    const target = previewSections[targetIndex];
+    if (!source || !target) {
+      setMergeSourceIndex(null);
+      return;
+    }
+
+    // Merge source into target (keep the source title as part of the merged section)
+    const separator = source.content && target.content ? "\n\n" : "";
+    const sourceHeader = source.subtitle ? `\n\n${source.subtitle}\n\n` : "";
+    const mergedContent = `${target.content || ""}${separator}${sourceHeader}${source.content || ""}`;
+
+    // Keep tag/title as target; this is a preview edit stage.
+    const updated = [...previewSections];
+    const removedParentIndex = source.parent_index ?? null;
+
+    // Remove the source row first (so indices shift correctly)
+    updated.splice(mergeSourceIndex, 1);
+
+    // Determine where the target landed after removal
+    const adjustedTargetIndex = mergeSourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+
+    const mergedTarget = {
+      ...updated[adjustedTargetIndex],
+      content: mergedContent,
+    };
+
+    updated[adjustedTargetIndex] = mergedTarget;
+
+    // Reindex any parent_index references after removal
+    const reindexed = reindexParentIndices(updated, mergeSourceIndex, removedParentIndex);
+
+    setPreviewSections(reindexed);
+    showMessage(`✅ Merged section into "${mergedTarget.subtitle || "Untitled"}".`);
+    setMergeSourceIndex(null);
+  };
+
+  const startMerge = (index) => {
+    if (mergeSourceIndex === index) {
+      setMergeSourceIndex(null);
+    } else {
+      setMergeSourceIndex(index);
+    }
   };
 
   const handleUpload = async (e) => {
@@ -59,8 +129,15 @@ export default function Manuals() {
       );
 
       setPreviewManual({ id: res.data.manual_id, title: res.data.title });
+      setPreviewFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
+      setPreviewFileName(res.data.file_name || null);
+
+      const sections = Array.isArray(res.data.sections_preview)
+        ? res.data.sections_preview
+        : [];
+
       setPreviewSections(
-        res.data.sections_preview.map((s) => ({
+        sections.map((s) => ({
           ...s,
           subtitle: s.subtitle,
           content: s.content,
@@ -70,7 +147,8 @@ export default function Manuals() {
       showMessage(`✅ Preview ready — review before confirming.`);
       setForm({ title: "", department_id: "", file: null });
     } catch (err) {
-      showMessage(err.response?.data?.error || "❌ Upload preview failed.");
+      console.error("Upload preview error", err);
+      showMessage(err.response?.data?.error || err.message || "❌ Upload preview failed.");
     } finally {
       setUploading(false);
     }
@@ -112,6 +190,9 @@ export default function Manuals() {
       showMessage("✅ Sections confirmed. You can now review them in the Sections tab.");
       setPreviewManual(null);
       setPreviewSections([]);
+      setPreviewFileUrl(null);
+      setPreviewFileName(null);
+      setMergeSourceIndex(null);
       fetchData();
     } catch (err) {
       showMessage(err.response?.data?.error || "❌ Failed to confirm sections.");
@@ -134,6 +215,9 @@ export default function Manuals() {
     }
     setPreviewManual(null);
     setPreviewSections([]);
+    setPreviewFileUrl(null);
+    setPreviewFileName(null);
+    setMergeSourceIndex(null);
     showMessage("Preview canceled.");
   };
 
@@ -190,54 +274,122 @@ export default function Manuals() {
                 </button>
               </div>
             </div>
+            {mergeSourceIndex !== null && (
+              <div style={{ marginTop: "0.75rem", padding: "0.75rem", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #a7f3d0" }}>
+                <strong>Merge mode:</strong> Select a target section below to merge into.
+                <button
+                  style={{
+                    marginLeft: "0.75rem",
+                    padding: "0.25rem 0.6rem",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                  onClick={cancelMerge}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
 
             <div style={{ marginTop: "1rem" }}>
               {previewSections.length === 0 ? (
                 <p style={{ margin: 0 }}>No sections detected in preview.</p>
               ) : (
-                previewSections.map((s, idx) => {
-                  const depth = getDepth(idx);
-                  return (
-                    <div key={idx} style={{ ...styles.sectionCard, marginLeft: depth * 18 }}>
-                      <div style={styles.previewRow}>
-                        <input
-                          style={styles.previewInput}
-                          value={s.subtitle}
-                          onChange={(e) => {
-                            const updated = [...previewSections];
-                            updated[idx] = { ...updated[idx], subtitle: e.target.value };
-                            setPreviewSections(updated);
-                          }}
-                        />
-                        {s.is_chapter && <span style={styles.chapterBadge}>CHAPTER</span>}
-                      </div>
-                      <div style={styles.previewMeta}>
-                        <label style={styles.metaLabel}>
-                          Tag:
-                          <input
-                            style={styles.previewMetaInput}
-                            value={s.tag}
+                <div style={styles.previewSplit}>
+                  <div style={styles.previewList}>
+                    {previewSections.map((s, idx) => {
+                      const depth = getDepth(idx);
+                      return (
+                        <div key={idx} style={{ ...styles.sectionCard, marginLeft: depth * 18 }}>
+                          <div style={styles.previewRow}>
+                            <input
+                              style={styles.previewInput}
+                              value={s.subtitle}
+                              onChange={(e) => {
+                                const updated = [...previewSections];
+                                updated[idx] = { ...updated[idx], subtitle: e.target.value };
+                                setPreviewSections(updated);
+                              }}
+                            />
+                            {s.is_chapter && <span style={styles.chapterBadge}>CHAPTER</span>}
+                            <div style={styles.mergeActions}>
+                              {mergeSourceIndex !== null && mergeSourceIndex !== idx && (
+                                <button
+                                  style={styles.mergeTargetBtn}
+                                  onClick={() => handleMerge(idx)}
+                                >
+                                  Merge into this
+                                </button>
+                              )}
+                              <button
+                                style={{
+                                  ...styles.mergeBtn,
+                                  backgroundColor: mergeSourceIndex === idx ? "#f97316" : "#38bdf8",
+                                  color: "#0f172a",
+                                }}
+                                onClick={() => startMerge(idx)}
+                              >
+                                {mergeSourceIndex === idx ? "Cancel" : "Merge"}
+                              </button>
+                            </div>
+                          </div>
+                          <div style={styles.previewMeta}>
+                            <label style={styles.metaLabel}>
+                              Tag:
+                              <input
+                                style={styles.previewMetaInput}
+                                value={s.tag}
+                                onChange={(e) => {
+                                  const updated = [...previewSections];
+                                  updated[idx] = { ...updated[idx], tag: e.target.value };
+                                  setPreviewSections(updated);
+                                }}
+                              />
+                            </label>
+                            <span>Page: {s.page_number ?? "—"}</span>
+                          </div>
+                          <textarea
+                            style={styles.previewTextarea}
+                            value={s.content}
                             onChange={(e) => {
                               const updated = [...previewSections];
-                              updated[idx] = { ...updated[idx], tag: e.target.value };
+                              updated[idx] = { ...updated[idx], content: e.target.value };
                               setPreviewSections(updated);
                             }}
                           />
-                        </label>
-                        <span>Page: {s.page_number ?? "—"}</span>
-                      </div>
-                      <textarea
-                        style={styles.previewTextarea}
-                        value={s.content}
-                        onChange={(e) => {
-                          const updated = [...previewSections];
-                          updated[idx] = { ...updated[idx], content: e.target.value };
-                          setPreviewSections(updated);
-                        }}
-                      />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={styles.previewViewer}>
+                    <div style={styles.previewViewerHeader}>
+                      <strong>Original file</strong> ({previewFileName})
                     </div>
-                  );
-                })
+                    {previewFileUrl ? (
+                      previewFileUrl.toLowerCase().endsWith(".pdf") ? (
+                        <iframe
+                          src={previewFileUrl}
+                          style={styles.pdfViewer}
+                          title="Original PDF"
+                        />
+                      ) : (previewFileUrl.match(/\.(png|jpe?g|gif)$/i) ? (
+                        <img src={previewFileUrl} style={styles.imageViewer} alt="Original" />
+                      ) : (
+                        <div style={styles.unsupportedFile}>
+                          <p>Preview not available for this file type.</p>
+                          <a href={previewFileUrl} target="_blank" rel="noreferrer">
+                            Download file
+                          </a>
+                        </div>
+                      ))
+                    ) : (
+                      <p style={{ margin: 0 }}>No file available.</p>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -359,6 +511,30 @@ const styles = {
     color: "#0f172a", border: "none", borderRadius: "6px",
     cursor: "pointer", fontWeight: "600",
   },
+  mergeActions: { display: "flex", gap: "0.5rem", alignItems: "center" },
+  mergeBtn: {
+    padding: "0.35rem 0.85rem",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+  mergeTargetBtn: {
+    padding: "0.35rem 0.85rem",
+    backgroundColor: "#22c55e",
+    color: "#0f172a",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+  previewSplit: { display: "flex", gap: "1rem", alignItems: "flex-start" },
+  previewList: { flex: 1, maxHeight: "65vh", overflowY: "auto" },
+  previewViewer: { flex: 1, minWidth: "320px", maxHeight: "65vh", overflow: "hidden", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#fff" },
+  previewViewerHeader: { padding: "0.75rem 1rem", borderBottom: "1px solid #e2e8f0", backgroundColor: "#f7f8fc", fontWeight: "700" },
+  pdfViewer: { width: "100%", height: "100%", border: "none" },
+  imageViewer: { width: "100%", height: "100%", objectFit: "contain" },
+  unsupportedFile: { padding: "1rem", textAlign: "center", color: "#666", fontSize: "0.9rem" },
   sectionCard: {
     padding: "0.9rem",
     marginBottom: "0.8rem",

@@ -21,6 +21,11 @@ STRIP_TOKENS = [
     'PREPARED BY', 'APPROVED BY', 'NOTED BY', 'REVIEWED BY',
 ]
 
+DROP_LINES = [
+    'FAM 8.03', 'FINANCE AND ADMINISTRATION MANUAL', 'PROCUREMENT MANAGEMENT',
+    'CLEMELLE L. MONTALLANA, DM', 'VICE PRESIDENT FOR'
+]
+
 _STRIP_RE = re.compile(
     r'(?<!\w)(' + '|'.join(re.escape(t) for t in STRIP_TOKENS) + r')(?!\w)',
     flags=re.IGNORECASE
@@ -121,16 +126,43 @@ def _extract_pdf(file_bytes):
     for page_num, page in enumerate(doc, start=1):
         page_width = page.rect.width
         tag_col_x = page_width * 0.70
+        col_split_x = page_width * 0.50  # Split for two columns
 
         blocks = page.get_text("blocks")
-        text_blocks = [b for b in blocks if b[6] == 0 and b[4].strip()]
-        text_blocks.sort(key=lambda b: (round(b[1] / 5) * 5, b[0]))
+        text_blocks = [b for b in blocks if b[6] == 0 and b[4].strip() and b[0] <= tag_col_x]
 
+        # Split into left and right columns
+        left_blocks = [b for b in text_blocks if b[0] < col_split_x]
+        right_blocks = [b for b in text_blocks if b[0] >= col_split_x]
+
+        # Match left and right blocks by vertical position (y-coordinate)
         lines = []
-        for b in text_blocks:
-            if b[0] > tag_col_x:
-                continue
-            lines.append(b[4].strip())
+        used_right = set()
+
+        for left_block in sorted(left_blocks, key=lambda b: b[1]):
+            left_y = left_block[1]  # Top of left block
+            left_text = left_block[4].strip()
+
+            # Find right block at similar vertical position (tolerance ~20 points)
+            matching_right = None
+            for idx, right_block in enumerate(right_blocks):
+                if idx not in used_right:
+                    right_y = right_block[1]
+                    if abs(right_y - left_y) < 20:
+                        matching_right = idx
+                        break
+
+            if matching_right is not None:
+                right_text = right_blocks[matching_right][4].strip()
+                lines.append(f"{left_text} | {right_text}")
+                used_right.add(matching_right)
+            else:
+                lines.append(left_text)
+
+        # Add remaining unmatched right blocks
+        for idx, right_block in enumerate(right_blocks):
+            if idx not in used_right:
+                lines.append(right_block[4].strip())
 
         pages_text.append(f"##PAGE_HEADER {page_num} FOR page##\n" + "\n".join(lines))
 
@@ -199,8 +231,8 @@ def _clean(text):
             continue
 
         # Rejoin orphaned number line with next title line
-        # e.g. "1.0\nOBJECTIVES" → "1.0 OBJECTIVES" or "1.\nOBJECTIVES" → "1 OBJECTIVES"
-        num_only = re.match(r'^(\d+(?:\.\d+)*\.?$)', s)
+        # e.g. "1.0\nOBJECTIVES" → "1.0 OBJECTIVES"
+        num_only = re.match(r'^(\d+(\.\d+)*)$', s)
         if num_only and i + 1 < len(lines):
             next_s = lines[i + 1].strip()
             if (next_s
@@ -208,9 +240,7 @@ def _clean(text):
                     and not _META_RE.search(next_s)
                     and next_s.upper() not in header_values
                     and not re.match(r'^[\s:|\-\.]+$', next_s)):
-                # Strip a trailing dot to keep numbering consistent ("1." → "1")
-                joined_num = s.rstrip('.')
-                out.append(f"{joined_num} {next_s}")
+                out.append(f"{s} {next_s}")
                 i += 2
                 continue
 

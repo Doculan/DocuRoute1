@@ -143,13 +143,16 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 # ADD THESE TWO LINES
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 AUTH_USER_MODEL = 'api.CustomUser'
-X_FRAME_OPTIONS = 'SAMEORIGIN'
+# Allow embedding media (PDFs) in the React preview iframe during local development
+X_FRAME_OPTIONS = 'ALLOWALL'

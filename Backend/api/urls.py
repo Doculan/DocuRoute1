@@ -4,7 +4,7 @@ from .views import (
     pending_users, approved_users, approve_user, reject_user,
     list_departments, create_department, delete_department,
     list_manuals, upload_manual, preview_manual_sections, confirm_manual_sections, delete_manual, ocr_extract_manual,
-    list_sections, create_section, update_section, delete_section, review_section,
+    list_sections, create_section, update_section, delete_section, review_section, merge_sections, review_delete_section,
     section_history,  # ✅ NEW
     upload_revision, list_revisions, review_revision,
 )
@@ -37,8 +37,10 @@ urlpatterns = [
     path('manuals/<int:manual_id>/sections/', list_sections),
     path('manuals/<int:manual_id>/sections/create/', create_section),
     path('sections/<int:section_id>/review/', review_section),
+    path('sections/<int:section_id>/merge/', merge_sections),
     path('sections/<int:section_id>/update/', update_section),
     path('sections/<int:section_id>/delete/', delete_section),
+    path('sections/<int:section_id>/review-delete/', review_delete_section),
     path('sections/<int:section_id>/history/', section_history),  # ✅ NEW
 
     # Revisions
