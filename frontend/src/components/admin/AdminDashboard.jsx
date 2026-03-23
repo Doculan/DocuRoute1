@@ -28,7 +28,7 @@ export default function AdminDashboard({ onLogout }) {
       case "departments": return <Departments />;
       case "manuals": return <Manuals />;
       case "sections": return <Sections />;
-      case "revisions": return <RevisionReview />;
+      case "review": return <RevisionReview />;
       default: return <UserManagement />;
     }
   };

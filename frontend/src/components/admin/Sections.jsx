@@ -36,8 +36,22 @@ function computeDiff(oldText, newText) {
   return result;
 }
 
+function parseRow(line) {
+  // Parse a pipe-delimited table row like "Cell A | Cell B | Cell C"
+  // Returns an array of non-empty cell strings, or null if not a valid table row.
+  if (!line.includes("|")) return null;
+  const cells = line.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
+  // Must have at least 2 real cells (guards against ||TABLE_START|| style markers)
+  return cells.length >= 2 ? cells : null;
+}
+
 function renderSectionContent(content) {
-  const lines = content
+  // Strip legacy TABLE_START/TABLE_END markers from old extractions
+  const cleaned = content
+    .replace(/\|\|TABLE_START\|\|/g, "")
+    .replace(/\|\|TABLE_END\|\|/g, "");
+
+  const lines = cleaned
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
@@ -56,39 +70,10 @@ function renderSectionContent(content) {
     inTable = false;
   };
 
-  const parseRow = (line) => {
-    // Header document code lines like "FAM 8.03" should stay plain text.
-    // Otherwise our OCR/table heuristic can render them as a two-column table.
-    const raw = line.replace(/\t+/g, " ").replace(/\s+/g, " ").trim();
-    if (/^[A-Z]{2,}\s+\d+\.\d+\s*$/.test(raw)) return null;
-
-    let normalized = line
-      .replace(/\t+/g, " | ")
-      .replace(/\s{2,}/g, " | ")
-      .replace(/\s*\|\s*/g, " | ")
-      .trim();
-
-    if (normalized.includes(" | ")) {
-      const cells = normalized.split(" | ").map((c) => c.trim()).filter(Boolean);
-      if (cells.length >= 2) return cells;
-    }
-
-    // Role with numeric action appended e.g. 'BAC Secretariat/ Supply 16. Receives ...'
-    const alt = normalized.match(/^(.+?)\s+(\d+\.\s*.+)$/);
-    if (alt) {
-      return [alt[1].trim(), alt[2].trim()];
-    }
-
-    // Role then number after no delimiter (common OCR split)
-    const alt2 = normalized.match(/^(.+?)\s+(\d+)\s*(\..*)$/);
-    if (alt2) {
-      return [alt2[1].trim(), `${alt2[2]}${alt2[3]}`.trim()];
-    }
-
-    return null;
-  };
-
   const isTableHeaderLine = (line) => /^(responsibility\s*\|\s*activity|activity|responsibility)$/i.test(line.replace(/\|/g, "").trim());
+
+  // Regex to detect inline tags like "POLICY:", "PROCEDURE:", "RESPONSIBILITY:", etc
+  const inlineTagRegex = /^(POLICY|PROCEDURE|RESPONSIBILITY|WORKING\s+INSTRUCTION|PREPARED\s+BY|APPROVED\s+BY|NOTED\s+BY|REVIEWED\s+BY)[\s:]*(.*)$/i;
 
   lines.forEach((line) => {
     const normalizedLine = line.replace(/\s+/g, " ").trim();
@@ -130,7 +115,19 @@ function renderSectionContent(content) {
     }
 
     flushTable();
-    blocks.push({ type: "text", text: line });
+    // Check if line has inline tag and render with special formatting
+    const tagMatch = line.match(inlineTagRegex);
+    if (tagMatch) {
+      const tag = tagMatch[1];
+      const content = tagMatch[2];
+      blocks.push({ 
+        type: "inline-tagged", 
+        tag: tag.toUpperCase(),
+        content: content.trim() 
+      });
+    } else {
+      blocks.push({ type: "text", text: line });
+    }
   });
 
   flushTable();
@@ -143,10 +140,19 @@ function renderSectionContent(content) {
           style={{
             width: "100%",
             borderCollapse: "collapse",
-            marginBottom: "1rem",
+            marginBottom: "1.5rem",
             tableLayout: "fixed",
+            fontSize: "0.9rem",
           }}
         >
+          <colgroup>
+            {block.rows[0] && block.rows[0].length === 2 ? (
+              <>
+                <col style={{ width: "25%" }} />
+                <col style={{ width: "75%" }} />
+              </>
+            ) : null}
+          </colgroup>
           <tbody>
             {block.rows.map((row, rIndex) => (
               <tr key={rIndex}>
@@ -155,13 +161,14 @@ function renderSectionContent(content) {
                     key={cIndex}
                     style={{
                       border: "1px solid #d1d5db",
-                      padding: "0.5rem 0.75rem",
+                      padding: "0.6rem 0.8rem",
                       verticalAlign: "top",
-                      backgroundColor: rIndex === 0 ? "#f3f4f6" : "#fff",
-                      fontWeight: rIndex === 0 ? "700" : "500",
+                      backgroundColor: rIndex === 0 ? "#e8eaf6" : cIndex === 0 ? "#f8f9ff" : "#fff",
+                      fontWeight: rIndex === 0 ? "700" : cIndex === 0 ? "600" : "400",
                       whiteSpace: "pre-wrap",
                       wordBreak: "break-word",
-                      maxWidth: cIndex === 0 ? "18%" : "82%",
+                      lineHeight: "1.6",
+                      color: rIndex === 0 ? "#1a1a2e" : "#333",
                     }}
                   >
                     {cell}
@@ -171,6 +178,42 @@ function renderSectionContent(content) {
             ))}
           </tbody>
         </table>
+      );
+    }
+
+    if (block.type === "inline-tagged") {
+      // Render inline tagged sections with visual emphasis
+      const tagColors = {
+        POLICY: { bg: "#ebf8ff", color: "#2b6cb0", border: "#0084d4" },
+        PROCEDURE: { bg: "#f0fff4", color: "#276749", border: "#10b981" },
+        RESPONSIBILITY: { bg: "#fff5f5", color: "#c53030", border: "#f87171" },
+        "WORKING INSTRUCTION": { bg: "#fffff0", color: "#744210", border: "#d97706" },
+        "PREPARED BY": { bg: "#f5f3ff", color: "#6b21a8", border: "#d946ef" },
+        "APPROVED BY": { bg: "#f5f3ff", color: "#6b21a8", border: "#d946ef" },
+        "NOTED BY": { bg: "#f5f3ff", color: "#6b21a8", border: "#d946ef" },
+        "REVIEWED BY": { bg: "#f5f3ff", color: "#6b21a8", border: "#d946ef" },
+      };
+      const colors = tagColors[block.tag] || { bg: "#f9fafb", color: "#374151", border: "#d1d5db" };
+      
+      return (
+        <div
+          key={idx}
+          style={{
+            marginBottom: "0.75rem",
+            paddingLeft: "1rem",
+            borderLeft: `4px solid ${colors.border}`,
+            backgroundColor: colors.bg,
+            padding: "0.75rem",
+            borderRadius: "0.25rem",
+          }}
+        >
+          <strong style={{ color: colors.color, display: "block", marginBottom: "0.25rem" }}>
+            📌 {block.tag}
+          </strong>
+          <p style={{ margin: "0.5rem 0", lineHeight: "1.7", fontSize: "0.96rem", color: "#111827" }}>
+            {block.content}
+          </p>
+        </div>
       );
     }
 
@@ -200,6 +243,7 @@ export default function Sections() {
   const [mergeTarget, setMergeTarget] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);  // ← NEW: Track history loading
   const [history, setHistory] = useState([]);
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [diffLines, setDiffLines] = useState([]);
@@ -238,6 +282,7 @@ export default function Sections() {
   };
 
   const fetchHistory = async (sectionId) => {
+    setLoadingHistory(true);  // ← NEW: Show loading indicator
     try {
       const res = await axios.get(
         `${BASE_URL}/api/sections/${sectionId}/history/`,
@@ -250,6 +295,9 @@ export default function Sections() {
     } catch (err) {
       console.error(err);
       setHistory([]);
+      showMsg("❌ Failed to load section history.");
+    } finally {
+      setLoadingHistory(false);  // ← NEW: Clear loading state
     }
   };
 
@@ -729,21 +777,27 @@ export default function Sections() {
                 {history.length > 1 && (
                   <div style={styles.versionBar}>
                     <label style={styles.versionLabel}>🕓 View Version:</label>
-                    <select style={styles.versionSelect} value={selectedVersion?.version ?? ""} onChange={handleVersionChange}>
-                      {history.map((h) => (
-                        <option key={h.version} value={h.version}>
-                          {h.version === activeSection.version
-                            ? `v${h.version} — Current`
-                            : `v${h.version} — ${h.edited_by} (${h.edited_at ? new Date(h.edited_at).toLocaleDateString() : ""})`
-                          }
-                        </option>
-                      ))}
-                    </select>
-                    {showDiff && (
-                      <button style={{ ...styles.addBtn, backgroundColor: "#718096", fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
-                        onClick={() => { setShowDiff(false); setSelectedVersion(history[history.length - 1]); }}>
-                        ✕ Clear Diff
-                      </button>
+                    {loadingHistory ? (
+                      <span style={{ color: "#888", fontSize: "0.85rem" }}>⏳ Loading history...</span>
+                    ) : (
+                      <>
+                        <select style={styles.versionSelect} value={selectedVersion?.version ?? ""} onChange={handleVersionChange}>
+                          {history.map((h) => (
+                            <option key={h.version} value={h.version}>
+                              {h.version === activeSection.version
+                                ? `v${h.version} — Current`
+                                : `v${h.version} — ${h.edited_by} (${h.edited_at ? new Date(h.edited_at).toLocaleDateString() : ""})`
+                              }
+                            </option>
+                          ))}
+                        </select>
+                        {showDiff && (
+                          <button style={{ ...styles.addBtn, backgroundColor: "#718096", fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
+                            onClick={() => { setShowDiff(false); setSelectedVersion(history[history.length - 1]); }}>
+                            ✕ Clear Diff
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

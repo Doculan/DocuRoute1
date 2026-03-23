@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate
 from django.utils import timezone
 from .models import CustomUser, Department, Manual, ManualSection, ManualRevision, SectionHistory
 from ml.ocr_engine import extract_text
-from ml.svm_model import predict
+from ml.svm_model import predict, predict_section
 import difflib
 import re
 
@@ -15,14 +15,69 @@ import re
 # ─── HELPERS ─────────────────────────────────────────────────
 
 def _split_into_sections(text, fallback_title='Full Document'):
-    INLINE_TAGS = re.compile(
-        r'(?<!\w)(WORKING INSTRUCTIONS?|RESPONSIBILITIES?|PROCEDURES?|POLICIES?|POLICY'
-        r'|PREPARED BY|APPROVED BY|NOTED BY|REVIEWED BY)(?!\w)',
-        flags=re.IGNORECASE
-    )
+    # FIX #1: INLINE_TAGS are NO LONGER stripped from lines.
+    # Semantic keywords (POLICY, PROCEDURE, RESPONSIBILITY, WORKING INSTRUCTION)
+    # must be preserved so the SVM classifier can detect them.
 
     def is_top_level_number(num_tuple):
-        return len(num_tuple) == 2 and num_tuple[1] == 0
+        # FIX #2: also treat bare single-digit sections ("1", "2") as top-level
+        # Previously only "1.0", "2.0" matched; "1" or "2" were silently dropped.
+        return len(num_tuple) == 1 or (len(num_tuple) == 2 and num_tuple[1] == 0)
+
+    def is_subsection_number(num_tuple):
+        # Only depth-2 sub-sections like 1.1, 1.2, 2.3 are treated as section headers.
+        # Depth 3+ (1.1.1, 1.2.3) are always content — they are list items or sub-steps.
+        return len(num_tuple) == 2 and num_tuple[1] != 0
+
+    # Articles, prepositions, conjunctions, and pronouns that indicate prose/list items,
+    # NOT valid heading titles. Only blocks multi-word phrases starting with these words.
+    _PROSE_ARTICLE_STARTERS = re.compile(
+        r'^(The|A|An|All|Each|Every|This|These|Those|That|Upon|For|In|To|By|As|If|When|Where)\s',
+        re.IGNORECASE
+    )
+
+    def looks_like_heading(title_text):
+        """Return True only if the text after the number looks like a heading title,
+        not a prose sentence or list item.
+
+        Heuristics (all must pass):
+        - No title (bare number like '1' or '1.1') is always a heading
+        - Single-word title is always a valid heading (e.g. 'PURPOSE', 'Processing')
+        - Must be ≤ 60 chars total
+        - Must NOT end with a period (sentences do; headings don't)
+        - Must NOT start with a lowercase letter
+        - Multi-word: must NOT start with articles/prepositions (prose starters)
+        - Multi-word: must NOT contain '. ' mid-text
+        - Multi-word (>4 words): must NOT have >35% lowercase-initial words
+        """
+        if not title_text:
+            return True   # bare number like '1' or '1.1'
+        t = title_text.strip()
+        # Too long → it's a sentence
+        if len(t) > 60:
+            return False
+        # Ends with period → sentence
+        if t.endswith('.'):
+            return False
+        # Starts with lowercase → prose
+        if t[0].islower():
+            return False
+        words = t.split()
+        # Single-word heading is always valid (e.g. 'PURPOSE', 'Processing', 'Scope')
+        if len(words) == 1:
+            return True
+        # Multi-word: starts with article/preposition/conjunction → list item or sentence
+        if _PROSE_ARTICLE_STARTERS.match(t):
+            return False
+        # Multi-word: contains '. ' mid-text → sentence
+        if re.search(r'\.\s', t):
+            return False
+        # >4 words with >35% lowercase-initial words → prose
+        if len(words) > 4:
+            lc = sum(1 for w in words if w and w[0].islower())
+            if lc / len(words) > 0.35:
+                return False
+        return True
 
     lines = text.split('\n')
     sections = []
@@ -89,10 +144,9 @@ def _split_into_sections(text, fallback_title='Full Document'):
         re.IGNORECASE
     )
 
-    for line in joined_lines:
-        # Strip inline tags from every line first
-        s = INLINE_TAGS.sub('', line.strip())
-        s = re.sub(r'\s{2,}', ' ', s).strip()
+    for line_idx, line in enumerate(joined_lines):
+        # FIX #1: do NOT strip inline tags — only normalize whitespace
+        s = re.sub(r'\s{2,}', ' ', line.strip()).strip()
         if not s:
             continue
 
@@ -123,12 +177,25 @@ def _split_into_sections(text, fallback_title='Full Document'):
                 page_header_buffer.append(s)
                 continue
 
+        # Drop legacy TABLE_START / TABLE_END markers from old extractions
+        if s in ('||TABLE_START||', '||TABLE_END||'):
+            continue
+
         # Drop leftover metadata lines that are unrelated to content
         if PAGE_HEADER_KEYS.search(s):
             continue
 
         # Drop artifact lines
         if re.match(r'^[\s:|\-\.]+$', s):
+            continue
+
+        # A line with pipe characters is table content — never a section heading.
+        # Guard this before the numbered-section regex so "1 | Activity" doesn't
+        # get treated as section "1 Activity".
+        if '|' in s:
+            if current_subtitle is None:
+                current_subtitle = fallback_title
+            current_content.append(s)
             continue
 
         # CHAPTER headings: treat as top-level section
@@ -159,16 +226,14 @@ def _split_into_sections(text, fallback_title='Full Document'):
         if top_level and len(s) < 120:
             num_str = top_level.group(1).rstrip('.')
             num_tuple = tuple(int(x) for x in num_str.split('.'))
-            title = top_level.group(2)
+            title = top_level.group(2) or ''
             full_heading = f"{num_str} {title.strip()}" if title else num_str
 
-            if is_top_level_number(num_tuple):
-                # Top-level: start new section
+            if is_top_level_number(num_tuple) and looks_like_heading(title):
+                # Top-level: start new section (1, 2, 3 or 1.0, 2.0)
                 flush()
                 current_subtitle = full_heading
                 current_content = []
-                # If we buffered page-header lines right before this first section,
-                # append them at the correct stream position.
                 if pending_page_header and page_header_buffer:
                     header_text_lines = [l for l in page_header_buffer if l.strip()]
                     if header_text_lines:
@@ -176,21 +241,37 @@ def _split_into_sections(text, fallback_title='Full Document'):
                         current_content.append('')
                     page_header_buffer = []
                     pending_page_header = False
-            else:
-                # Sub-section: add to current section's content
-                if current_subtitle:
-                    # If a page header is pending, attach it before the subsection heading.
-                    if pending_page_header and page_header_buffer:
-                        header_text_lines = [l for l in page_header_buffer if l.strip()]
-                        if header_text_lines:
-                            current_content.extend(header_text_lines)
-                            current_content.append('')
-                        page_header_buffer = []
-                        pending_page_header = False
-                    current_content.append(full_heading)
-                continue
 
-        # Everything else is content
+            elif is_subsection_number(num_tuple) and looks_like_heading(title):
+                # FIX #5 (revised): only depth-2 subsections that look like headings
+                # (e.g. "1.1 SCOPE", "2.3 COVERAGE") start their own section.
+                # Depth-3+ lines and prose list items fall through to content.
+                flush()
+                current_subtitle = full_heading
+                current_content = []
+                if pending_page_header and page_header_buffer:
+                    header_text_lines = [l for l in page_header_buffer if l.strip()]
+                    if header_text_lines:
+                        current_content.extend(header_text_lines)
+                        current_content.append('')
+                    page_header_buffer = []
+                    pending_page_header = False
+
+            else:
+                # Depth 3+, prose list items, numbered steps → append as content
+                if current_subtitle is None:
+                    current_subtitle = fallback_title
+                if pending_page_header and page_header_buffer:
+                    header_text_lines = [l for l in page_header_buffer if l.strip()]
+                    if header_text_lines:
+                        current_content.extend(header_text_lines)
+                        current_content.append('')
+                    page_header_buffer = []
+                    pending_page_header = False
+                current_content.append(s)
+            continue  # handled by the top_level block — do not fall through
+
+        # Everything else is content (non-numbered lines)
         if current_subtitle is None:
             current_subtitle = fallback_title
         if pending_page_header and page_header_buffer:
@@ -349,6 +430,49 @@ def delete_department(request, dept_id):
     return Response({'message': f'{dept.name} deleted.'})
 
 
+# ─── STAFF ENDPOINTS ─────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def staff_list_manuals(request):
+    """Return manuals belonging to the logged-in staff member's department."""
+    dept = getattr(request.user, 'department', None)
+    if not dept:
+        return Response({'error': 'You are not assigned to a department.'}, status=403)
+    manuals = Manual.objects.filter(department=dept).order_by('-uploaded_at')
+    data = [{
+        'id': m.id,
+        'title': m.title,
+        'department': m.department.name if m.department else 'N/A',
+        'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
+        'uploaded_at': m.uploaded_at,
+        'section_count': m.sections.count(),
+        'version': m.version,
+    } for m in manuals]
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def staff_my_revisions(request):
+    """Return all revisions submitted by the currently logged-in user."""
+    revisions = ManualRevision.objects.filter(
+        submitted_by=request.user
+    ).order_by('-submitted_at')
+    data = [{
+        'id': r.id,
+        'section_id': r.section.id if r.section else None,
+        'section': r.section.subtitle if r.section else 'N/A',
+        'manual': r.section.manual.title if r.section else 'N/A',
+        'submitted_at': r.submitted_at,
+        'status': r.status,
+        'reviewer_notes': r.reviewer_notes,
+        'reviewed_at': r.reviewed_at,
+        'diff_preview': r.diff_text[:400] if r.diff_text else '',
+    } for r in revisions]
+    return Response(data)
+
+
 # ─── MANUALS ─────────────────────────────────────────────────
 
 @api_view(['GET'])
@@ -403,7 +527,7 @@ def upload_manual(request):
         created_sections = []
         for idx, block in enumerate(blocks):
             try:
-                tag = predict(block['content'])[0] if block['content'].strip() else 'UNTAGGED'
+                tag = predict_section(block['content']) if block['content'].strip() else 'UNTAGGED'
             except Exception:
                 tag = 'UNTAGGED'
 
@@ -474,7 +598,7 @@ def preview_manual_sections(request):
         blocks = _split_into_sections(extracted_text, title)
         for idx, block in enumerate(blocks):
             try:
-                tag = predict(block['content'])[0] if block['content'].strip() else 'UNTAGGED'
+                tag = predict_section(block['content']) if block['content'].strip() else 'UNTAGGED'
             except Exception:
                 tag = 'UNTAGGED'
 
@@ -664,7 +788,7 @@ def review_section(request, section_id):
     # Re-tag if content updated
     if 'content' in request.data:
         try:
-            section.tag = predict(section.content)[0]
+            section.tag = predict_section(section.content)
         except Exception:
             section.tag = 'UNTAGGED'
 
@@ -697,7 +821,7 @@ def create_section(request, manual_id):
         return Response({'error': 'Subtitle is required'}, status=400)
 
     try:
-        tag = predict(content)[0] if content else 'UNTAGGED'
+        tag = predict_section(content) if content else 'UNTAGGED'
     except Exception:
         tag = 'UNTAGGED'
 
@@ -744,7 +868,7 @@ def update_section(request, section_id):
 
     if 'content' in request.data:
         try:
-            section.tag = predict(section.content)[0]
+            section.tag = predict_section(section.content)
         except Exception:
             section.tag = 'UNTAGGED'
 
@@ -837,7 +961,7 @@ def merge_sections(request, section_id):
     source_header = f"{source.subtitle}\n\n" if source.subtitle else ""
     target.content = f"{target.content}{separator}{source_header}{source.content}"
     try:
-        target.tag = predict(target.content)[0]
+        target.tag = predict_section(target.content)
     except Exception:
         target.tag = 'UNTAGGED'
 
@@ -985,7 +1109,7 @@ def review_revision(request, revision_id):
 
             section.content = new_text
             try:
-                section.tag = predict(new_text)[0]
+                section.tag = predict_section(new_text)
             except Exception:
                 section.tag = 'UNTAGGED'
             section.version += 1

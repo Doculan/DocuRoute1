@@ -1,5 +1,6 @@
 import os
 import joblib
+from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.svm import LinearSVC
 
@@ -12,6 +13,7 @@ if os.path.exists(MODEL_PATH) and os.path.exists(VECTORIZER_PATH):
 else:
     texts = [
         # ── RESPONSIBILITY ──
+        # Role-based: who is accountable for what
         "The manager shall ensure compliance with this policy",
         "Department heads are responsible for implementation",
         "The supervisor must monitor employee performance",
@@ -31,8 +33,14 @@ else:
         "Initiate linkages of alumni locally and internationally",
         "The committee chair shall oversee implementation of the event",
         "The registrar is responsible for verifying alumni registration",
+        "The BAC Secretariat is responsible for receiving bid documents",
+        "Supply Officer shall prepare the purchase request for approval",
+        "The department head is responsible for endorsing the request to procurement",
+        "Administrative Officer reviews and validates the submitted documents",
+        "The finance officer certifies availability of funds before procurement",
 
         # ── PROCEDURE ──
+        # Step-by-step actions: submit, fill out, proceed, accomplish
         "Step 1: Open the application. Step 2: Click submit.",
         "This procedure must be followed during onboarding",
         "Follow these steps to complete the process",
@@ -48,8 +56,17 @@ else:
         "The applicant must undergo orientation before starting work",
         "The form shall be forwarded to the concerned office for processing",
         "Complete all required fields and attach supporting documents",
+        "The purchase request must be submitted to the procurement office",
+        "Prepare the abstract of canvass after receiving three quotations",
+        "Issue the purchase order upon approval of the BAC resolution",
+        "Inspect and receive the delivered items and sign the inspection report",
+        "Forward the paid documents to the accounting office for recording",
+        "The supplier must deliver within the period stipulated in the contract",
+        "Request for quotation must be sent to at least three suppliers",
+        "Record the inventory items in the stock ledger card upon receipt",
 
         # ── POLICY ──
+        # Rules, entitlements, standards that apply broadly
         "Employees may request leave up to 15 days annually",
         "All staff are entitled to medical benefits",
         "This policy applies to all full-time employees",
@@ -61,13 +78,18 @@ else:
         "The university promotes sustained sense of belonging among alumni",
         "Regular contact with alumni is maintained through various activities",
         "All alumni of the university are encouraged to attend the general assembly",
-        "This procedure applies to all constituencies of the university",
+        "This policy applies to all constituencies of the university",
         "The policy regulates the functioning of structures that impact relationships",
         "Employees are prohibited from disclosing confidential information",
         "All purchases must be approved by the procurement committee",
         "Faculty members must comply with the code of professional ethics",
+        "All government procurement must follow Republic Act 9184",
+        "Procurement of goods must comply with the approved annual procurement plan",
+        "No payment shall be made without the corresponding purchase order",
+        "Small value procurement is allowed for amounts below the threshold",
 
         # ── WORKING INSTRUCTION ──
+        # Guidance, how-to, objectives, forms to use
         "How to download our manuals in PDF format",
         "Instructions for operating the scanning machine",
         "Refer to this guide when using the document portal",
@@ -83,47 +105,76 @@ else:
         "Notice of Meeting Form must be distributed three days before the meeting",
         "Donation Slip Form must be issued for every donation received",
         "Use this form when requesting supplies from the procurement office",
-
-        # ── PAGE_HEADER ──
-        "MANUAL TITLE FINANCE AND ADMINISTRATION MANUAL DOCUMENT NO. FAM 18.02 DOCUMENT NAME ALUMNI EVENTS REVISION NO. 0 EFFECTIVITY DATE APRIL 11 2023 PAGE NO. 1 of 3",
-        "MANUAL TITLE HUMAN RESOURCE MANUAL DOCUMENT NO. HRM 01.01 DOCUMENT NAME RECRUITMENT POLICY REVISION NO. 1 EFFECTIVITY DATE JANUARY 5 2022 PAGE NO. 1 of 5",
-        "MANUAL TITLE OPERATIONS MANUAL DOCUMENT NO. OPM 05.03 DOCUMENT NAME PROCUREMENT PROCEDURE REVISION NO. 2 EFFECTIVITY DATE MARCH 20 2021 PAGE NO. 2 of 4",
-        "VERSION NO. 1 MANUAL TITLE FINANCE AND ADMINISTRATION MANUAL DOCUMENT NO. FAM 18.02 DOCUMENT NAME ALUMNI EVENTS REVISION NO. 0 EFFECTIVITY DATE APRIL 11 2023 PAGE NO. 1 of 3",
-        "VERSION NO. 2 DOCUMENT NO. HRM 02.01 DOCUMENT NAME LEAVE POLICY REVISION NO. 1 EFFECTIVITY DATE JUNE 1 2023 PAGE NO. 3 of 6",
-        "DOCUMENT NO. FAM 10.01 DOCUMENT NAME PROCUREMENT MANUAL REVISION NO. 0 PAGE NO. 1 of 10 EFFECTIVITY DATE FEBRUARY 2022",
+        "To ensure proper documentation of procurement transactions",
+        "To establish a systematic process for managing office supplies",
+        "To provide guidelines for the conduct of competitive bidding",
+        "Use the abstract of canvass form to record price quotations",
+        "The purchase request form must indicate the specific item description and quantity",
     ]
 
     labels = [
-        # RESPONSIBILITY x19
-        "RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY",
-        "RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY",
-        "RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY",
-        "RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY","RESPONSIBILITY",
-        # PROCEDURE x15
-        "PROCEDURE","PROCEDURE","PROCEDURE","PROCEDURE","PROCEDURE",
-        "PROCEDURE","PROCEDURE","PROCEDURE","PROCEDURE","PROCEDURE",
-        "PROCEDURE","PROCEDURE","PROCEDURE","PROCEDURE","PROCEDURE",
-        # POLICY x16
-        "POLICY","POLICY","POLICY","POLICY","POLICY",
-        "POLICY","POLICY","POLICY","POLICY","POLICY",
-        "POLICY","POLICY","POLICY","POLICY","POLICY","POLICY",
-        # WORKING INSTRUCTION x15
-        "WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION",
-        "WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION",
-        "WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION","WORKING INSTRUCTION",
-        # PAGE_HEADER x6
-        "PAGE_HEADER","PAGE_HEADER","PAGE_HEADER","PAGE_HEADER","PAGE_HEADER","PAGE_HEADER",
+        # RESPONSIBILITY x24
+        "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY",
+        "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY",
+        "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY",
+        "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY",
+        "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY", "RESPONSIBILITY",
+        # PROCEDURE x23
+        "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE",
+        "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE",
+        "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE",
+        "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE", "PROCEDURE",
+        "PROCEDURE", "PROCEDURE", "PROCEDURE",
+        # POLICY x20
+        "POLICY", "POLICY", "POLICY", "POLICY", "POLICY",
+        "POLICY", "POLICY", "POLICY", "POLICY", "POLICY",
+        "POLICY", "POLICY", "POLICY", "POLICY", "POLICY",
+        "POLICY", "POLICY", "POLICY", "POLICY", "POLICY",
+        # WORKING INSTRUCTION x20
+        "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION",
+        "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION",
+        "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION",
+        "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION", "WORKING INSTRUCTION",
     ]
 
-    vectorizer = TfidfVectorizer()
+    # FIX #3: balanced class weights so no class dominates
+    vectorizer = TfidfVectorizer(ngram_range=(1, 2))
     X = vectorizer.fit_transform(texts)
-    model = LinearSVC()
+    model = LinearSVC(class_weight='balanced', max_iter=2000)
     model.fit(X, labels)
 
     joblib.dump(model, MODEL_PATH)
     joblib.dump(vectorizer, VECTORIZER_PATH)
 
 
-def predict(text):
+def predict(text: str) -> list:
+    """Classify a single text string. Returns a list with one label."""
     X_test = vectorizer.transform([text])
     return model.predict(X_test)
+
+
+def predict_section(text: str) -> str:
+    """FIX #3: Sentence-level majority vote for more accurate section classification.
+
+    Instead of averaging TF-IDF of an entire multi-line block, we classify
+    each non-empty line individually and return the majority label.
+    Falls back to single-pass predict() for very short inputs.
+    """
+    lines = [l.strip() for l in text.split('\n') if l.strip() and len(l.strip()) > 10]
+
+    if len(lines) <= 2:
+        # Too short for voting — use single prediction
+        return predict(text)[0]
+
+    predictions = []
+    for line in lines:
+        try:
+            predictions.append(predict(line)[0])
+        except Exception:
+            pass
+
+    if not predictions:
+        return 'UNTAGGED'
+
+    # Majority vote
+    return Counter(predictions).most_common(1)[0][0]

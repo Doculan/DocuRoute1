@@ -13,6 +13,8 @@ HEADER_KEYS = {
     'VERSION NO.', 'APPROVAL DATE'
 }
 
+# FIX #1: _STRIP_RE is kept for footer/pure-tag-line detection only.
+# It is NO LONGER applied to content lines so SVM can see POLICY/PROCEDURE/etc. keywords.
 STRIP_TOKENS = [
     'WORKING INSTRUCTIONS', 'WORKING INSTRUCTION',
     'RESPONSIBILITIES', 'RESPONSIBILITY',
@@ -26,6 +28,7 @@ DROP_LINES = [
     'CLEMELLE L. MONTALLANA, DM', 'VICE PRESIDENT FOR'
 ]
 
+# Used ONLY for full-line match detection (standalone tag-only lines like a bare "POLICY")
 _STRIP_RE = re.compile(
     r'(?<!\w)(' + '|'.join(re.escape(t) for t in STRIP_TOKENS) + r')(?!\w)',
     flags=re.IGNORECASE
@@ -45,6 +48,12 @@ _META_RE = re.compile(
     flags=re.IGNORECASE
 )
 
+# Section detection patterns
+_SECTION_RE = re.compile(
+    r'^\s*(?:\[(\d+(?:\.\d+)*\.?)(?:\]|\.?\])|\d+(?:\.\d+)*\.?)\s+(.+)$',
+    flags=re.IGNORECASE
+)
+
 
 # ── DOCX ──────────────────────────────────────────────────────
 
@@ -57,12 +66,18 @@ def _is_header_table(table):
 
 
 def _extract_table_block(table):
+    """Extract table content using only para.text (no double-counting via runs)."""
     rows = []
     for row in table.rows:
-        row_text = " | ".join(c.text.strip() for c in row.cells if c.text.strip())
-        if row_text:
-            rows.append(row_text)
-    return "\n".join(rows)
+        cells = []
+        for cell in row.cells:
+            # FIX: Use cell.text directly — iterating runs separately duplicates text
+            cell_text = cell.text.strip()
+            if cell_text:
+                cells.append(cell_text)
+        if cells:
+            rows.append(" | ".join(cells))
+    return "\n".join(rows) if rows else ""
 
 
 def _extract_docx(file_bytes):
@@ -71,9 +86,10 @@ def _extract_docx(file_bytes):
     page_num = 1
     header_buffer = []
     header_flushed_once = False
+    last_header = None
 
     def flush_header():
-        nonlocal page_num, header_flushed_once
+        nonlocal page_num, header_flushed_once, last_header
         if not header_buffer:
             return
         doc_name = "UNKNOWN"
@@ -87,7 +103,11 @@ def _extract_docx(file_bytes):
         if header_flushed_once:
             page_num += 1
         fused = " | ".join(all_parts)
-        blocks.append(f"##PAGE_HEADER {page_num} FOR {doc_name}##\n{fused}")
+
+        if fused != last_header:
+            blocks.append(f"##PAGE_HEADER {page_num} FOR {doc_name}##\n{fused}")
+            last_header = fused
+
         header_buffer.clear()
         header_flushed_once = True
 
@@ -104,7 +124,9 @@ def _extract_docx(file_bytes):
                             header_buffer.append(t)
             else:
                 flush_header()
-                blocks.append(_extract_table_block(table))
+                table_content = _extract_table_block(table)
+                if table_content:
+                    blocks.append(table_content)
         elif tag == 'p':
             from docx.text.paragraph import Paragraph
             para = Paragraph(element, doc)
@@ -116,71 +138,53 @@ def _extract_docx(file_bytes):
     flush_header()
     return "\n".join(blocks)
 
-# ── TABLE RECONSTRUCTION ──────────────────────────────────────
 
-def _reconstruct_tables_from_blocks(blocks, page_width, tag_col_x):
-    """Reconstruct tables from text blocks by detecting column patterns.
-    For two-column tables: pair left column (Responsibility) with right column (Activity)."""
-    
-    col_split_x = page_width * 0.50
-    left_blocks = []
-    right_blocks = []
-    
-    for b in blocks:
-        if b[0] < col_split_x:
-            left_blocks.append((b[1], b[4].strip()))  # (y_position, text)
-        else:
-            right_blocks.append((b[1], b[4].strip()))
-    
-    # Sort by y-position
-    left_blocks.sort()
-    right_blocks.sort()
-    
-    # Pair blocks at similar y-positions
-    paired_lines = []
-    used_right = set()
-    
-    for left_y, left_text in left_blocks:
-        if not left_text:
-            continue
-        
-        # Find matching right block (within ~25 points vertically)
-        matching_right_text = None
-        for idx, (right_y, right_text) in enumerate(right_blocks):
-            if idx not in used_right and abs(right_y - left_y) < 25:
-                matching_right_text = right_text
-                used_right.add(idx)
-                break
-        
-        if matching_right_text:
-            paired_lines.append(f"{left_text} | {matching_right_text}")
-        else:
-            paired_lines.append(left_text)
-    
-    # Add remaining right blocks
-    for idx, (_, right_text) in enumerate(right_blocks):
-        if idx not in used_right and right_text:
-            paired_lines.append(right_text)
-    
-    return paired_lines
 # ── PDF ───────────────────────────────────────────────────────
 
 def _extract_pdf(file_bytes):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     pages_text = []
+    last_header = None
 
     for page_num, page in enumerate(doc, start=1):
         page_height = page.rect.height
-        header_cutoff_y = page_height * 0.22  # top region heuristic for headers
 
-        # Header keywords used to decide "real header" blocks.
+        # FIX #4 (revised): keyword match is authoritative; position is secondary.
+        # Removed RECEIVES/ISSU/ISS — these matched procedure steps like
+        # "12. Receives sealed bids" and "13. Issues Notice..." causing them to
+        # be dropped as headers instead of kept as body content.
         header_key_re = re.compile(
-            r'(VERSION NO|DOCUMENT NO|DOCUMENT NAME|MANUAL TITLE|REVISION NO|EFFECTIVITY DATE|PAGE NO|APPROVAL DATE|FAM|PROCUREMENT MANAGEMENT|FINANCE AND ADMINISTRATION MANUAL|RECEIVES|ISSU|ISS)\b',
+            r'(VERSION NO|DOCUMENT NO|DOCUMENT NAME|MANUAL TITLE|REVISION NO'
+            r'|EFFECTIVITY DATE|PAGE NO|APPROVAL DATE|FAM'
+            r'|PROCUREMENT MANAGEMENT|FINANCE AND ADMINISTRATION MANUAL)\b',
             re.IGNORECASE,
         )
 
+        # FIX: Pre-collect table bounding boxes so we can skip raw text blocks
+        # that fall inside a detected table (avoids duplicating table content).
+        table_bboxes = []
+        try:
+            _tables_check = page.find_tables()
+            for _t in _tables_check:
+                table_bboxes.append(_t.bbox)   # (x0, y0, x1, y1)
+        except Exception:
+            pass
+
         blocks = page.get_text("blocks")
         text_blocks = [b for b in blocks if b[6] == 0 and b[4].strip()]
+
+        def _block_inside_table(bx0, by0, bx1, by1):
+            """Return True if this text block's bbox overlaps significantly with
+            any detected table — meaning the table extractor already captured it.
+            We use a generous overlap threshold (50% of block area) to be safe."""
+            b_area = max((bx1 - bx0) * (by1 - by0), 1)
+            for tx0, ty0, tx1, ty1 in table_bboxes:
+                ox = max(0, min(bx1, tx1) - max(bx0, tx0))
+                oy = max(0, min(by1, ty1) - max(by0, ty0))
+                overlap = ox * oy
+                if overlap / b_area > 0.5:
+                    return True
+            return False
 
         elements = []
         for b in text_blocks:
@@ -188,9 +192,14 @@ def _extract_pdf(file_bytes):
             t = str(b[4]).replace('\u200b', '').replace('\x00', '').strip()
             if not t:
                 continue
+            # FIX (duplicate content): skip raw text blocks that are already
+            # covered by a detected table — the structured table extractor
+            # below will handle those cells more cleanly.
+            if _block_inside_table(x0, y0, x1, y1):
+                continue
             elements.append(("text", x0, y0, t))
 
-        # Try to detect tables and insert them into the reading order.
+        # Extract structured tables and insert them into the reading order.
         try:
             tables = page.find_tables()
             if tables:
@@ -203,42 +212,63 @@ def _extract_pdf(file_bytes):
                         for cell in row:
                             if cell:
                                 cell_text = str(cell).strip().replace('\u200b', '').replace('\x00', '')
-                                if cell_text:
+                                if cell_text and not cell_text.lower().startswith(('image', 'pic', 'figure')):
                                     cells.append(cell_text)
                         if cells:
                             table_lines.append(" | ".join(cells))
                     if table_lines:
-                        elements.append(("table", x0, y0, "\n".join(table_lines)))
+                        # No TABLE_START/END wrappers — they pass through into
+                        # section titles and confuse the sectioning logic.
+                        # Plain pipe-delimited rows are sufficient.
+                        table_text = "\n".join(table_lines)
+                        elements.append(("table", x0, y0, table_text))
         except Exception:
             pass
 
-        # Sort by reading order approximation: top-to-bottom, then left-to-right.
+        # Sort by reading order: top-to-bottom, then left-to-right.
         elements.sort(key=lambda e: (e[2], e[1]))
 
         header_lines = []
         body_lines = []
+        body_has_started = False
 
         for kind, x0, y0, t in elements:
-            # Treat as header if it's within the header region OR it looks like header metadata.
-            is_header = (y0 <= header_cutoff_y) or bool(header_key_re.search(t))
+            is_keyword_header = bool(header_key_re.search(t))
+
+            # FIX (mega-block): if a block starts with a section number like
+            # "1.0 OBJECTIVES" or "3.1 All government..." it is body content
+            # even if its y-coordinate is inside the 22% position zone.
+            # PyMuPDF sometimes groups the first section heading into one giant
+            # block that starts just below the header table.
+            starts_with_section_number = bool(
+                re.match(r'^\d+\.?\d*\s+[A-Z]', t.strip())
+            )
+
+            is_position_header = (
+                (y0 <= page_height * 0.22)
+                and not body_has_started
+                and not starts_with_section_number
+            )
+
+            is_header = is_keyword_header or is_position_header
+
             if is_header:
                 header_lines.append(t)
             else:
+                body_has_started = True
                 body_lines.append(t)
 
-        # Fallback: if header detection failed, still keep the earliest blocks as "header".
+        # Fallback: if header detection failed, keep the earliest blocks as "header".
         if not header_lines and elements:
             header_lines = [elements[0][3]]
             if len(elements) > 1:
                 header_lines.append(elements[1][3])
 
-        # Normalize header into label/value lines (keeps it editable and closer
-        # to the way the PDF presents those fields).
+        # Normalize header into label/value lines.
         normalized_header_lines = []
         raw_header = " ".join(l.strip() for l in header_lines if l and l.strip())
         raw_header = re.sub(r'\s+', ' ', raw_header).strip()
 
-        # Primary header labels we want in the output.
         label_specs = [
             ("VERSION NO.", r'VERSION\s*NO\.?'),
             ("MANUAL TITLE", r'MANUAL\s*TITLE'),
@@ -258,26 +288,29 @@ def _extract_pdf(file_bytes):
             m = pattern.search(raw_header)
             if not m:
                 continue
-
             value = m.group(1).strip()
             value = re.sub(r'\s+', ' ', value).strip()
             value = value.strip(' :,-')
             if not value:
                 continue
-
             normalized_header_lines.append(label_text)
             normalized_header_lines.append(value)
 
-        # Fall back to raw header lines if normalization produced nothing.
         if normalized_header_lines:
             header_text = "\n".join(normalized_header_lines)
         else:
             header_text = "\n".join(l for l in header_lines if l.strip())
-        body_text = "\n".join(l for l in body_lines if l.strip())
 
-        pages_text.append(
-            f"##PAGE_HEADER {page_num} FOR page##\n{header_text}\n##PAGE_HEADER_END##\n{body_text}"
-        )
+        # Only include header if it's new (avoid duplicate headers across pages)
+        if header_text and header_text != last_header:
+            body_text = "\n".join(l for l in body_lines if l.strip())
+            pages_text.append(
+                f"##PAGE_HEADER {page_num} FOR page##\n{header_text}\n##PAGE_HEADER_END##\n{body_text}"
+            )
+            last_header = header_text
+        else:
+            body_text = "\n".join(l for l in body_lines if l.strip())
+            pages_text.append(body_text)
 
     doc.close()
     return "\n".join(pages_text)
@@ -286,107 +319,100 @@ def _extract_pdf(file_bytes):
 # ── CLEANING ─────────────────────────────────────────────────
 
 def _clean(text):
-    # First pass: collect known header values to drop
-    header_values = set()
-    for line in text.splitlines():
-        s = line.strip()
-        if _META_RE.search(s) and '|' in s:
-            parts = [p.strip() for p in s.split('|')]
-            for p in parts:
-                if p and p.upper() not in HEADER_KEYS and not re.match(r'^\d+$', p):
-                    header_values.add(p.upper())
+    """Clean extracted text.
 
+    KEY CHANGE (Fix #1): POLICY / PROCEDURE / RESPONSIBILITY / WORKING INSTRUCTION
+    keywords are NO LONGER stripped from content lines.  They are semantic signals
+    that the SVM classifier relies on.  Only *standalone* tag-only lines (a bare
+    line containing nothing but e.g. "POLICY") are dropped.
+    """
     out = []
     lines = text.splitlines()
     i = 0
-    in_page_header = False
+    last_footer_block = None
 
     while i < len(lines):
         s = lines[i].strip()
 
-        # Explicit marker to stop header capture for PDF extraction.
-        if s.startswith('##PAGE_HEADER_END##'):
-            in_page_header = False
+        if not s:
             i += 1
             continue
 
-        # Always keep PAGE_HEADER markers
+        # -- Page-header markers: DISCARD entirely --
+        # The ##PAGE_HEADER## block is document metadata (version no, title,
+        # doc name, etc.) repeated on every page. It is NOT body content and
+        # must not appear in section text. Skip it completely.
         if s.startswith('##PAGE_HEADER'):
-            out.append(s)
-            in_page_header = True
             i += 1
-            continue
-
-        if in_page_header:
-            # End page header capture as soon as we hit a section heading
-            if re.match(r'^(CHAPTER\s+\d+(?:\.\d+)*)(?:\s*[:\.\-]?\s*(.*))?$', s, re.IGNORECASE) or \
-               re.match(r'^(\d+(?:\.\d+)*\.?)(\s+\S+.*)?$', s):
-                in_page_header = False
-                # Fall through to section/content parsing for this line
-            else:
-                if s:
-                    out.append(s)
+            while i < len(lines) and not lines[i].strip().startswith('##PAGE_HEADER_END##'):
+                i += 1  # skip every metadata line
+            if i < len(lines) and lines[i].strip().startswith('##PAGE_HEADER_END##'):
                 i += 1
-                continue
-
-        # Drop metadata lines
-        if _META_RE.search(s):
-            i += 1
             continue
 
-        # Drop footer/signature lines
-        if _FOOTER_RE.search(s):
+        # ── Footer / signature blocks ────────────────────────
+        if 'PREPARED BY' in s or 'APPROVED BY' in s:
+            footer_block = [s]
             i += 1
+            while i < len(lines) and len(footer_block) < 10:
+                next_line = lines[i].strip()
+                if not next_line:
+                    break
+                footer_block.append(next_line)
+                if 'University President' in next_line or 'Administration and Finance' in next_line:
+                    i += 1
+                    break
+                i += 1
+            footer_text = ' | '.join(footer_block)
+            if footer_text != last_footer_block:
+                for line in footer_block:
+                    out.append(line)
+                last_footer_block = footer_text
             continue
 
-        # Drop pure tag lines
-        if _STRIP_RE.fullmatch(s):
-            i += 1
-            continue
-
-        # Drop artifact-only lines
-        if re.match(r'^[\s:|\-\.​\u200b]+$', s):
-            i += 1
-            continue
-
-        # Drop "X of Y" page lines
+        # ── "X of Y" page number lines ───────────────────────
         if re.match(r'^\d+\s+of\s+\d+$', s):
             i += 1
             continue
 
-        # Drop known header values (manual title, doc name, etc.)
-        if s.upper() in header_values:
+        # ── Disclaimer lines ─────────────────────────────────
+        if 'The use, disclosure, reproduction' in s and 'strictly prohibited' in s:
             i += 1
             continue
 
-        # Drop standalone version numbers like "1" or "0"
-        if re.match(r'^\d{1,2}$', s):
+        # ── Drop lines that are ONLY a tag word (e.g. a bare "POLICY" heading line)
+        # FIX #1: fullmatch only — mixed lines like "POLICY: all staff must..." are kept
+        if _STRIP_RE.fullmatch(s):
             i += 1
             continue
 
-        # Rejoin orphaned number line with next title line
-        # e.g. "1.0\nOBJECTIVES" → "1.0 OBJECTIVES"
-        num_only = re.match(r'^(\d+(\.\d+)*)$', s)
-        if num_only and i + 1 < len(lines):
-            next_s = lines[i + 1].strip()
-            if (next_s
-                    and not next_s.startswith('##')
-                    and not _META_RE.search(next_s)
-                    and next_s.upper() not in header_values
-                    and not re.match(r'^[\s:|\-\.]+$', next_s)):
-                out.append(f"{s} {next_s}")
-                i += 2
-                continue
+        # ── Drop footer names / designations ────────────────
+        if _FOOTER_RE.search(s):
+            i += 1
+            continue
 
-        # Strip inline tags
-        s = _STRIP_RE.sub('', s)
+        # ── Drop legacy TABLE_START / TABLE_END marker lines ──
+        # These were emitted by older versions of the extractor and
+        # have no meaning in the current pipeline.
+        if s in ('||TABLE_START||', '||TABLE_END||'):
+            i += 1
+            continue
+
+        # ── Drop pure artifact lines ─────────────────────────
+        if re.match(r'^[\s:|\-\.]+$', s):
+            i += 1
+            continue
+
+        # ── Normalize whitespace only — DO NOT strip semantic keywords ──
         s = re.sub(r'\s{2,}', ' ', s).strip()
-
         if s:
             out.append(s)
+
         i += 1
 
-    return '\n'.join(out)
+    result = '\n'.join(out)
+    result = re.sub(r'\n{4,}', '\n\n\n', result)
+    return result.strip()
 
 
 # ── PUBLIC API ───────────────────────────────────────────────

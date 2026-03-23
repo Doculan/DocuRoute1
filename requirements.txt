@@ -9,3 +9,5 @@ pdf2image
 pymupdf
 scikit-learn
 joblib
+python-docx
+mammoth
