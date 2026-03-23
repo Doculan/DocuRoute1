@@ -116,7 +116,53 @@ def _extract_docx(file_bytes):
     flush_header()
     return "\n".join(blocks)
 
+# ── TABLE RECONSTRUCTION ──────────────────────────────────────
 
+def _reconstruct_tables_from_blocks(blocks, page_width, tag_col_x):
+    """Reconstruct tables from text blocks by detecting column patterns.
+    For two-column tables: pair left column (Responsibility) with right column (Activity)."""
+    
+    col_split_x = page_width * 0.50
+    left_blocks = []
+    right_blocks = []
+    
+    for b in blocks:
+        if b[0] < col_split_x:
+            left_blocks.append((b[1], b[4].strip()))  # (y_position, text)
+        else:
+            right_blocks.append((b[1], b[4].strip()))
+    
+    # Sort by y-position
+    left_blocks.sort()
+    right_blocks.sort()
+    
+    # Pair blocks at similar y-positions
+    paired_lines = []
+    used_right = set()
+    
+    for left_y, left_text in left_blocks:
+        if not left_text:
+            continue
+        
+        # Find matching right block (within ~25 points vertically)
+        matching_right_text = None
+        for idx, (right_y, right_text) in enumerate(right_blocks):
+            if idx not in used_right and abs(right_y - left_y) < 25:
+                matching_right_text = right_text
+                used_right.add(idx)
+                break
+        
+        if matching_right_text:
+            paired_lines.append(f"{left_text} | {matching_right_text}")
+        else:
+            paired_lines.append(left_text)
+    
+    # Add remaining right blocks
+    for idx, (_, right_text) in enumerate(right_blocks):
+        if idx not in used_right and right_text:
+            paired_lines.append(right_text)
+    
+    return paired_lines
 # ── PDF ───────────────────────────────────────────────────────
 
 def _extract_pdf(file_bytes):
@@ -124,47 +170,114 @@ def _extract_pdf(file_bytes):
     pages_text = []
 
     for page_num, page in enumerate(doc, start=1):
-        page_width = page.rect.width
-        tag_col_x = page_width * 0.70
-        col_split_x = page_width * 0.50  # Split for two columns
+        page_height = page.rect.height
+        header_cutoff_y = page_height * 0.22  # top region heuristic for headers
+
+        # Header keywords used to decide "real header" blocks.
+        header_key_re = re.compile(
+            r'(VERSION NO|DOCUMENT NO|DOCUMENT NAME|MANUAL TITLE|REVISION NO|EFFECTIVITY DATE|PAGE NO|APPROVAL DATE|FAM|PROCUREMENT MANAGEMENT|FINANCE AND ADMINISTRATION MANUAL|RECEIVES|ISSU|ISS)\b',
+            re.IGNORECASE,
+        )
 
         blocks = page.get_text("blocks")
-        text_blocks = [b for b in blocks if b[6] == 0 and b[4].strip() and b[0] <= tag_col_x]
+        text_blocks = [b for b in blocks if b[6] == 0 and b[4].strip()]
 
-        # Split into left and right columns
-        left_blocks = [b for b in text_blocks if b[0] < col_split_x]
-        right_blocks = [b for b in text_blocks if b[0] >= col_split_x]
+        elements = []
+        for b in text_blocks:
+            x0, y0, x1, y1 = b[0], b[1], b[2], b[3]
+            t = str(b[4]).replace('\u200b', '').replace('\x00', '').strip()
+            if not t:
+                continue
+            elements.append(("text", x0, y0, t))
 
-        # Match left and right blocks by vertical position (y-coordinate)
-        lines = []
-        used_right = set()
+        # Try to detect tables and insert them into the reading order.
+        try:
+            tables = page.find_tables()
+            if tables:
+                for table in tables:
+                    x0, y0, x1, y1 = table.bbox
+                    table_data = table.extract()
+                    table_lines = []
+                    for row in table_data:
+                        cells = []
+                        for cell in row:
+                            if cell:
+                                cell_text = str(cell).strip().replace('\u200b', '').replace('\x00', '')
+                                if cell_text:
+                                    cells.append(cell_text)
+                        if cells:
+                            table_lines.append(" | ".join(cells))
+                    if table_lines:
+                        elements.append(("table", x0, y0, "\n".join(table_lines)))
+        except Exception:
+            pass
 
-        for left_block in sorted(left_blocks, key=lambda b: b[1]):
-            left_y = left_block[1]  # Top of left block
-            left_text = left_block[4].strip()
+        # Sort by reading order approximation: top-to-bottom, then left-to-right.
+        elements.sort(key=lambda e: (e[2], e[1]))
 
-            # Find right block at similar vertical position (tolerance ~20 points)
-            matching_right = None
-            for idx, right_block in enumerate(right_blocks):
-                if idx not in used_right:
-                    right_y = right_block[1]
-                    if abs(right_y - left_y) < 20:
-                        matching_right = idx
-                        break
+        header_lines = []
+        body_lines = []
 
-            if matching_right is not None:
-                right_text = right_blocks[matching_right][4].strip()
-                lines.append(f"{left_text} | {right_text}")
-                used_right.add(matching_right)
+        for kind, x0, y0, t in elements:
+            # Treat as header if it's within the header region OR it looks like header metadata.
+            is_header = (y0 <= header_cutoff_y) or bool(header_key_re.search(t))
+            if is_header:
+                header_lines.append(t)
             else:
-                lines.append(left_text)
+                body_lines.append(t)
 
-        # Add remaining unmatched right blocks
-        for idx, right_block in enumerate(right_blocks):
-            if idx not in used_right:
-                lines.append(right_block[4].strip())
+        # Fallback: if header detection failed, still keep the earliest blocks as "header".
+        if not header_lines and elements:
+            header_lines = [elements[0][3]]
+            if len(elements) > 1:
+                header_lines.append(elements[1][3])
 
-        pages_text.append(f"##PAGE_HEADER {page_num} FOR page##\n" + "\n".join(lines))
+        # Normalize header into label/value lines (keeps it editable and closer
+        # to the way the PDF presents those fields).
+        normalized_header_lines = []
+        raw_header = " ".join(l.strip() for l in header_lines if l and l.strip())
+        raw_header = re.sub(r'\s+', ' ', raw_header).strip()
+
+        # Primary header labels we want in the output.
+        label_specs = [
+            ("VERSION NO.", r'VERSION\s*NO\.?'),
+            ("MANUAL TITLE", r'MANUAL\s*TITLE'),
+            ("DOCUMENT NO.", r'DOCUMENT\s*NO\.?'),
+            ("DOCUMENT NAME", r'DOCUMENT\s*NAME'),
+            ("REVISION NO.", r'REVISION\s*NO\.?'),
+            ("EFFECTIVITY DATE", r'EFFECTIVITY\s*DATE'),
+            ("PAGE NO.", r'PAGE\s*NO\.?'),
+        ]
+        lookahead = "|".join(spec[1] for spec in label_specs)
+
+        for label_text, label_re in label_specs:
+            pattern = re.compile(
+                rf'{label_re}\s*(.+?)(?={lookahead}|$)',
+                flags=re.IGNORECASE,
+            )
+            m = pattern.search(raw_header)
+            if not m:
+                continue
+
+            value = m.group(1).strip()
+            value = re.sub(r'\s+', ' ', value).strip()
+            value = value.strip(' :,-')
+            if not value:
+                continue
+
+            normalized_header_lines.append(label_text)
+            normalized_header_lines.append(value)
+
+        # Fall back to raw header lines if normalization produced nothing.
+        if normalized_header_lines:
+            header_text = "\n".join(normalized_header_lines)
+        else:
+            header_text = "\n".join(l for l in header_lines if l.strip())
+        body_text = "\n".join(l for l in body_lines if l.strip())
+
+        pages_text.append(
+            f"##PAGE_HEADER {page_num} FOR page##\n{header_text}\n##PAGE_HEADER_END##\n{body_text}"
+        )
 
     doc.close()
     return "\n".join(pages_text)
@@ -186,14 +299,35 @@ def _clean(text):
     out = []
     lines = text.splitlines()
     i = 0
+    in_page_header = False
+
     while i < len(lines):
         s = lines[i].strip()
+
+        # Explicit marker to stop header capture for PDF extraction.
+        if s.startswith('##PAGE_HEADER_END##'):
+            in_page_header = False
+            i += 1
+            continue
 
         # Always keep PAGE_HEADER markers
         if s.startswith('##PAGE_HEADER'):
             out.append(s)
+            in_page_header = True
             i += 1
             continue
+
+        if in_page_header:
+            # End page header capture as soon as we hit a section heading
+            if re.match(r'^(CHAPTER\s+\d+(?:\.\d+)*)(?:\s*[:\.\-]?\s*(.*))?$', s, re.IGNORECASE) or \
+               re.match(r'^(\d+(?:\.\d+)*\.?)(\s+\S+.*)?$', s):
+                in_page_header = False
+                # Fall through to section/content parsing for this line
+            else:
+                if s:
+                    out.append(s)
+                i += 1
+                continue
 
         # Drop metadata lines
         if _META_RE.search(s):

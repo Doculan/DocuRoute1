@@ -36,6 +36,152 @@ function computeDiff(oldText, newText) {
   return result;
 }
 
+function renderSectionContent(content) {
+  const lines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const blocks = [];
+  let tableRows = [];
+  let inTable = false;
+  let lastRow = null;
+
+  const flushTable = () => {
+    if (tableRows.length > 0) {
+      blocks.push({ type: "table", rows: tableRows });
+      tableRows = [];
+      lastRow = null;
+    }
+    inTable = false;
+  };
+
+  const parseRow = (line) => {
+    // Header document code lines like "FAM 8.03" should stay plain text.
+    // Otherwise our OCR/table heuristic can render them as a two-column table.
+    const raw = line.replace(/\t+/g, " ").replace(/\s+/g, " ").trim();
+    if (/^[A-Z]{2,}\s+\d+\.\d+\s*$/.test(raw)) return null;
+
+    let normalized = line
+      .replace(/\t+/g, " | ")
+      .replace(/\s{2,}/g, " | ")
+      .replace(/\s*\|\s*/g, " | ")
+      .trim();
+
+    if (normalized.includes(" | ")) {
+      const cells = normalized.split(" | ").map((c) => c.trim()).filter(Boolean);
+      if (cells.length >= 2) return cells;
+    }
+
+    // Role with numeric action appended e.g. 'BAC Secretariat/ Supply 16. Receives ...'
+    const alt = normalized.match(/^(.+?)\s+(\d+\.\s*.+)$/);
+    if (alt) {
+      return [alt[1].trim(), alt[2].trim()];
+    }
+
+    // Role then number after no delimiter (common OCR split)
+    const alt2 = normalized.match(/^(.+?)\s+(\d+)\s*(\..*)$/);
+    if (alt2) {
+      return [alt2[1].trim(), `${alt2[2]}${alt2[3]}`.trim()];
+    }
+
+    return null;
+  };
+
+  const isTableHeaderLine = (line) => /^(responsibility\s*\|\s*activity|activity|responsibility)$/i.test(line.replace(/\|/g, "").trim());
+
+  lines.forEach((line) => {
+    const normalizedLine = line.replace(/\s+/g, " ").trim();
+
+    if (isTableHeaderLine(normalizedLine)) {
+      inTable = true;
+      const headerRow = parseRow(normalizedLine);
+      if (headerRow) {
+        tableRows.push(headerRow);
+        lastRow = headerRow;
+      }
+      return;
+    }
+
+    if (inTable) {
+      const row = parseRow(line);
+      if (row) {
+        tableRows.push(row);
+        lastRow = row;
+        return;
+      }
+
+      if (lastRow) {
+        // Append continuation to the second cell at least
+        lastRow[1] = `${lastRow[1]} ${line}`.trim();
+        return;
+      }
+
+      flushTable();
+    }
+
+    // If a line looks like it can be the start of a table row even if we were not in table yet
+    const potentialRow = parseRow(line);
+    if (potentialRow) {
+      inTable = true;
+      tableRows.push(potentialRow);
+      lastRow = potentialRow;
+      return;
+    }
+
+    flushTable();
+    blocks.push({ type: "text", text: line });
+  });
+
+  flushTable();
+
+  return blocks.map((block, idx) => {
+    if (block.type === "table") {
+      return (
+        <table
+          key={idx}
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            marginBottom: "1rem",
+            tableLayout: "fixed",
+          }}
+        >
+          <tbody>
+            {block.rows.map((row, rIndex) => (
+              <tr key={rIndex}>
+                {row.map((cell, cIndex) => (
+                  <td
+                    key={cIndex}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      padding: "0.5rem 0.75rem",
+                      verticalAlign: "top",
+                      backgroundColor: rIndex === 0 ? "#f3f4f6" : "#fff",
+                      fontWeight: rIndex === 0 ? "700" : "500",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      maxWidth: cIndex === 0 ? "18%" : "82%",
+                    }}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
+
+    return (
+      <p key={idx} style={{ margin: "0.5rem 0", lineHeight: "1.7", fontSize: "0.96rem", color: "#111827" }}>
+        {block.text}
+      </p>
+    );
+  });
+}
+
 export default function Sections() {
   const [manuals, setManuals] = useState([]);
   const [selectedManual, setSelectedManual] = useState(null);
@@ -507,9 +653,7 @@ export default function Sections() {
                           </div>
                         </div>
                         <div style={styles.fullDocContent}>
-                          {s.content.split("\n").filter(l => l.trim()).map((line, i) => (
-                            <p key={i} style={styles.contentParagraph}>{line}</p>
-                          ))}
+                          {renderSectionContent(s.content)}
                         </div>
                         {idx < sections.length - 1 && <hr style={styles.sectionDivider} />}
                       </div>

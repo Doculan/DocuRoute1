@@ -30,6 +30,9 @@ def _split_into_sections(text, fallback_title='Full Document'):
     current_content = []
     current_page = None
     current_is_chapter = False
+    page_header_buffer = []
+    in_page_header = False
+    pending_page_header = False
 
     def flush():
         nonlocal current_subtitle, current_content, current_is_chapter
@@ -45,6 +48,22 @@ def _split_into_sections(text, fallback_title='Full Document'):
         current_subtitle = None
         current_content = []
         current_is_chapter = False
+
+    def flush_page_header():
+        nonlocal page_header_buffer, current_content, pending_page_header
+        if not page_header_buffer:
+            pending_page_header = False
+            return
+
+        if current_subtitle:
+            header_text_lines = [l for l in page_header_buffer if l.strip()]
+            if header_text_lines:
+                # Append at the current stream position (not prepend),
+                # so the output order stays closer to the PDF.
+                current_content.extend(header_text_lines)
+                current_content.append('')
+            page_header_buffer = []
+        pending_page_header = False
 
     # Pre-process: rejoin orphaned number lines with next line
     # e.g. "1.\nOBJECTIVES" → "1 OBJECTIVES" or "1.0\nOBJECTIVES" → "1.0 OBJECTIVES"
@@ -65,6 +84,11 @@ def _split_into_sections(text, fallback_title='Full Document'):
         joined_lines.append(s)
         i += 1
 
+    PAGE_HEADER_KEYS = re.compile(
+        r'VERSION NO|DOCUMENT NO|DOCUMENT NAME|MANUAL TITLE|REVISION NO|EFFECTIVITY DATE|PAGE NO|APPROVAL DATE|FAM|PROCUREMENT MANAGEMENT|FINANCE AND ADMINISTRATION MANUAL',
+        re.IGNORECASE
+    )
+
     for line in joined_lines:
         # Strip inline tags from every line first
         s = INLINE_TAGS.sub('', line.strip())
@@ -75,11 +99,32 @@ def _split_into_sections(text, fallback_title='Full Document'):
         # PAGE_HEADER marker
         ph = re.match(r'^##PAGE_HEADER\s+(\d+)\s+FOR\s+.+##$', s)
         if ph:
+            flush_page_header()
             current_page = int(ph.group(1))
+            in_page_header = True
             continue
 
-        # Drop leftover metadata lines
-        if re.search(r'VERSION NO\.|DOCUMENT NO\.|EFFECTIVITY DATE|MANUAL TITLE', s, re.IGNORECASE):
+        # If we are in page header mode, accumulate header text "as-is"
+        # until we hit the next section/chapter heading.
+        if in_page_header:
+            if s.startswith('##PAGE_HEADER_END##'):
+                in_page_header = False
+                pending_page_header = True
+                continue
+
+            # Stop page header when we hit a section heading or main content
+            if re.match(r'^(CHAPTER\s+\d+(?:\.\d+)*)(?:\s*[:\.\-]?\s*(.*))?$', s, re.IGNORECASE) or \
+               re.match(r'^(\d+(?:\.\d+)*\.?)(\s+\S+.*)?$', s):
+                in_page_header = False
+                pending_page_header = True
+                # fall through to section/content processing
+            else:
+                # Keep collecting header lines; don't terminate on "non-key" lines.
+                page_header_buffer.append(s)
+                continue
+
+        # Drop leftover metadata lines that are unrelated to content
+        if PAGE_HEADER_KEYS.search(s):
             continue
 
         # Drop artifact lines
@@ -98,6 +143,15 @@ def _split_into_sections(text, fallback_title='Full Document'):
                 current_subtitle = chapter_label
             current_is_chapter = True
             current_content = []
+            # If we buffered page-header lines right before this first section,
+            # append them at the correct stream position.
+            if pending_page_header and page_header_buffer:
+                header_text_lines = [l for l in page_header_buffer if l.strip()]
+                if header_text_lines:
+                    current_content.extend(header_text_lines)
+                    current_content.append('')
+                page_header_buffer = []
+                pending_page_header = False
             continue
 
         # NUMBERED section: headings like "1.", "1.0", "1.1", "1.1.1", etc.
@@ -113,17 +167,42 @@ def _split_into_sections(text, fallback_title='Full Document'):
                 flush()
                 current_subtitle = full_heading
                 current_content = []
+                # If we buffered page-header lines right before this first section,
+                # append them at the correct stream position.
+                if pending_page_header and page_header_buffer:
+                    header_text_lines = [l for l in page_header_buffer if l.strip()]
+                    if header_text_lines:
+                        current_content.extend(header_text_lines)
+                        current_content.append('')
+                    page_header_buffer = []
+                    pending_page_header = False
             else:
                 # Sub-section: add to current section's content
                 if current_subtitle:
+                    # If a page header is pending, attach it before the subsection heading.
+                    if pending_page_header and page_header_buffer:
+                        header_text_lines = [l for l in page_header_buffer if l.strip()]
+                        if header_text_lines:
+                            current_content.extend(header_text_lines)
+                            current_content.append('')
+                        page_header_buffer = []
+                        pending_page_header = False
                     current_content.append(full_heading)
                 continue
 
         # Everything else is content
         if current_subtitle is None:
             current_subtitle = fallback_title
+        if pending_page_header and page_header_buffer:
+            header_text_lines = [l for l in page_header_buffer if l.strip()]
+            if header_text_lines:
+                current_content.extend(header_text_lines)
+                current_content.append('')
+            page_header_buffer = []
+            pending_page_header = False
         current_content.append(s)
 
+    flush_page_header()
     flush()
 
     if not sections:
