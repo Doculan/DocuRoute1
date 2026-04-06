@@ -118,42 +118,60 @@ export default function StaffSections({ manualId, onBack }) {
   const [fileUrl, setFileUrl]         = useState(null);
   const [showOriginal, setShowOriginal] = useState(false);
 
+  // Search and Filter
+  const [searchQuery, setSearchQuery] = useState("");
+  const [tagFilter, setTagFilter]     = useState("");
+
   // Revision submit
   const [showRevForm, setShowRevForm] = useState(false);
   const [revFile, setRevFile]         = useState(null);
-  const [revNote, setRevNote]         = useState("");
   const [revLoading, setRevLoading]   = useState(false);
   const [revMsg, setRevMsg]           = useState("");
   const [revMsgType, setRevMsgType]   = useState("success");
   const fileInputRef                  = useRef();
+
+  // Text edit
+  const [isEditing, setIsEditing]     = useState(false);
+  const [editedContent, setEditedContent] = useState("");
+
+  // Merge proposal
+  const [mergeSource, setMergeSource] = useState(null);
+  const [mergeTarget, setMergeTarget] = useState(null);
+  const [mergeMsg, setMergeMsg]       = useState("");
+  const [mergeMsgType, setMergeMsgType] = useState("success");
 
   // My revisions for this section
   const [sectionRevisions, setSectionRevisions] = useState([]);
   const [revTab, setRevTab]           = useState("content"); // "content" | "revisions"
 
   useEffect(() => {
-    loadSections();
-  }, [manualId]);
+    const loadSections = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (tagFilter) params.append('tag', tagFilter);
+        if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
-  const loadSections = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${BASE_URL}/api/manuals/${manualId}/sections/`, getAuth());
-      setSections(res.data.sections || []);
-      setFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
-      // Try to derive manual title from first section
-      if (res.data.sections?.length > 0) {
-        setManual({ version: res.data.manual_version });
+        const url = `${BASE_URL}/api/manuals/${manualId}/sections/?${params.toString()}`;
+        const res = await axios.get(url, getAuth());
+
+        setSections(res.data.sections || []);
+        setFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
+        if (res.data.sections?.length > 0) {
+          setManual({ version: res.data.manual_version });
+          setIsFullDoc(true);
+        }
+      } catch (err) {
+        console.error("Error loading sections:", err);
+      } finally {
+        setLoading(false);
       }
-      if ((res.data.sections || []).length > 0) {
-        setIsFullDoc(true);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    };
+
+    if (manualId) {
+      loadSections();
     }
-  };
+  }, [manualId, tagFilter, searchQuery]);
 
   const handleSelectSection = (s) => {
     setActive(s);
@@ -162,6 +180,8 @@ export default function StaffSections({ manualId, onBack }) {
     setRevMsg("");
     setRevFile(null);
     setRevTab("content");
+    setIsEditing(false);
+    setEditedContent("");
     loadSectionRevisions(s.id);
   };
 
@@ -191,7 +211,6 @@ export default function StaffSections({ manualId, onBack }) {
       setRevMsg("Revision submitted successfully. An admin will review it.");
       setRevMsgType("success");
       setRevFile(null);
-      setRevNote("");
       setShowRevForm(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadSectionRevisions(activeSection.id);
@@ -201,6 +220,66 @@ export default function StaffSections({ manualId, onBack }) {
       setRevMsgType("error");
     } finally {
       setRevLoading(false);
+    }
+  };
+
+  const handleSubmitTextRevision = async () => {
+    if (!editedContent.trim()) {
+      setRevMsg("Edited content cannot be empty.");
+      setRevMsgType("error");
+      return;
+    }
+    setRevLoading(true);
+    setRevMsg("");
+    try {
+      await axios.post(
+        `${BASE_URL}/api/revisions/propose-text/${activeSection.id}/`,
+        { proposed_content: editedContent },
+        getAuth()
+      );
+      setRevMsg("Text revision proposed successfully. An admin will review it.");
+      setRevMsgType("success");
+      setIsEditing(false);
+      setEditedContent("");
+      loadSectionRevisions(activeSection.id);
+    } catch (err) {
+      const msg = err.response?.data?.error || "Submission failed. Try again.";
+      setRevMsg(msg);
+      setRevMsgType("error");
+    } finally {
+      setRevLoading(false);
+    }
+  };
+
+  const handleProposeMerge = async () => {
+    if (!mergeSource || !mergeTarget) {
+      setMergeMsg("Select both source and target sections for merge.");
+      return;
+    }
+    if (mergeSource.id === mergeTarget.id) {
+      setMergeMsg("Source and target cannot be the same section.");
+      return;
+    }
+
+    try {
+      setMergeMsg("Submitting merge proposal...");
+      await axios.post(
+        `${BASE_URL}/api/revisions/propose-merge/`,
+        {
+          source_section_id: mergeSource.id,
+          target_section_id: mergeTarget.id,
+        },
+        getAuth()
+      );
+      setMergeMsg("✅ Merge proposal submitted successfully.");
+      setMergeSource(null);
+      setMergeTarget(null);
+      setMergeMsgType("success");
+      loadSectionRevisions(activeSection.id);
+    } catch (err) {
+      const msg = err.response?.data?.error || "Merge proposal failed.";
+      setMergeMsg(msg);
+      setMergeMsgType("error");
     }
   };
 
@@ -240,6 +319,45 @@ export default function StaffSections({ manualId, onBack }) {
             {manual && <div style={styles.manualCardMeta}>Document v{manual.version}</div>}
           </div>
 
+          {/* Search and Filter Controls */}
+          <div style={styles.searchContainer}>
+            <div style={styles.searchRow}>
+              <input
+                type="text"
+                placeholder="Search sections..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={styles.searchInput}
+              />
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                style={styles.filterSelect}
+              >
+                <option value="">All Types</option>
+                <option value="POLICY">Policy</option>
+                <option value="PROCEDURE">Procedure</option>
+                <option value="RESPONSIBILITY">Responsibility</option>
+                <option value="WORKING INSTRUCTION">Working Instruction</option>
+                <option value="PAGE_HEADER">Page Header</option>
+                <option value="UNTAGGED">Untagged</option>
+              </select>
+            </div>
+            {(searchQuery || tagFilter) && (
+              <div style={styles.filterInfo}>
+                Showing {sections.length} of {sections.length} sections
+                {(searchQuery || tagFilter) && (
+                  <button
+                    onClick={() => { setSearchQuery(""); setTagFilter(""); }}
+                    style={styles.clearBtn}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Full document button */}
           {sections.length > 0 && (
             <div
@@ -261,7 +379,9 @@ export default function StaffSections({ manualId, onBack }) {
 
           {/* Section list */}
           {sections.length === 0 ? (
-            <p style={styles.emptyToc}>No sections available.</p>
+            <p style={styles.emptyToc}>
+              {sections.length === 0 ? "No sections available." : "No sections match your search."}
+            </p>
           ) : (
             sections.map((s) => {
               const tc = TAG_COLORS[s.tag] || TAG_COLORS.UNTAGGED;
@@ -358,12 +478,57 @@ export default function StaffSections({ manualId, onBack }) {
                     </span>
                   )}
                 </div>
-                <button
-                  style={{ ...styles.actionBtn, backgroundColor: "#4a47a3", color: "#fff" }}
-                  onClick={() => { setShowRevForm((v) => !v); setRevMsg(""); }}
-                >
-                  {showRevForm ? "✕ Cancel" : "📤 Submit Revision"}
-                </button>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    style={{ ...styles.actionBtn, backgroundColor: "#e53e3e", color: "#fff" }}
+                    onClick={() => {
+                      setIsEditing((v) => !v);
+                      if (!isEditing) setEditedContent(activeSection.content);
+                      setRevMsg("");
+                    }}
+                  >
+                    {isEditing ? "✕ Cancel Edit" : "✏️ Edit Text"}
+                  </button>
+                  <button
+                    style={{ ...styles.actionBtn, backgroundColor: "#4a47a3", color: "#fff" }}
+                    onClick={() => { setShowRevForm((v) => !v); setRevMsg(""); }}
+                  >
+                    {showRevForm ? "✕ Cancel" : "📤 Submit Revision"}
+                  </button>
+                  <button
+                    style={{ ...styles.actionBtn, backgroundColor: "#f59e0b", color: "#fff" }}
+                    onClick={() => {
+                      setMergeSource(activeSection);
+                      setMergeTarget(null);
+                      setMergeMsg("Select another section from the left panel as merge target.");
+                      setMergeMsgType("success");
+                    }}
+                  >
+                    🔀 Set Merge Source
+                  </button>
+                  <button
+                    style={{ ...styles.actionBtn, backgroundColor: mergeTarget ? "#16a34a" : "#38bdf8", color: "#fff" }}
+                    onClick={() => {
+                      if (mergeSource && activeSection && activeSection.id !== mergeSource.id) {
+                        setMergeTarget(activeSection);
+                        setMergeMsg(`Selected target "${activeSection.subtitle}". Click Propose Merge.`);
+                        setMergeMsgType("success");
+                      } else {
+                        setMergeMsg("Choose a target section different from source.");
+                        setMergeMsgType("error");
+                      }
+                    }}
+                  >
+                    📍 Set Merge Target
+                  </button>
+                  <button
+                    style={{ ...styles.actionBtn, backgroundColor: "#2563eb", color: "#fff" }}
+                    onClick={handleProposeMerge}
+                    disabled={!mergeSource || !mergeTarget || mergeSource.id === mergeTarget?.id}
+                  >
+                    ✅ Propose Merge
+                  </button>
+                </div>
               </div>
 
               {/* Revision success/error message */}
@@ -378,6 +543,20 @@ export default function StaffSections({ manualId, onBack }) {
                   fontSize: "0.9rem",
                 }}>
                   {revMsgType === "success" ? "✅ " : "❌ "}{revMsg}
+                </div>
+              )}
+
+              {mergeMsg && (
+                <div style={{
+                  padding: "0.65rem 0.9rem",
+                  borderRadius: "8px",
+                  marginBottom: "1rem",
+                  backgroundColor: mergeMsgType === "success" ? "#ecfedf" : "#fff0f0",
+                  color: mergeMsgType === "success" ? "#276749" : "#c53030",
+                  border: `1px solid ${mergeMsgType === "success" ? "#9ae6b4" : "#feb2b2"}`,
+                  fontSize: "0.86rem",
+                }}>
+                  {mergeMsgType === "success" ? "✅ " : "❌ "}{mergeMsg}
                 </div>
               )}
 
@@ -434,7 +613,43 @@ export default function StaffSections({ manualId, onBack }) {
 
               {revTab === "content" ? (
                 <div style={{ marginTop: "0.75rem" }}>
-                  <SectionContent content={activeSection.content} />
+                  {isEditing ? (
+                    <div>
+                      <textarea
+                        value={editedContent}
+                        onChange={(e) => setEditedContent(e.target.value)}
+                        style={{
+                          width: "100%",
+                          minHeight: "400px",
+                          padding: "0.75rem",
+                          border: "1px solid #d1d5db",
+                          borderRadius: "8px",
+                          fontFamily: "monospace",
+                          fontSize: "0.9rem",
+                          lineHeight: "1.5",
+                          resize: "vertical",
+                        }}
+                        placeholder="Enter the revised content..."
+                      />
+                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                        <button
+                          onClick={handleSubmitTextRevision}
+                          disabled={revLoading}
+                          style={{ ...styles.actionBtn, backgroundColor: revLoading ? "#999" : "#276749", color: "#fff", padding: "0.65rem 1.2rem", fontSize: "0.95rem" }}
+                        >
+                          {revLoading ? "Submitting..." : "Propose Changes"}
+                        </button>
+                        <button
+                          onClick={() => { setIsEditing(false); setEditedContent(""); }}
+                          style={{ ...styles.actionBtn, backgroundColor: "#e2e8f0", color: "#4a5568", padding: "0.65rem 1.2rem", fontSize: "0.95rem" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <SectionContent content={activeSection.content} />
+                  )}
                 </div>
               ) : (
                 <div style={{ marginTop: "0.75rem" }}>
@@ -519,4 +734,10 @@ const styles = {
   revNotes:       { fontSize: "0.85rem", color: "#555", backgroundColor: "#f7f8fc", borderRadius: "6px", padding: "0.5rem 0.75rem", marginBottom: "0.5rem" },
   diffPreview:    { fontSize: "0.78rem", backgroundColor: "#1a1a2e", color: "#a5b4fc", padding: "0.75rem", borderRadius: "6px", overflow: "auto", maxHeight: "200px", whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 },
   emptyRevisions: { textAlign: "center", padding: "2rem", color: "#888" },
+  searchContainer: { backgroundColor: "#f8f9fa", borderRadius: "8px", padding: "1rem", marginBottom: "0.5rem", border: "1px solid #e9ecef" },
+  searchRow: { display: "flex", gap: "0.5rem", marginBottom: "0.5rem" },
+  searchInput: { flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #ddd", borderRadius: "6px", fontSize: "0.9rem", outline: "none" },
+  filterSelect: { padding: "0.5rem 0.75rem", border: "1px solid #ddd", borderRadius: "6px", fontSize: "0.9rem", outline: "none", minWidth: "140px" },
+  filterInfo: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem", color: "#666" },
+  clearBtn: { padding: "0.25rem 0.5rem", backgroundColor: "#6c757d", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem" },
 };

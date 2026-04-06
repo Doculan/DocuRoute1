@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
 export default function UserManagement() {
@@ -9,14 +9,14 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
 
   const token = localStorage.getItem("access_token");
-  const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
+    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
     try {
       const [pendingRes, approvedRes] = await Promise.all([
-        axios.get("http://127.0.0.1:8000/api/admin/pending-users/", authHeaders),
-        axios.get("http://127.0.0.1:8000/api/admin/approved-users/", authHeaders),
+        axios.get("/api/admin/pending-users/", authHeaders),
+        axios.get("/api/admin/approved-users/", authHeaders),
       ]);
       setPendingUsers(pendingRes.data);
       setApprovedUsers(approvedRes.data);
@@ -25,9 +25,9 @@ export default function UserManagement() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   const showMessage = (msg) => {
     setMessage(msg);
@@ -37,7 +37,7 @@ export default function UserManagement() {
   const handleApprove = async (userId, username) => {
     try {
       await axios.patch(
-        `http://127.0.0.1:8000/api/admin/approve-user/${userId}/`,
+        `/api/admin/approve-user/${userId}/`,
         {}, authHeaders
       );
       showMessage(`✅ ${username} approved.`);
@@ -49,7 +49,7 @@ export default function UserManagement() {
     if (!confirm(`Reject and delete ${username}?`)) return;
     try {
       await axios.delete(
-        `http://127.0.0.1:8000/api/admin/reject-user/${userId}/`,
+        `/api/admin/reject-user/${userId}/`,
         authHeaders
       );
       showMessage(`🗑️ ${username} rejected.`);

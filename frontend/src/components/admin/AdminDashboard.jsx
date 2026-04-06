@@ -4,6 +4,7 @@ import Departments from "./Departments";
 import Manuals from "./Manuals";
 import Sections from "./Sections";
 import RevisionReview from "./RevisionReview";
+import SVMEvaluation from "./SVMEvaluation";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
 import departmentsIcon from '../../assets/nav/departments.svg';
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { key: "manuals",     icon: manualsIcon,     label: "Manuals" },
   { key: "sections",    icon: sectionsIcon,    label: "Sections" },
   { key: "review",   icon: reviewIcon,   label: "Revision Review" },
+  { key: "evaluation",  icon: reviewIcon,     label: "SVM Evaluation" },
 ];
 
 export default function AdminDashboard({ onLogout }) {
@@ -29,6 +31,7 @@ export default function AdminDashboard({ onLogout }) {
       case "manuals": return <Manuals />;
       case "sections": return <Sections />;
       case "review": return <RevisionReview />;
+      case "evaluation": return <SVMEvaluation />;
       default: return <UserManagement />;
     }
   };
@@ -76,8 +79,9 @@ export default function AdminDashboard({ onLogout }) {
 
       {/* Main Content */}
       <div style={styles.content}>
-        {renderPage()}
+          {renderPage()}
       </div>
+
     </div>
   );
 }

@@ -1,15 +1,24 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, BasePermission
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.utils import timezone
+from django.db.models import Q
 from .models import CustomUser, Department, Manual, ManualSection, ManualRevision, SectionHistory
 from ml.ocr_engine import extract_text
 from ml.svm_model import predict, predict_section
 import difflib
 import re
+
+
+class IsAdminRole(BasePermission):
+    """
+    Custom permission to only allow users with role='admin'.
+    """
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.role == 'admin'
 
 
 # ─── HELPERS ─────────────────────────────────────────────────
@@ -18,6 +27,13 @@ def _split_into_sections(text, fallback_title='Full Document'):
     # FIX #1: INLINE_TAGS are NO LONGER stripped from lines.
     # Semantic keywords (POLICY, PROCEDURE, RESPONSIBILITY, WORKING INSTRUCTION)
     # must be preserved so the SVM classifier can detect them.
+
+    # Clean markdown syntax for section detection
+    text = re.sub(r'^#+\s*\*+', '', text, flags=re.MULTILINE)  # Remove ## ** from start of lines
+    text = re.sub(r'\*+', '', text)  # Remove remaining **
+    text = re.sub(r'^\|', '', text, flags=re.MULTILINE)  # Remove table | at start
+    text = re.sub(r'\|$', '', text, flags=re.MULTILINE)  # Remove table | at end
+    text = re.sub(r'\s*\|\s*', ' ', text)  # Replace | with space in tables
 
     def is_top_level_number(num_tuple):
         # FIX #2: also treat bare single-digit sections ("1", "2") as top-level
@@ -91,15 +107,15 @@ def _split_into_sections(text, fallback_title='Full Document'):
 
     def flush():
         nonlocal current_subtitle, current_content, current_is_chapter
-        if current_subtitle and current_content:
+        # FIX #6: Create sections even if content is empty (e.g., "4.0 PROCEDURES" with no body)
+        if current_subtitle:
             content = '\n'.join(l for l in current_content if l.strip()).strip()
-            if content:
-                sections.append({
-                    'subtitle': current_subtitle,
-                    'content': content,
-                    'page_number': current_page,
-                    'is_chapter': current_is_chapter,
-                })
+            sections.append({
+                'subtitle': current_subtitle,
+                'content': content,  # May be empty string for heading-only sections
+                'page_number': current_page,
+                'is_chapter': current_is_chapter,
+            })
         current_subtitle = None
         current_content = []
         current_is_chapter = False
@@ -297,6 +313,45 @@ def _split_into_sections(text, fallback_title='Full Document'):
     return sections
 
 
+# ─── HELPERS: Parent Section Detection ─────────────────────────
+
+def _parse_section_number(subtitle):
+    """Extract section number from subtitle (e.g., '1.2' from '1.2 Introduction')."""
+    match = re.match(r'^(\d+(?:\.\d+)?)', subtitle)
+    return match.group(1) if match else None
+
+
+def _is_parent_section(sec_num):
+    """Check if section number is a parent (e.g., 1.0 or 1)."""
+    if not sec_num:
+        return False
+    parts = sec_num.split('.')
+    return len(parts) == 1 or (len(parts) == 2 and parts[1] == '0')
+
+
+def _find_parent_section_in_manual(manual, subtitle):
+    """Find parent section in manual based on section number hierarchy."""
+    current_num = _parse_section_number(subtitle)
+    if not current_num or _is_parent_section(current_num):
+        # This section is a parent itself or has no number
+        return None
+
+    # It's a child section - find its parent
+    if '.' in current_num:
+        parent_num = current_num.split('.')[0] + '.0'
+    else:
+        return None
+
+    # Look for parent section in database
+    sections = manual.manualsection_set.all().order_by('order')
+    for section in sections:
+        sec_subtitle_num = _parse_section_number(section.subtitle)
+        if sec_subtitle_num == parent_num:
+            return section
+
+    return None
+
+
 # ─── AUTH ────────────────────────────────────────────────────
 
 @api_view(['POST'])
@@ -356,7 +411,7 @@ def login(request):
 # ─── ADMIN: USERS ────────────────────────────────────────────
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def pending_users(request):
     users = CustomUser.objects.filter(is_approved=False)
     data = [{'id': u.id, 'username': u.username, 'email': u.email,
@@ -365,7 +420,7 @@ def pending_users(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def approved_users(request):
     users = CustomUser.objects.filter(is_approved=True)
     data = [{'id': u.id, 'username': u.username, 'email': u.email,
@@ -375,7 +430,7 @@ def approved_users(request):
 
 
 @api_view(['PATCH'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def approve_user(request, user_id):
     try:
         user = CustomUser.objects.get(id=user_id)
@@ -387,7 +442,7 @@ def approve_user(request, user_id):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def reject_user(request, user_id):
     try:
         user = CustomUser.objects.get(id=user_id)
@@ -408,7 +463,7 @@ def list_departments(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def create_department(request):
     name = request.data.get('name')
     if not name:
@@ -420,7 +475,7 @@ def create_department(request):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def delete_department(request, dept_id):
     try:
         dept = Department.objects.get(id=dept_id)
@@ -448,6 +503,8 @@ def staff_list_manuals(request):
         'uploaded_at': m.uploaded_at,
         'section_count': m.sections.count(),
         'version': m.version,
+        'revision': m.revision,
+        'display_status': f"v{m.version} rev{m.revision}",
     } for m in manuals]
     return Response(data)
 
@@ -476,23 +533,116 @@ def staff_my_revisions(request):
 # ─── MANUALS ─────────────────────────────────────────────────
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def list_manuals(request):
-    manuals = Manual.objects.all().order_by('-uploaded_at')
+    manuals = Manual.objects.all()
+
+    # Apply search filter with searchBy parameter
+    search_query = request.query_params.get('search')
+    search_by = request.query_params.get('searchBy', 'all')  # 'all', 'title', 'department', 'author'
+    
+    if search_query:
+        if search_by == 'all':
+            manuals = manuals.filter(
+                Q(title__icontains=search_query) | 
+                Q(department__name__icontains=search_query) |
+                Q(uploaded_by__username__icontains=search_query)
+            )
+        elif search_by == 'title':
+            manuals = manuals.filter(title__icontains=search_query)
+        elif search_by == 'department':
+            manuals = manuals.filter(department__name__icontains=search_query)
+        elif search_by == 'author':
+            manuals = manuals.filter(uploaded_by__username__icontains=search_query)
+
+    # Apply department filter
+    dept_filter = request.query_params.get('department')
+    if dept_filter:
+        manuals = manuals.filter(department_id=dept_filter)
+
+    # Apply author filter
+    author_filter = request.query_params.get('author')
+    if author_filter:
+        manuals = manuals.filter(uploaded_by__username__icontains=author_filter)
+
+    # Apply version filter
+    version_filter = request.query_params.get('version')
+    if version_filter:
+        try:
+            version = int(version_filter)
+            manuals = manuals.filter(version=version)
+        except ValueError:
+            pass
+
+    # Apply section count filter (minimum sections)
+    min_sections = request.query_params.get('minSections')
+    if min_sections:
+        try:
+            min_count = int(min_sections)
+            manual_ids = [m.id for m in manuals if m.sections.count() >= min_count]
+            manuals = manuals.filter(id__in=manual_ids)
+        except ValueError:
+            pass
+
+    # Apply sorting
+    sort_by = request.query_params.get('sortBy', 'newest')
+    if sort_by == 'oldest':
+        manuals = manuals.order_by('uploaded_at')
+    else:
+        manuals = manuals.order_by('-uploaded_at')
+
     data = [{
         'id': m.id,
         'title': m.title,
         'department': m.department.name if m.department else 'N/A',
+        'department_id': m.department.id if m.department else None,
         'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
         'uploaded_at': m.uploaded_at,
         'section_count': m.sections.count(),
         'version': m.version,
+        'revision': m.revision,
+        'display_status': f"v{m.version} rev{m.revision}",
     } for m in manuals]
     return Response(data)
 
 
+@api_view(['PATCH'])
+@permission_classes([IsAdminRole])
+def set_manual_version(request, manual_id):
+    try:
+        manual = Manual.objects.get(id=manual_id)
+    except Manual.DoesNotExist:
+        return Response({'error': 'Manual not found'}, status=404)
+
+    new_version = request.data.get('version')
+    if new_version is None:
+        return Response({'error': 'Version is required.'}, status=400)
+
+    try:
+        new_version_int = int(new_version)
+    except (TypeError, ValueError):
+        return Response({'error': 'Version must be an integer.'}, status=400)
+
+    if new_version_int <= 0:
+        return Response({'error': 'Version must be positive.'}, status=400)
+
+    if new_version_int == manual.version:
+        return Response({'message': 'Version unchanged.'}, status=200)
+
+    manual.version = new_version_int
+    manual.revision = 0
+    manual.save()
+
+    return Response({
+        'id': manual.id,
+        'version': manual.version,
+        'revision': manual.revision,
+        'display_status': f"v{manual.version} rev{manual.revision}",
+    }, status=200)
+
+
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def upload_manual(request):
     title = request.data.get('title')
     department_id = request.data.get('department_id')
@@ -563,7 +713,7 @@ def upload_manual(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def preview_manual_sections(request):
     """Upload a file and return computed sectioning without saving sections."""
     title = request.data.get('title')
@@ -596,21 +746,64 @@ def preview_manual_sections(request):
     preview = []
     if extracted_text.strip():
         blocks = _split_into_sections(extracted_text, title)
+        
+        # Helper: Extract section number from subtitle
+        def parse_section_number(subtitle):
+            import re
+            match = re.match(r'^(\d+(?:\.\d+)?)', subtitle)
+            return match.group(1) if match else None
+        
+        # Helper: Check if section number is a parent (e.g., 1.0 or 1)
+        def is_parent_section(sec_num):
+            if not sec_num:
+                return False
+            parts = sec_num.split('.')
+            return len(parts) == 1 or (len(parts) == 2 and parts[1] == '0')
+        
+        # Helper: Get parent index for a child section
+        def find_parent_index(current_num, all_sections, current_idx):
+            if not current_num:
+                return None
+            if not is_parent_section(current_num):
+                # Skip invalid or unnumbered sections, or handle child sections
+                if '.' in current_num:
+                    parent_num = current_num.split('.')[0] + '.0'
+                else:
+                    return None
+                
+                # Look backwards to find the parent
+                for i in range(current_idx - 1, -1, -1):
+                    prev_subtitle = all_sections[i].get('subtitle', '')
+                    prev_num = parse_section_number(prev_subtitle)
+                    if prev_num == parent_num:
+                        return i
+            return None
+        
+        # First pass: collect all sections
         for idx, block in enumerate(blocks):
             try:
                 tag = predict_section(block['content']) if block['content'].strip() else 'UNTAGGED'
             except Exception:
                 tag = 'UNTAGGED'
-
-            preview.append({
+            
+            block_data = {
                 'preview_index': idx,
                 'subtitle': block['subtitle'],
                 'content': block['content'],
                 'tag': tag,
                 'page_number': block.get('page_number'),
                 'is_chapter': block.get('is_chapter', False),
-                'parent_index': block.get('parent_index'),
-            })
+                'parent_index': None,  # Will be set in second pass
+            }
+            preview.append(block_data)
+        
+        # Second pass: set parent_index for subsections
+        for idx, sec in enumerate(preview):
+            sec_num = parse_section_number(sec['subtitle'])
+            parent_idx = find_parent_index(sec_num, preview, idx)
+            if parent_idx is not None:
+                sec['parent_index'] = parent_idx
+    
 
     # `manual.file.url` can raise if the file is not yet saved or storage is misconfigured.
     file_url = None
@@ -634,7 +827,7 @@ def preview_manual_sections(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def confirm_manual_sections(request, manual_id):
     """Create sections for a manual from a reviewed preview list."""
     try:
@@ -665,7 +858,7 @@ def confirm_manual_sections(request, manual_id):
         )
         created_sections.append(section)
 
-    manual.version += 1
+    manual.revision += 1
     manual.save()
 
     return Response({
@@ -675,7 +868,7 @@ def confirm_manual_sections(request, manual_id):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def delete_manual(request, manual_id):
     try:
         manual = Manual.objects.get(id=manual_id)
@@ -686,7 +879,7 @@ def delete_manual(request, manual_id):
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def ocr_extract_manual(request, manual_id):
     try:
         manual = Manual.objects.get(id=manual_id)
@@ -724,10 +917,23 @@ def list_sections(request, manual_id):
         if manual.department != request.user.department:
             return Response({'error': 'Access denied'}, status=403)
 
-    pending = request.query_params.get('pending')
     sections_qs = manual.sections.all().order_by('order')
+
+    # Apply filters
+    tag_filter = request.query_params.get('tag')
+    if tag_filter:
+        sections_qs = sections_qs.filter(tag=tag_filter)
+
+    pending = request.query_params.get('pending')
     if pending and pending.lower() in ('1', 'true', 'yes'):
         sections_qs = sections_qs.filter(is_reviewed=False)
+
+    # Apply search
+    search_query = request.query_params.get('search')
+    if search_query:
+        sections_qs = sections_qs.filter(
+            Q(subtitle__icontains=search_query) | Q(content__icontains=search_query)
+        )
 
     data = [{
         'id': s.id,
@@ -746,6 +952,8 @@ def list_sections(request, manual_id):
 
     return Response({
         'manual_version': manual.version,
+        'manual_revision': manual.revision,
+        'display_status': f"v{manual.version} rev{manual.revision}",
         'sections': data,
         'file_url': manual.file.url if manual.file else None,
         'file_name': manual.file.name if manual.file else None,
@@ -771,6 +979,16 @@ def review_section(request, section_id):
     section.tag = request.data.get('tag', section.tag)
     section.page_number = request.data.get('page_number', section.page_number)
     section.order = request.data.get('order', section.order)
+
+    # Handle parent_id: staff can override, otherwise auto-detect if subtitle changed
+    parent_id = request.data.get('parent_id')
+    if parent_id:
+        try:
+            section.parent = ManualSection.objects.get(id=parent_id, manual=section.manual)
+        except ManualSection.DoesNotExist:
+            return Response({'error': 'Parent section not found in this manual'}, status=400)
+    elif 'subtitle' in request.data:
+        section.parent = _find_parent_section_in_manual(section.manual, section.subtitle)
 
     approve = request.data.get('approve', True)
     if isinstance(approve, str):
@@ -801,11 +1019,12 @@ def review_section(request, section_id):
         'is_reviewed': section.is_reviewed,
         'reviewed_at': section.reviewed_at,
         'reviewed_by': section.reviewed_by.username if section.reviewed_by else None,
+        'parent_id': section.parent.id if section.parent else None,
     })
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def create_section(request, manual_id):
     try:
         manual = Manual.objects.get(id=manual_id)
@@ -825,13 +1044,28 @@ def create_section(request, manual_id):
     except Exception:
         tag = 'UNTAGGED'
 
+    # Determine parent: admin can override, otherwise auto-detect from subtitle
+    parent = None
+    parent_id = request.data.get('parent_id')
+
+    if parent_id:
+        # Admin explicitly specified parent
+        try:
+            parent = ManualSection.objects.get(id=parent_id, manual=manual)
+        except ManualSection.DoesNotExist:
+            return Response({'error': 'Parent section not found in this manual'}, status=400)
+    else:
+        # Auto-detect parent from section numbering
+        parent = _find_parent_section_in_manual(manual, subtitle)
+
     section = ManualSection.objects.create(
         manual=manual,
         subtitle=subtitle,
         content=content,
         tag=tag,
         page_number=page_number,
-        order=order
+        order=order,
+        parent=parent,
     )
 
     return Response({
@@ -839,12 +1073,13 @@ def create_section(request, manual_id):
         'subtitle': section.subtitle,
         'tag': section.tag,
         'page_number': section.page_number,
-        'order': section.order
+        'order': section.order,
+        'parent_id': parent.id if parent else None,
     }, status=201)
 
 
 @api_view(['PATCH'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def update_section(request, section_id):
     try:
         section = ManualSection.objects.get(id=section_id)
@@ -866,16 +1101,31 @@ def update_section(request, section_id):
     section.order = request.data.get('order', section.order)
     section.version += 1
 
-    if 'content' in request.data:
+    # Allow manual tag override, otherwise auto-tag if content changed
+    if 'tag' in request.data:
+        section.tag = request.data['tag']
+    elif 'content' in request.data:
         try:
             section.tag = predict_section(section.content)
         except Exception:
             section.tag = 'UNTAGGED'
 
+    # Handle parent_id: admin can override, otherwise auto-detect from subtitle if it changed
+    parent_id = request.data.get('parent_id')
+    if parent_id:
+        # Admin explicitly set parent
+        try:
+            section.parent = ManualSection.objects.get(id=parent_id, manual=section.manual)
+        except ManualSection.DoesNotExist:
+            return Response({'error': 'Parent section not found in this manual'}, status=400)
+    elif 'subtitle' in request.data:
+        # Subtitle changed - auto-detect parent from new subtitle
+        section.parent = _find_parent_section_in_manual(section.manual, section.subtitle)
+
     section.save()
 
     manual = section.manual
-    manual.version += 1
+    manual.revision += 1
     manual.save()
 
     return Response({
@@ -883,11 +1133,12 @@ def update_section(request, section_id):
         'tag': section.tag,
         'version': section.version,
         'manual_version': manual.version,
+        'parent_id': section.parent.id if section.parent else None,
     })
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def delete_section(request, section_id):
     try:
         section = ManualSection.objects.get(id=section_id)
@@ -981,7 +1232,7 @@ def merge_sections(request, section_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def section_history(request, section_id):
     try:
         section = ManualSection.objects.get(id=section_id)
@@ -1052,8 +1303,91 @@ def upload_revision(request, section_id):
     }, status=201)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def propose_text_revision(request, section_id):
+    try:
+        section = ManualSection.objects.get(id=section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Section not found'}, status=404)
+
+    if section.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+
+    proposed_content = request.data.get('proposed_content')
+    if not proposed_content:
+        return Response({'error': 'Proposed content is required'}, status=400)
+
+    diff = "\n".join(difflib.unified_diff(
+        section.content.splitlines(),
+        proposed_content.splitlines(),
+        lineterm=""
+    ))
+
+    revision = ManualRevision.objects.create(
+        section=section,
+        submitted_by=request.user,
+        proposed_content=proposed_content,
+        diff_text=diff,
+        status='pending'
+    )
+
+    return Response({
+        'revision_id': revision.id,
+        'diff_preview': diff[:500],
+        'status': revision.status
+    }, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def propose_merge(request):
+    source_section_id = request.data.get('source_section_id')
+    target_section_id = request.data.get('target_section_id')
+
+    if not source_section_id or not target_section_id:
+        return Response({'error': 'source_section_id and target_section_id are required.'}, status=400)
+
+    try:
+        source = ManualSection.objects.get(id=source_section_id)
+        target = ManualSection.objects.get(id=target_section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Section not found'}, status=404)
+
+    if target.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+
+    if source.manual.id != target.manual.id:
+        return Response({'error': 'Cannot merge sections from different manuals.'}, status=400)
+
+    if source.id == target.id:
+        return Response({'error': 'Source and target must be different sections.'}, status=400)
+
+    merged_content = f"{target.content}\n\n{source.content}".strip()
+    diff = "\n".join(difflib.unified_diff(
+        target.content.splitlines(),
+        merged_content.splitlines(),
+        lineterm=""
+    ))
+
+    revision = ManualRevision.objects.create(
+        section=target,
+        submitted_by=request.user,
+        merge_section_ids=[source.id],
+        merge_type='merge',
+        diff_text=diff,
+        status='pending'
+    )
+
+    return Response({
+        'revision_id': revision.id,
+        'diff_preview': diff[:500],
+        'status': revision.status
+    }, status=201)
+
+
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def list_revisions(request):
     status_filter = request.query_params.get('status', None)
     revisions = ManualRevision.objects.all().order_by('-submitted_at')
@@ -1063,19 +1397,27 @@ def list_revisions(request):
 
     data = [{
         'id': r.id,
+        'manual_id': r.section.manual.id if r.section and r.section.manual else None,
+        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
+        'department': r.section.manual.department.name if r.section and r.section.manual and r.section.manual.department else 'N/A',
+        'section_id': r.section.id if r.section else None,
         'section': r.section.subtitle if r.section else 'N/A',
-        'manual': r.section.manual.title if r.section else 'N/A',
-        'department': r.section.manual.department.name if r.section and r.section.manual.department else 'N/A',
+        'section_content': r.section.content if r.section else '',
+        'proposed_content': r.proposed_content,
+        'uploaded_file': r.uploaded_file.url if r.uploaded_file else None,
+        'merge_section_ids': r.merge_section_ids,
+        'merge_type': r.merge_type,
         'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
         'submitted_at': r.submitted_at,
         'status': r.status,
-        'diff_preview': r.diff_text[:300]
+        'diff_preview': r.diff_text[:300],
+        'diff_text': r.diff_text,
     } for r in revisions]
     return Response(data)
 
 
 @api_view(['PATCH'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminRole])
 def review_revision(request, revision_id):
     try:
         revision = ManualRevision.objects.get(id=revision_id)
@@ -1092,20 +1434,45 @@ def review_revision(request, revision_id):
     revision.save()
 
     if new_status == 'approved':
-        try:
-            with revision.uploaded_file.open('rb') as f:
-                file_bytes = f.read()
-            new_text = extract_text(file_bytes, revision.uploaded_file.name)
-            section = revision.section
+        section = revision.section
 
-            SectionHistory.objects.create(
-                section=section,
-                version=section.version,
-                subtitle=section.subtitle,
-                content=section.content,
-                tag=section.tag,
-                edited_by=revision.submitted_by,
-            )
+        SectionHistory.objects.create(
+            section=section,
+            version=section.version,
+            subtitle=section.subtitle,
+            content=section.content,
+            tag=section.tag,
+            edited_by=revision.submitted_by,
+        )
+
+        if revision.merge_type == 'merge' and revision.merge_section_ids:
+            # Merge source section(s) content into target section and remove source sections
+            source_sections = ManualSection.objects.filter(id__in=revision.merge_section_ids, manual=section.manual)
+            merged_content = section.content
+            for source_section in source_sections:
+                merged_content = f"{merged_content}\n\n{source_section.content}".strip()
+
+            section.content = merged_content
+            try:
+                section.tag = predict_section(merged_content)
+            except Exception:
+                section.tag = 'UNTAGGED'
+            section.version += 1
+            section.save()
+
+            # delete source sections
+            source_sections.delete()
+
+        else:
+            if revision.uploaded_file:
+                try:
+                    with revision.uploaded_file.open('rb') as f:
+                        file_bytes = f.read()
+                    new_text = extract_text(file_bytes, revision.uploaded_file.name)
+                except Exception:
+                    new_text = revision.proposed_content or section.content
+            else:
+                new_text = revision.proposed_content or section.content
 
             section.content = new_text
             try:
@@ -1115,11 +1482,104 @@ def review_revision(request, revision_id):
             section.version += 1
             section.save()
 
-            manual = section.manual
-            manual.version += 1
-            manual.save()
-
-        except Exception:
-            pass
+        manual = section.manual
+        manual.revision += 1
+        manual.save()
 
     return Response({'message': f'Revision {new_status}.', 'status': revision.status})
+
+
+# ─── SVM MODEL EVALUATION ─────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Allow anyone to view evaluation results
+def evaluate_svm_model(request):
+    """
+    Run SVM model evaluation and return comprehensive metrics.
+    This endpoint runs the evaluation on the expanded dataset and returns
+    performance metrics that can be displayed in the frontend.
+    """
+    try:
+        # Import evaluation components
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+        from expanded_dataset import texts, labels
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.svm import LinearSVC
+        from sklearn.model_selection import train_test_split, cross_val_score
+        from sklearn.metrics import (
+            classification_report, confusion_matrix,
+            accuracy_score, f1_score
+        )
+        from collections import Counter
+
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            texts, labels, test_size=0.2, random_state=42, stratify=labels
+        )
+
+        # Vectorize
+        vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=5000)
+        X_train_vec = vectorizer.fit_transform(X_train)
+        X_test_vec = vectorizer.transform(X_test)
+
+        # Train model
+        model = LinearSVC(class_weight='balanced', max_iter=2000, random_state=42)
+        model.fit(X_train_vec, y_train)
+
+        # Evaluate
+        y_pred = model.predict(X_test_vec)
+
+        # Calculate metrics
+        accuracy = accuracy_score(y_test, y_pred)
+        f1_weighted = f1_score(y_test, y_pred, average='weighted')
+        f1_macro = f1_score(y_test, y_pred, average='macro')
+
+        # Per-class F1 scores
+        f1_per_class = f1_score(y_test, y_pred, average=None)
+        class_names = sorted(set(labels))
+
+        # Cross-validation
+        cv_scores = cross_val_score(model, X_train_vec, y_train, cv=5, scoring='f1_weighted')
+
+        # Confusion matrix
+        cm = confusion_matrix(y_test, y_pred)
+
+        # Prepare response data
+        evaluation_results = {
+            'dataset_info': {
+                'total_samples': len(texts),
+                'categories': class_names,
+                'training_samples': len(X_train),
+                'test_samples': len(X_test)
+            },
+            'overall_metrics': {
+                'accuracy': round(accuracy * 100, 1),
+                'f1_weighted': round(f1_weighted * 100, 1),
+                'f1_macro': round(f1_macro * 100, 1)
+            },
+            'per_class_f1': {
+                class_names[i]: round(f1_per_class[i] * 100, 1)
+                for i in range(len(class_names))
+            },
+            'cross_validation': {
+                'mean_f1': round(cv_scores.mean() * 100, 1),
+                'std_f1': round(cv_scores.std() * 100, 1),
+                'scores': [round(score * 100, 1) for score in cv_scores]
+            },
+            'confusion_matrix': {
+                'labels': class_names,
+                'matrix': cm.tolist()
+            },
+            'assessment': 'MODERATE' if accuracy >= 0.6 else 'NEEDS IMPROVEMENT'
+        }
+
+        return Response(evaluation_results)
+
+    except Exception as e:
+        return Response({
+            'error': f'Evaluation failed: {str(e)}',
+            'message': 'Unable to run SVM evaluation at this time'
+        }, status=500)

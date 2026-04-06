@@ -5,6 +5,7 @@ from PIL import Image
 import pytesseract
 from docx import Document
 import mammoth
+import pymupdf4llm
 
 
 HEADER_KEYS = {
@@ -235,28 +236,33 @@ def _extract_pdf(file_bytes):
         for kind, x0, y0, t in elements:
             is_keyword_header = bool(header_key_re.search(t))
 
-            # FIX (mega-block): if a block starts with a section number like
-            # "1.0 OBJECTIVES" or "3.1 All government..." it is body content
-            # even if its y-coordinate is inside the 22% position zone.
-            # PyMuPDF sometimes groups the first section heading into one giant
-            # block that starts just below the header table.
+            # FIX: if a block starts with a section number like
+            # "1.0 OBJECTIVES", "3.1", "4.0 LIST OF FORMS", "5.0" etc.
+            # it is ALWAYS body content, NEVER a header.
+            # This pattern matches: digit(s), optional decimal, optional digits, optional space, optional text
             starts_with_section_number = bool(
-                re.match(r'^\d+\.?\d*\s+[A-Z]', t.strip())
+                re.match(r'^\d+(?:\.\d+)*\s*(?:\S|$)', t.strip())
             )
 
-            is_position_header = (
-                (y0 <= page_height * 0.22)
-                and not body_has_started
-                and not starts_with_section_number
-            )
-
-            is_header = is_keyword_header or is_position_header
-
-            if is_header:
-                header_lines.append(t)
-            else:
+            # If it's a section number, it's always body content (highest priority)
+            if starts_with_section_number:
                 body_has_started = True
                 body_lines.append(t)
+            elif is_keyword_header:
+                # Keyword headers (VERSION NO, DOCUMENT NO, etc.) always go to header
+                header_lines.append(t)
+            else:
+                # Only apply Y-position check to non-section, non-keyword lines
+                is_position_header = (
+                    (y0 <= page_height * 0.10)
+                    and not body_has_started
+                )
+                
+                if is_position_header:
+                    header_lines.append(t)
+                else:
+                    body_has_started = True
+                    body_lines.append(t)
 
         # Fallback: if header detection failed, keep the earliest blocks as "header".
         if not header_lines and elements:
@@ -319,18 +325,25 @@ def _extract_pdf(file_bytes):
 # ── CLEANING ─────────────────────────────────────────────────
 
 def _clean(text):
-    """Clean extracted text.
-
-    KEY CHANGE (Fix #1): POLICY / PROCEDURE / RESPONSIBILITY / WORKING INSTRUCTION
-    keywords are NO LONGER stripped from content lines.  They are semantic signals
-    that the SVM classifier relies on.  Only *standalone* tag-only lines (a bare
-    line containing nothing but e.g. "POLICY") are dropped.
+    """Clean extracted text - CONSERVATIVE approach.
+    
+    Only removes DEFINITIVELY metadata/page artifacts:
+    - ##PAGE_HEADER## blocks (document metadata)
+    - "X of Y" page numbers
+    
+    PRESERVES everything else including:
+    - Content with photos/demos mentioned
+    - Table formatting
+    - All semantic keywords (POLICY, PROCEDURE, RESPONSIBILITY, etc.)
+    - Footer signatures (last page seal)
+    
+    Rationale: Aggressive cleaning removes useful content. Better to keep
+    and let ML classifier and users decide than to lose legitimate data.
     """
     out = []
     lines = text.splitlines()
     i = 0
-    last_footer_block = None
-
+    
     while i < len(lines):
         s = lines[i].strip()
 
@@ -338,78 +351,43 @@ def _clean(text):
             i += 1
             continue
 
-        # -- Page-header markers: DISCARD entirely --
-        # The ##PAGE_HEADER## block is document metadata (version no, title,
-        # doc name, etc.) repeated on every page. It is NOT body content and
-        # must not appear in section text. Skip it completely.
+        # -- ONLY remove PAGE_HEADER metadata blocks --
+        # These are document metadata (VERSION NO, DOCUMENT NO) repeated on every page
+        # NOT body content
         if s.startswith('##PAGE_HEADER'):
             i += 1
             while i < len(lines) and not lines[i].strip().startswith('##PAGE_HEADER_END##'):
-                i += 1  # skip every metadata line
+                i += 1  # skip metadata
             if i < len(lines) and lines[i].strip().startswith('##PAGE_HEADER_END##'):
                 i += 1
             continue
 
-        # ── Footer / signature blocks ────────────────────────
-        if 'PREPARED BY' in s or 'APPROVED BY' in s:
-            footer_block = [s]
-            i += 1
-            while i < len(lines) and len(footer_block) < 10:
-                next_line = lines[i].strip()
-                if not next_line:
-                    break
-                footer_block.append(next_line)
-                if 'University President' in next_line or 'Administration and Finance' in next_line:
-                    i += 1
-                    break
-                i += 1
-            footer_text = ' | '.join(footer_block)
-            if footer_text != last_footer_block:
-                for line in footer_block:
-                    out.append(line)
-                last_footer_block = footer_text
-            continue
-
-        # ── "X of Y" page number lines ───────────────────────
+        # -- Remove "X of Y" page number lines only --
+        # These are pure page numbering, not content
         if re.match(r'^\d+\s+of\s+\d+$', s):
             i += 1
             continue
 
-        # ── Disclaimer lines ─────────────────────────────────
-        if 'The use, disclosure, reproduction' in s and 'strictly prohibited' in s:
+        # -- Remove common disclaimer/legal lines (very specific match) --
+        if 'use, disclosure, reproduction' in s.lower() and 'strictly prohibited' in s.lower():
             i += 1
             continue
 
-        # ── Drop lines that are ONLY a tag word (e.g. a bare "POLICY" heading line)
-        # FIX #1: fullmatch only — mixed lines like "POLICY: all staff must..." are kept
-        if _STRIP_RE.fullmatch(s):
-            i += 1
-            continue
-
-        # ── Drop footer names / designations ────────────────
-        if _FOOTER_RE.search(s):
-            i += 1
-            continue
-
-        # ── Drop legacy TABLE_START / TABLE_END marker lines ──
-        # These were emitted by older versions of the extractor and
-        # have no meaning in the current pipeline.
+        # -- Remove legacy marker lines only --
         if s in ('||TABLE_START||', '||TABLE_END||'):
             i += 1
             continue
 
-        # ── Drop pure artifact lines ─────────────────────────
-        if re.match(r'^[\s:|\-\.]+$', s):
-            i += 1
-            continue
-
-        # ── Normalize whitespace only — DO NOT strip semantic keywords ──
+        # -- Normalize whitespace but KEEP everything else --
+        # Multiple spaces → single space (preserves readability)
         s = re.sub(r'\s{2,}', ' ', s).strip()
+        
         if s:
             out.append(s)
 
         i += 1
 
+    # Collapse excessive blank lines (4+ → 2-3)
     result = '\n'.join(out)
     result = re.sub(r'\n{4,}', '\n\n\n', result)
     return result.strip()
@@ -427,7 +405,15 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
             result = mammoth.extract_raw_text(f)
         return _clean(result.value)
     elif ext == 'pdf':
-        return _clean(_extract_pdf(file_bytes))
+        # Use pymupdf4llm for improved layout analysis
+        try:
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            md_text = pymupdf4llm.to_markdown(doc)
+            doc.close()
+            return _clean(md_text)
+        except Exception:
+            # Fallback to old method if pymupdf4llm fails
+            return _clean(_extract_pdf(file_bytes))
     elif ext in ['jpg', 'jpeg', 'png']:
         img = Image.open(io.BytesIO(file_bytes))
         return _clean(pytesseract.image_to_string(img, config="--psm 6"))

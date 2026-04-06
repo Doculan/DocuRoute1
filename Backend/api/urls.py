@@ -7,7 +7,8 @@ from .views import (
     list_manuals, upload_manual, preview_manual_sections, confirm_manual_sections, delete_manual, ocr_extract_manual,
     list_sections, create_section, update_section, delete_section, review_section, merge_sections, review_delete_section,
     section_history,
-    upload_revision, list_revisions, review_revision,
+    upload_revision, propose_text_revision, propose_merge, list_revisions, review_revision, set_manual_version,
+    evaluate_svm_model,
 )
 
 urlpatterns = [
@@ -50,6 +51,12 @@ urlpatterns = [
 
     # Revisions
     path('revisions/upload/<int:section_id>/', upload_revision),
+    path('revisions/propose-text/<int:section_id>/', propose_text_revision),
+    path('revisions/propose-merge/', propose_merge),
+    path('manuals/<int:manual_id>/set-version/', set_manual_version),
     path('admin/revisions/', list_revisions),
     path('admin/revisions/<int:revision_id>/review/', review_revision),
+
+    # SVM Evaluation
+    path('evaluate/svm/', evaluate_svm_model),
 ]

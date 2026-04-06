@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-const BASE_URL = "http://127.0.0.1:8000";
-
 const TAG_COLORS = {
   POLICY: { bg: "#ebf8ff", color: "#2b6cb0" },
   PROCEDURE: { bg: "#f0fff4", color: "#276749" },
@@ -230,8 +228,8 @@ export default function Sections() {
   const [selectedManual, setSelectedManual] = useState(null);
   const [sections, setSections] = useState([]);
   const [manualVersion, setManualVersion] = useState(1);
+  const [manualRevision, setManualRevision] = useState(0);
   const [manualFileUrl, setManualFileUrl] = useState(null);
-  const [manualFileName, setManualFileName] = useState(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
   const [isFullDoc, setIsFullDoc] = useState(false);
@@ -243,17 +241,37 @@ export default function Sections() {
   const [mergeTarget, setMergeTarget] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);  // ← NEW: Track history loading
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [history, setHistory] = useState([]);
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [diffLines, setDiffLines] = useState([]);
   const [showDiff, setShowDiff] = useState(false);
+  const [expandedSections, setExpandedSections] = useState(new Set());  // ← NEW: Track expanded parent sections
+
+  // Helper: Get all children for a parent section
+  const getChildren = (parentId, allSections) => {
+    return allSections.filter(s => s.parent_id === parentId);
+  };
+
+  const toggleExpandSection = (sectionId) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionId)) {
+        newSet.delete(sectionId);
+      } else {
+        newSet.add(sectionId);
+      }
+      return newSet;
+    });
+  };
 
   useEffect(() => {
-    axios.get(`${BASE_URL}/api/manuals/`, getAuth())
+    axios.get(`/api/manuals/`, getAuth())
       .then((res) => setManuals(res.data))
       .catch(console.error);
   }, []);
+
+  const BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
   const fetchSections = async (manualId) => {
     setLoading(true);
@@ -264,15 +282,16 @@ export default function Sections() {
     setShowOriginal(false);
     try {
       const res = await axios.get(
-        `${BASE_URL}/api/manuals/${manualId}/sections/`,
+        `/api/manuals/${manualId}/sections/`,
         getAuth()
       );
       const sectionList = res.data.sections;
       const docVersion = res.data.manual_version;
+      const docRevision = res.data.manual_revision || 0;
       setSections(sectionList);
       setManualVersion(docVersion);
-      setManualFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
-      setManualFileName(res.data.file_name);
+      setManualRevision(docRevision);
+      setManualFileUrl(res.data.file_url ? `${BACKEND_BASE_URL}${res.data.file_url}` : null);
       if (sectionList.length > 0) setIsFullDoc(true);
     } catch (err) {
       console.error(err);
@@ -285,7 +304,7 @@ export default function Sections() {
     setLoadingHistory(true);  // ← NEW: Show loading indicator
     try {
       const res = await axios.get(
-        `${BASE_URL}/api/sections/${sectionId}/history/`,
+        `/api/sections/${sectionId}/history/`,
         getAuth()
       );
       setHistory(res.data);
@@ -308,7 +327,6 @@ export default function Sections() {
       setSections([]);
       setManualVersion(1);
       setManualFileUrl(null);
-      setManualFileName(null);
       setActiveSection(null);
       setIsFullDoc(false);
       return;
@@ -358,7 +376,7 @@ export default function Sections() {
     if (!selectedManual) return;
     try {
       const res = await axios.post(
-        `${BASE_URL}/api/manuals/${selectedManual.id}/sections/create/`,
+        `/api/manuals/${selectedManual.id}/sections/create/`,
         {
           subtitle: form.subtitle,
           content: form.content,
@@ -394,16 +412,17 @@ export default function Sections() {
     e.preventDefault();
     try {
       const res = await axios.patch(
-        `${BASE_URL}/api/sections/${editingSection}/update/`,
+        `/api/sections/${editingSection}/update/`,
         {
           subtitle: editForm.subtitle,
           content: editForm.content,
           page_number: editForm.page_number || null,
           order: editForm.order,
+          tag: editForm.tag,
         },
         getAuth()
       );
-      showMsg(`✅ Section updated — Section v${res.data.version} · Document v${res.data.manual_version} — Re-tagged: ${res.data.tag}`);
+      showMsg(`✅ Section updated — Section v${res.data.version} · Document v${res.data.manual_version} — Tag: ${res.data.tag}`);
       setEditingSection(null);
       await fetchSections(selectedManual.id);
     } catch (err) {
@@ -415,14 +434,14 @@ export default function Sections() {
     if (!confirm(`Delete section "${subtitle}"?`)) return;
     try {
       // Prefer review-delete endpoint so staff can delete during review.
-      await axios.delete(`${BASE_URL}/api/sections/${id}/review-delete/`, getAuth());
+      await axios.delete(`/api/sections/${id}/review-delete/`, getAuth());
       showMsg("🗑️ Section deleted.");
       if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
       await fetchSections(selectedManual.id);
     } catch {
       try {
         // Fallback to admin delete endpoint
-        await axios.delete(`${BASE_URL}/api/sections/${id}/delete/`, getAuth());
+        await axios.delete(`/api/sections/${id}/delete/`, getAuth());
         showMsg("🗑️ Section deleted.");
         if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
         await fetchSections(selectedManual.id);
@@ -447,7 +466,7 @@ export default function Sections() {
 
     try {
       const res = await axios.post(
-        `${BASE_URL}/api/sections/${mergeSource.id}/merge/`,
+        `/api/sections/${mergeSource.id}/merge/`,
         { target_id: mergeTarget.id },
         getAuth()
       );
@@ -518,7 +537,7 @@ export default function Sections() {
             <div style={styles.manualCard}>
               <div style={styles.manualTitle}>{selectedManual.title}</div>
               <div style={styles.manualDept}>🏢 {selectedManual.department}</div>
-              <div style={styles.manualVersion}>Document v{manualVersion}</div>
+              <div style={styles.manualVersion}>Document v{manualVersion} (Rev {manualRevision})</div>
             </div>
 
             <div style={styles.tocLabel}>TABLE OF CONTENTS</div>
@@ -591,32 +610,205 @@ export default function Sections() {
             ) : sections.length === 0 ? (
               <p style={styles.emptyToc}>No sections yet.</p>
             ) : (
-              sections.map((s) => {
-                const tc = TAG_COLORS[s.tag] || TAG_COLORS.UNTAGGED;
-                const isActive = !isFullDoc && activeSection?.id === s.id;
-                return (
-                  <div key={s.id}
-                    style={{ ...styles.tocItem, backgroundColor: isActive ? "#4f46e5" : "#fff", color: isActive ? "#fff" : "#333" }}
-                    onClick={() => handleSectionClick(s)}
-                  >
-                    <div style={styles.tocSubtitle}>{s.subtitle}</div>
-                    <div style={styles.tocMeta}>
-                      <span style={{ ...styles.tag, backgroundColor: isActive ? "rgba(255,255,255,0.2)" : tc.bg, color: isActive ? "#fff" : tc.color }}>
-                        {s.tag}
-                      </span>
-                      {s.version > 1 && (
-                        <span style={{ ...styles.versionBadge, backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "#fefcbf", color: isActive ? "#fff" : "#b7791f", border: isActive ? "1px solid rgba(255,255,255,0.4)" : "1px solid #f6e05e" }}>
-                          v{s.version}
-                        </span>
+              (() => {
+                // Group sections: find all parent sections (parent_id == null or no children relationship)
+                const topLevelSections = sections.filter(s => !s.parent_id);
+                
+                return topLevelSections.map(parentSection => {
+                  const tc = TAG_COLORS[parentSection.tag] || TAG_COLORS.UNTAGGED;
+                  const isActive = !isFullDoc && activeSection?.id === parentSection.id;
+                  const childSections = getChildren(parentSection.id, sections);
+                  const isExpanded = expandedSections.has(parentSection.id);
+                  const hasChildrenFlag = childSections.length > 0;
+
+                  return (
+                    <div key={parentSection.id}>
+                      {/* Parent Section */}
+                      <div
+                        style={{
+                          ...styles.tocItem,
+                          backgroundColor: isActive ? "#4f46e5" : "#fff",
+                          color: isActive ? "#fff" : "#333",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingRight: "0.5rem",
+                        }}
+                      >
+                        <div
+                          style={{ flex: 1, cursor: "pointer" }}
+                          onClick={() => handleSectionClick(parentSection)}
+                        >
+                          <div style={styles.tocSubtitle}>
+                            {hasChildrenFlag && (
+                              <span
+                                style={{
+                                  marginRight: "0.5rem",
+                                  fontWeight: "bold",
+                                  fontSize: "1.2rem",
+                                  cursor: "pointer",
+                                  color: isActive ? "#fff" : "#333",
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleExpandSection(parentSection.id);
+                                }}
+                              >
+                                {isExpanded ? "▼" : "▶"}
+                              </span>
+                            )}
+                            {parentSection.subtitle}
+                          </div>
+                          <div style={styles.tocMeta}>
+                            <span
+                              style={{
+                                ...styles.tag,
+                                backgroundColor: isActive ? "rgba(255,255,255,0.2)" : tc.bg,
+                                color: isActive ? "#fff" : tc.color,
+                              }}
+                            >
+                              {parentSection.tag}
+                            </span>
+                            {parentSection.version > 1 && (
+                              <span
+                                style={{
+                                  ...styles.versionBadge,
+                                  backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "#fefcbf",
+                                  color: isActive ? "#fff" : "#b7791f",
+                                  border: isActive ? "1px solid rgba(255,255,255,0.4)" : "1px solid #f6e05e",
+                                }}
+                              >
+                                v{parentSection.version}
+                              </span>
+                            )}
+                            {parentSection.page_number && (
+                              <span style={styles.pageNum}>p.{parentSection.page_number}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "0.3rem" }}>
+                          <button
+                            style={styles.editBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClick(parentSection);
+                              setActiveSection(parentSection);
+                            }}
+                            title="Edit"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSection(parentSection.id, parentSection.subtitle);
+                            }}
+                            title="Delete"
+                          >
+                            🗑️
+                          </button>
+                          <button
+                            style={styles.mergeBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartMerge(parentSection);
+                            }}
+                            title="Merge"
+                          >
+                            🔀
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Child Sections (subsections) */}
+                      {hasChildrenFlag && isExpanded && (
+                        <div>
+                          {childSections.sort((a, b) => a.order - b.order).map(childSection => {
+                            const ctc = TAG_COLORS[childSection.tag] || TAG_COLORS.UNTAGGED;
+                            const cIsActive = !isFullDoc && activeSection?.id === childSection.id;
+                            return (
+                              <div
+                                key={childSection.id}
+                                style={{
+                                  ...styles.tocItem,
+                                  backgroundColor: cIsActive ? "#4f46e5" : "#f9fafb",
+                                  color: cIsActive ? "#fff" : "#333",
+                                  marginLeft: "1.5rem",
+                                  borderLeft: "2px solid #e5e7eb",
+                                  paddingLeft: "1rem",
+                                }}
+                                onClick={() => handleSectionClick(childSection)}
+                              >
+                                <div style={styles.tocSubtitle}>
+                                  🔗 {childSection.subtitle}
+                                </div>
+                                <div style={styles.tocMeta}>
+                                  <span
+                                    style={{
+                                      ...styles.tag,
+                                      backgroundColor: cIsActive ? "rgba(255,255,255,0.2)" : ctc.bg,
+                                      color: cIsActive ? "#fff" : ctc.color,
+                                    }}
+                                  >
+                                    {childSection.tag}
+                                  </span>
+                                  {childSection.version > 1 && (
+                                    <span
+                                      style={{
+                                        ...styles.versionBadge,
+                                        backgroundColor: cIsActive ? "rgba(255,255,255,0.2)" : "#fefcbf",
+                                        color: cIsActive ? "#fff" : "#b7791f",
+                                        border: cIsActive ? "1px solid rgba(255,255,255,0.4)" : "1px solid #f6e05e",
+                                      }}
+                                    >
+                                      v{childSection.version}
+                                    </span>
+                                  )}
+                                  {childSection.page_number && (
+                                    <span style={styles.pageNum}>p.{childSection.page_number}</span>
+                                  )}
+                                  <button
+                                    style={styles.editBtn}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditClick(childSection);
+                                      setActiveSection(childSection);
+                                    }}
+                                    title="Edit"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    style={styles.deleteBtn}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteSection(childSection.id, childSection.subtitle);
+                                    }}
+                                    title="Delete"
+                                  >
+                                    🗑️
+                                  </button>
+                                  <button
+                                    style={styles.mergeBtn}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartMerge(childSection);
+                                    }}
+                                    title="Merge"
+                                  >
+                                    🔀
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
-                      {s.page_number && <span style={styles.pageNum}>p.{s.page_number}</span>}
-                      <button style={styles.editBtn} onClick={(e) => { e.stopPropagation(); handleEditClick(s); setActiveSection(s); }} title="Edit">✏️</button>
-                      <button style={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); handleDeleteSection(s.id, s.subtitle); }} title="Delete">🗑️</button>
-                      <button style={styles.mergeBtn} onClick={(e) => { e.stopPropagation(); handleStartMerge(s); }} title="Merge">🔀</button>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                });
+              })()
             )}
           </div>
 
@@ -739,8 +931,19 @@ export default function Sections() {
                         onChange={(e) => setEditForm({ ...editForm, order: e.target.value })} />
                     </div>
                   </div>
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>Tag</label>
+                    <select style={styles.input} value={editForm.tag}
+                      onChange={(e) => setEditForm({ ...editForm, tag: e.target.value })}>
+                      <option value="POLICY">POLICY</option>
+                      <option value="PROCEDURE">PROCEDURE</option>
+                      <option value="RESPONSIBILITY">RESPONSIBILITY</option>
+                      <option value="WORKING INSTRUCTION">WORKING INSTRUCTION</option>
+                      <option value="UNTAGGED">UNTAGGED</option>
+                    </select>
+                  </div>
                   <p style={{ fontSize: "0.8rem", color: "#888", margin: "0" }}>
-                    💡 Tag will be automatically re-assigned by the SVM model on save.
+                    💡 Leave tag as auto-assigned, or select manually to override.
                   </p>
                   <button style={styles.addBtn} type="submit">💾 Save Changes</button>
                 </form>

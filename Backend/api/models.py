@@ -43,7 +43,8 @@ class Manual(models.Model):
     )
     file = models.FileField(upload_to='mastercopies/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    version = models.IntegerField(default=1)  # ✅ manual-level version
+    version = models.IntegerField(default=1)  # major QMS version
+    revision = models.IntegerField(default=0)  # minor revision counter
 
     def __str__(self):
         return f"{self.title} ({self.department.name})"
@@ -141,7 +142,10 @@ class ManualRevision(models.Model):
         null=True,
         related_name='revisions'
     )
-    uploaded_file = models.FileField(upload_to='revisions/')
+    uploaded_file = models.FileField(upload_to='revisions/', blank=True, null=True)
+    proposed_content = models.TextField(blank=True)
+    merge_section_ids = models.JSONField(blank=True, null=True)  # List of section IDs to merge into this one
+    merge_type = models.CharField(max_length=20, blank=True)  # 'merge' for merge operations
     diff_text = models.TextField(blank=True)
     status = models.CharField(
         max_length=20,

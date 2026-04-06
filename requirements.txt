@@ -7,6 +7,7 @@ Pillow
 pytesseract
 pdf2image
 pymupdf
+pymupdf4llm
 scikit-learn
 joblib
 python-docx

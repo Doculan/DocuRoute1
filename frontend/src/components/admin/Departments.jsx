@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
 export default function Departments() {
@@ -8,21 +8,21 @@ export default function Departments() {
   const [loading, setLoading] = useState(true);
 
   const token = localStorage.getItem("access_token");
-  const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
-  const fetchDepartments = async () => {
+  const fetchDepartments = useCallback(async () => {
     setLoading(true);
+    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
     try {
-      const res = await axios.get("http://127.0.0.1:8000/api/departments/", authHeaders);
+      const res = await axios.get("/api/departments/", authHeaders);
       setDepartments(res.data);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
-  useEffect(() => { fetchDepartments(); }, []);
+  useEffect(() => { fetchDepartments(); }, [fetchDepartments]);
 
   const showMessage = (msg) => {
     setMessage(msg);

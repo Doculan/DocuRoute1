@@ -14,7 +14,7 @@ export default function Login({ onLoginSuccess }) {
     setLoading(true);
 
     try {
-      const response = await axios.post("http://127.0.0.1:8000/api/auth/login/", {
+      const response = await axios.post("/api/auth/login/", {
         username,
         password,
       });
@@ -85,6 +85,13 @@ export default function Login({ onLoginSuccess }) {
               Sign up
             </span>
           </p>
+
+          <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "#f8f9fa", borderRadius: "8px", border: "1px solid #e9ecef" }}>
+            <p style={{ textAlign: "center", margin: "0 0 0.5rem 0", color: "#6c757d", fontSize: "0.9rem" }}>
+              Demo Feature
+            </p>
+            
+          </div>
         </div>
       </div>
     </div>

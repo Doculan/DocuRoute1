@@ -10,14 +10,32 @@ export default function Signup({ onBackToLogin }) {
     department_id: "",
   });
   const [departments, setDepartments] = useState([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/api/departments/")
-      .then((res) => setDepartments(res.data))
-      .catch(console.error);
+    console.log('Fetching departments...');
+    setDepartmentsLoading(true);
+    axios.get("/api/departments/")
+      .then((res) => {
+        console.log('Departments received:', res.data);
+        console.log('Departments type:', typeof res.data);
+        console.log('Departments length:', res.data.length);
+        if (Array.isArray(res.data)) {
+          setDepartments(res.data);
+        } else {
+          console.error('Departments response is not an array:', res.data);
+          setDepartments([]);
+        }
+        setDepartmentsLoading(false);
+      })
+      .catch((error) => {
+        console.error('Error fetching departments:', error);
+        setDepartments([]);
+        setDepartmentsLoading(false);
+      });
   }, []);
 
   const handleChange = (e) => {
@@ -37,7 +55,7 @@ export default function Signup({ onBackToLogin }) {
 
     setLoading(true);
     try {
-      await axios.post("http://127.0.0.1:8000/api/auth/register/", {
+      await axios.post("/api/auth/register/", {
         username: formData.username,
         email: formData.email,
         password: formData.password,
@@ -122,15 +140,29 @@ export default function Signup({ onBackToLogin }) {
             <div style={styles.inputGroup}>
               <label style={styles.label}>Department</label>
               <select
-                style={styles.input}
+                key={departments.length}
+                style={{
+                  ...styles.input,
+                  backgroundColor: 'white',
+                  cursor: departmentsLoading ? 'not-allowed' : 'pointer',
+                  minHeight: '40px'
+                }}
                 name="department_id"
                 value={formData.department_id}
                 onChange={handleChange}
+                disabled={departmentsLoading}
               >
-                <option value="">Select your department</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
+                <option value="">
+                  {departmentsLoading ? "Loading departments..." : "Select your department"}
+                </option>
+                {console.log('Rendering departments:', departments)}
+                {departments && departments.length > 0 ? (
+                  departments.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))
+                ) : (
+                  !departmentsLoading && <option disabled>No departments available</option>
+                )}
               </select>
             </div>
 
