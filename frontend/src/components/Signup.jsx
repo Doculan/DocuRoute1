@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import logo from '../assets/QMS.png';
 
 export default function Signup({ onBackToLogin }) {
   const [formData, setFormData] = useState({
@@ -75,9 +76,9 @@ export default function Signup({ onBackToLogin }) {
       <div style={styles.page}>
         <div style={styles.left}>
           <div style={styles.brand}>
-            <h1 style={styles.brandTitle}>DocuRoute</h1>
-            <p style={styles.brandSub}>ML-Assisted Inter-Office Document Routing System</p>
-          </div>
+           <img src={logo} alt="DocuRoute logo" style={{ height: '250px', width: 'auto' }} />
+                     <p style={styles.brandSub}>QUALITY MANAGEMENT SYSTEM ON ADMINISTRATIVE SERVICES <br></br>Controlled Document Management System</p>
+                   </div>
         </div>
         <div style={styles.right}>
           <div style={styles.card}>
@@ -100,9 +101,9 @@ export default function Signup({ onBackToLogin }) {
     <div style={styles.page}>
       <div style={styles.left}>
         <div style={styles.brand}>
-          <h1 style={styles.brandTitle}>DocuRoute</h1>
-          <p style={styles.brandSub}>ML-Assisted Inter-Office Document Routing System</p>
-        </div>
+         <img src={logo} alt="DocuRoute logo" style={{ height: '250px', width: 'auto' }} />
+                   <p style={styles.brandSub}>QUALITY MANAGEMENT SYSTEM ON ADMINISTRATIVE SERVICES <br></br>Controlled Document Management System</p>
+                 </div>
       </div>
 
       <div style={styles.right}>
@@ -220,7 +221,7 @@ const styles = {
   },
   left: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#090749",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
