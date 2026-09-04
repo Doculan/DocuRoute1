@@ -8,10 +8,11 @@ export default function Departments() {
   const [loading, setLoading] = useState(true);
 
   const token = localStorage.getItem("access_token");
+  const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
   const fetchDepartments = useCallback(async () => {
     setLoading(true);
-    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
+    
     try {
       const res = await axios.get("/api/departments/", authHeaders);
       setDepartments(res.data);

@@ -9,10 +9,11 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
 
   const token = localStorage.getItem("access_token");
+  const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
+    
     try {
       const [pendingRes, approvedRes] = await Promise.all([
         axios.get("/api/admin/pending-users/", authHeaders),
