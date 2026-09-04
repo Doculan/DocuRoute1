@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
+const formatOCRContent = (content = "") => {
+  return content
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/&nbsp;/gi, " ")
+    .replace(//g, "•")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+};
+
 const TAG_COLORS = {
   POLICY: { bg: "#ebf8ff", color: "#2b6cb0" },
   PROCEDURE: { bg: "#f0fff4", color: "#276749" },
@@ -398,8 +407,7 @@ export default function Sections() {
     setEditingSection(section.id);
     setEditForm({
       subtitle: section.subtitle,
-      content: section.content,
-      page_number: section.page_number || "",
+      content: formatOCRContent(section.content),
       order: section.order,
       tag: section.tag,
     });
@@ -1044,10 +1052,9 @@ export default function Sections() {
                   </div>
                 ) : (
                   <div style={styles.contentBody}>
-                    {(selectedVersion?.content ?? activeSection.content)
-                      .split("\n").filter(l => l.trim()).map((line, i) => (
-                        <p key={i} style={styles.contentParagraph}>{line}</p>
-                      ))}
+                    {renderSectionContent(
+                    formatOCRContent(selectedVersion?.content ?? activeSection.content)
+                    )}
                   </div>
                 )}
               </div>

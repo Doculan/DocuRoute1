@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
+const formatOCRContent = (content = "") => {
+  return content
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/&nbsp;/gi, " ")
+    .replace(//g, "•")
+    .trim();
+};
+
 const BASE_URL = "http://127.0.0.1:8000";
 
 const TAG_COLORS = {
@@ -483,7 +491,8 @@ export default function StaffSections({ manualId, onBack }) {
                     style={{ ...styles.actionBtn, backgroundColor: "#e53e3e", color: "#fff" }}
                     onClick={() => {
                       setIsEditing((v) => !v);
-                      if (!isEditing) setEditedContent(activeSection.content);
+                      if (!isEditing) {
+                        setEditedContent(formatOCRContent(activeSection.content));}
                       setRevMsg("");
                     }}
                   >
@@ -648,7 +657,7 @@ export default function StaffSections({ manualId, onBack }) {
                       </div>
                     </div>
                   ) : (
-                    <SectionContent content={activeSection.content} />
+                    <SectionContent content={formatOCRContent(activeSection.content)} />
                   )}
                 </div>
               ) : (
