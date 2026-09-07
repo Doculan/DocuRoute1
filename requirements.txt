@@ -12,3 +12,10 @@ scikit-learn
 joblib
 python-docx
 mammoth
+torch
+transformers
+datasets
+accelerate
+scikit-learn
+pandas
+numpy

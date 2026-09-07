@@ -19,6 +19,9 @@ export default function RevisionReview() {
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualSections, setManualSections] = useState([]);
   const [manualLoading, setManualLoading] = useState(false);
+  const [aiResults, setAiResults] = useState({});
+  const [aiLoading, setAiLoading] = useState({});
+  const [aiErrors, setAiErrors] = useState({});
 
   const token = localStorage.getItem("access_token");
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
@@ -44,6 +47,62 @@ export default function RevisionReview() {
     setMessage(msg);
     setTimeout(() => setMessage(""), 3000);
   };
+ 
+  const analyzeWithAI = async (revisionId, changeType) => {
+  try {
+    setAiLoading((previous) => ({
+      ...previous,
+      [revisionId]: true,
+    }));
+
+    setAiErrors((previous) => ({
+      ...previous,
+      [revisionId]: "",
+    }));
+  
+
+    const accessToken = localStorage.getItem("access_token");
+
+    if (!accessToken) {
+      throw new Error("You are not logged in. Please log in again.");
+    }
+
+    const response = await fetch(
+      `${BASE_URL}/api/revisions/${revisionId}/ai-assessment/?change_type=${changeType}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.detail || "AI assessment could not be completed."
+      );
+    }
+
+    setAiResults((previous) => ({
+      ...previous,
+      [revisionId]: data.ai_assessment,
+    }));
+  } catch (error) {
+    console.error("AI revision assessment failed:", error);
+
+    setAiErrors((previous) => ({
+      ...previous,
+      [revisionId]: error.message,
+    }));
+  } finally {
+    setAiLoading((previous) => ({
+      ...previous,
+      [revisionId]: false,
+    }));
+  }
+};
 
   const parseUnifiedDiff = (text) => {
     const lines = text.split("\n");
@@ -297,6 +356,19 @@ export default function RevisionReview() {
                 {expandedRevision === r.id ? "▼ Hide Detailed Comparison" : "▶ Show Detailed Comparison"}
               </button>
             </div>
+            <button
+  type="button"
+  style={styles.smallBtn}
+  onClick={() => {
+    console.log("AI button clicked:", r.id);
+    analyzeWithAI(r.id, "modified");
+  }}
+  disabled={Boolean(aiLoading[r.id])}
+>
+  {aiLoading[r.id]
+    ? "Analyzing revision..."
+    : "AI Revision Assessment"}
+</button>
 
             {/* Diff Preview */}
             <div style={styles.diffBox}>
@@ -330,6 +402,56 @@ export default function RevisionReview() {
                 </div>
               </div>
             )}
+
+            {aiErrors[r.id] && (
+  <div style={styles.aiError}>
+    {aiErrors[r.id]}
+  </div>
+)}
+
+{aiResults[r.id] && (
+  <div style={styles.aiPanel}>
+    <h4 style={styles.aiTitle}>AI Preliminary Assessment</h4>
+
+    <p>
+      <strong>Assessment:</strong>{" "}
+      {aiResults[r.id].assessment}
+    </p>
+
+    <p>
+      <strong>Confidence:</strong>{" "}
+      {aiResults[r.id].confidence}%
+    </p>
+
+    {aiResults[r.id].issue_tags?.length > 0 && (
+      <div>
+        <strong>Detected concerns:</strong>
+        <div style={styles.tagContainer}>
+          {aiResults[r.id].issue_tags.map((item) => (
+            <span
+              key={item.tag}
+              style={styles.aiTag}
+            >
+              {item.tag.replaceAll("_", " ")}
+              {" "}
+              ({item.confidence}%)
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <p style={styles.aiExplanation}>
+      <strong>Explanation:</strong>{" "}
+      {aiResults[r.id].explanation}
+    </p>
+
+    <p style={styles.aiDisclaimer}>
+      {aiResults[r.id].disclaimer}
+    </p>
+  </div>
+)}
+            
 
             {/* Review Actions (only for pending) */}
             {r.status === "pending" && (
@@ -593,4 +715,69 @@ const styles = {
   },
   manualSectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" },
   manualSectionMeta: { color: "#666", fontSize: "0.8rem", fontWeight: "500" },
+ aiPanel: {
+  marginTop: "16px",
+  padding: "16px",
+  border: "1px solid #bfdbfe",
+  borderRadius: "8px",
+  backgroundColor: "#eff6ff",
+  color: "#1e293b",
+},
+
+aiTitle: {
+  marginTop: 0,
+  marginBottom: "12px",
+  color: "#1e3a8a",
+},
+
+aiExplanation: {
+  color: "#1e293b",
+  lineHeight: 1.6,
+},
+
+aiDisclaimer: {
+  color: "#475569",
+  fontSize: "12px",
+  fontStyle: "italic",
+  marginBottom: 0,
+},
+
+aiError: {
+  marginTop: "12px",
+  color: "#b91c1c",
+  fontSize: "13px",
+},
+
+tagContainer: {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px",
+  marginTop: "8px",
+},
+
+aiTag: {
+  padding: "5px 9px",
+  borderRadius: "999px",
+  backgroundColor: "#dbeafe",
+  color: "#1e40af",
+  fontSize: "12px",
+  textTransform: "capitalize",
+},
+
+aiExplanation: {
+  lineHeight: 1.6,
+},
+
+aiDisclaimer: {
+  color: "#64748b",
+  fontSize: "12px",
+  fontStyle: "italic",
+  marginBottom: 0,
+},
+
+aiError: {
+  marginTop: "12px",
+  color: "#b91c1c",
+  fontSize: "13px",
+},
 };
