@@ -1,0 +1,37 @@
+{
+  "total_records": 289,
+  "assessment_counts": {
+    "Appropriate": 150,
+    "Needs Revision": 139
+  },
+  "issue_tag_counts": {
+    "ambiguous_language": 51,
+    "insufficient_detail": 109,
+    "missing_responsibility": 55,
+    "missing_approval_step": 48,
+    "missing_traceability": 77,
+    "missing_record_or_evidence": 65,
+    "irrelevant_content": 1,
+    "unclear_scope": 23,
+    "poor_organization": 0,
+    "illogical_sequence": 22,
+    "possible_contradiction": 33,
+    "ocr_quality_issue": 0
+  },
+  "train_records": 202,
+  "validation_records": 43,
+  "test_records": 44,
+  "assessment_input_fields": [
+    "change_type",
+    "original_text",
+    "revised_text"
+  ],
+  "issue_model_input_fields": [
+    "change_type",
+    "original_text",
+    "revised_text"
+  ],
+  "metadata_not_used_as_input": [
+    "reviewer_summary"
+  ]
+}
