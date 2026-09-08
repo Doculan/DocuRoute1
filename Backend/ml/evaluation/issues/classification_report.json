@@ -1,0 +1,98 @@
+{
+  "ambiguous_language": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 7.0
+  },
+  "insufficient_detail": {
+    "precision": 0.8571428571428571,
+    "recall": 0.7058823529411765,
+    "f1-score": 0.7741935483870968,
+    "support": 17.0
+  },
+  "missing_responsibility": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 9.0
+  },
+  "missing_approval_step": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 7.0
+  },
+  "missing_traceability": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 14.0
+  },
+  "missing_record_or_evidence": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 10.0
+  },
+  "irrelevant_content": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 0.0
+  },
+  "unclear_scope": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 3.0
+  },
+  "poor_organization": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 0.0
+  },
+  "illogical_sequence": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 2.0
+  },
+  "possible_contradiction": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 5.0
+  },
+  "ocr_quality_issue": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1-score": 0.0,
+    "support": 0.0
+  },
+  "micro avg": {
+    "precision": 0.8571428571428571,
+    "recall": 0.16216216216216217,
+    "f1-score": 0.2727272727272727,
+    "support": 74.0
+  },
+  "macro avg": {
+    "precision": 0.07142857142857142,
+    "recall": 0.05882352941176471,
+    "f1-score": 0.06451612903225806,
+    "support": 74.0
+  },
+  "weighted avg": {
+    "precision": 0.1969111969111969,
+    "recall": 0.16216216216216217,
+    "f1-score": 0.17785527462946815,
+    "support": 74.0
+  },
+  "samples avg": {
+    "precision": 0.2727272727272727,
+    "recall": 0.08219696969696969,
+    "f1-score": 0.125,
+    "support": 74.0
+  }
+}
