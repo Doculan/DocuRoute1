@@ -22,3 +22,37 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+
+# Django local/uploaded media
+Backend/media/
+*.sqlite3
+
+# Machine-learning generated artifacts
+# Backend/ml/saved_models/
+# Backend/ml/training_checkpoints/
+# Backend/ml/evaluation/
+# Backend/ml/datasets/
+
+# Local REST Client files and secrets
+Backend/api_test.http
+Backend/api_test.local.http
+.env
+.env.*
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# Build output and logs
+dist/
+build/
+*.log
