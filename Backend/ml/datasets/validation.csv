@@ -1,0 +1,345 @@
+﻿change_type,original_text,revised_text,issue_tags,reviewer_summary,label,assessment_label_id,issue_multihot,model_input
+modified,1.1 To provide guidelines and procedures in evaluation of external providers. 1.2 To ensure that guidelines and procedures in evaluation of external providers are strictly followed.,"1.1 To provide clear guidelines and procedures for evaluating external providers that supply products or services to the Agency. 1.2 To ensure that external-provider evaluations are consistently conducted, reviewed, documented, and acted upon in accordance with the approved procedure.",,"The revision preserves the original objectives and adds clearer expectations for consistent evaluation, documentation, review, and follow-up.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+1.1 To provide guidelines and procedures in evaluation of external providers. 1.2 To ensure that guidelines and procedures in evaluation of external providers are strictly followed.
+
+[REVISED TEXT]
+1.1 To provide clear guidelines and procedures for evaluating external providers that supply products or services to the Agency. 1.2 To ensure that external-provider evaluations are consistently conducted, reviewed, documented, and acted upon in accordance with the approved procedure."
+modified,Income Generating Office: 1. Posts a Public Bidding Notice in conspicuous places inside the University for seven calendar days. Bidder: 2. Fills up the Bidders Information Sheet. 3. Submits the sheet to the Income Generating Office. Income Generating Office: 4. Gives the Canvas Bid Form. Bidder: 5. Fills up the Canvas Bid Form and tenders the bid. Board of Management or IGO Director: 6. Opens the bid at the scheduled date and time. Income Generating Office: 7. Posts the winner or winners in three conspicuous places in the University premises.,1. The Income Generating Office shall post a public-bidding notice in designated conspicuous locations for seven calendar days and retain evidence of posting. 2. An interested bidder shall complete and submit the Bidders Information Sheet to the Income Generating Office. 3. The Income Generating Office shall issue the Canvas Bid Form to eligible bidders. 4. The bidder shall complete and submit the Canvas Bid Form by the stated deadline. 5. The Board of Management or authorized IGO Director shall open bids at the scheduled date and time and document the result. 6. The Income Generating Office shall post the winning bidder or bidders in three designated conspicuous locations and retain the posting record.,,"The revision maintains the original roles and workflow while clarifying form handoffs and adding evidence for notice posting, bid opening, and results posting.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Income Generating Office: 1. Posts a Public Bidding Notice in conspicuous places inside the University for seven calendar days. Bidder: 2. Fills up the Bidders Information Sheet. 3. Submits the sheet to the Income Generating Office. Income Generating Office: 4. Gives the Canvas Bid Form. Bidder: 5. Fills up the Canvas Bid Form and tenders the bid. Board of Management or IGO Director: 6. Opens the bid at the scheduled date and time. Income Generating Office: 7. Posts the winner or winners in three conspicuous places in the University premises.
+
+[REVISED TEXT]
+1. The Income Generating Office shall post a public-bidding notice in designated conspicuous locations for seven calendar days and retain evidence of posting. 2. An interested bidder shall complete and submit the Bidders Information Sheet to the Income Generating Office. 3. The Income Generating Office shall issue the Canvas Bid Form to eligible bidders. 4. The bidder shall complete and submit the Canvas Bid Form by the stated deadline. 5. The Board of Management or authorized IGO Director shall open bids at the scheduled date and time and document the result. 6. The Income Generating Office shall post the winning bidder or bidders in three designated conspicuous locations and retain the posting record."
+reordered,"Faculty or Staff completes the Application for Scholarship Form. The College Dean or VPAS recommends the application when the applicant meets conditions including item position, age requirement, Very Satisfactory performance, FSDP Plan schedule, and Certificate of Acceptance. The FSDP Committee recommends approval, disapproval, or deferment through an FSDP Resolution. The University President signs the resolution and endorses the application to the Board of Regents. The Board of Regents approves the application.",1. The Board of Regents shall approve the scholarship application. 2. The Faculty or Staff shall complete the Application for Scholarship Form. 3. The University President shall endorse the application. 4. The FSDP Committee shall issue an FSDP Resolution. 5. The College Dean or VPAS shall check eligibility.,illogical_sequence|missing_approval_step|missing_record_or_evidence,"The revision places Board approval before application submission, eligibility review, FSDP Committee resolution, and Presidential endorsement.",Needs Revision,1,"[0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]","[CHANGE TYPE]
+reordered
+
+[ORIGINAL TEXT]
+Faculty or Staff completes the Application for Scholarship Form. The College Dean or VPAS recommends the application when the applicant meets conditions including item position, age requirement, Very Satisfactory performance, FSDP Plan schedule, and Certificate of Acceptance. The FSDP Committee recommends approval, disapproval, or deferment through an FSDP Resolution. The University President signs the resolution and endorses the application to the Board of Regents. The Board of Regents approves the application.
+
+[REVISED TEXT]
+1. The Board of Regents shall approve the scholarship application. 2. The Faculty or Staff shall complete the Application for Scholarship Form. 3. The University President shall endorse the application. 4. The FSDP Committee shall issue an FSDP Resolution. 5. The College Dean or VPAS shall check eligibility."
+modified,"These procedures apply to standards, policies and guidelines on the operations of the Income Generating Office of Leyte Normal University.",This manual applies to all University activities and employees.,unclear_scope|insufficient_detail,"The proposed scope is overly broad and no longer identifies the Income Generating Office or the specific standards, policies, and operational guidelines governed by the manual.",Needs Revision,1,"[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+These procedures apply to standards, policies and guidelines on the operations of the Income Generating Office of Leyte Normal University.
+
+[REVISED TEXT]
+This manual applies to all University activities and employees."
+removed,"The system of rewards and recognition shall encourage creativity, innovativeness, efficiency, integrity, and productivity in public service by recognizing and rewarding officials and employees individually or in groups for suggestions, inventions, superior accomplishments, personal efforts that improve government operations, and extraordinary acts or services in the public interest.",Awards may be given to employees chosen by management.,ambiguous_language|missing_responsibility|missing_traceability|insufficient_detail,"The revision removes the performance and behavior basis for awards and provides no transparent criteria, evidence, or process for identifying eligible employees or groups.",Needs Revision,1,"[1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+The system of rewards and recognition shall encourage creativity, innovativeness, efficiency, integrity, and productivity in public service by recognizing and rewarding officials and employees individually or in groups for suggestions, inventions, superior accomplishments, personal efforts that improve government operations, and extraordinary acts or services in the public interest.
+
+[REVISED TEXT]
+Awards may be given to employees chosen by management."
+modified,"These procedures apply to all accounts receivable arising from official University transactions, including operations of the LNU House, LNU Cafeteria, and inter-agency transactions with the Commission on Higher Education for implementation of Free Higher Education.","These procedures apply to the monitoring, collection, documentation, and follow-up of accounts receivable arising from official University transactions, including LNU House and LNU Cafeteria operations, student-related accountabilities, employee receivables, and Free Higher Education transactions with the Commission on Higher Education.",,The revision retains the official-transaction basis and named operational sources while clarifying the receivable activities and additional covered categories reflected in the procedures.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+These procedures apply to all accounts receivable arising from official University transactions, including operations of the LNU House, LNU Cafeteria, and inter-agency transactions with the Commission on Higher Education for implementation of Free Higher Education.
+
+[REVISED TEXT]
+These procedures apply to the monitoring, collection, documentation, and follow-up of accounts receivable arising from official University transactions, including LNU House and LNU Cafeteria operations, student-related accountabilities, employee receivables, and Free Higher Education transactions with the Commission on Higher Education."
+modified,The policies and procedure stipulated herein shall be observed by all those concerned in the revision and development of curricular programs in the University.,Committees may follow the curriculum procedure when convenient.,ambiguous_language|missing_responsibility|missing_traceability|insufficient_detail,The revision weakens the mandatory procedure requirement and does not identify who must observe the established curriculum process.,Needs Revision,1,"[1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The policies and procedure stipulated herein shall be observed by all those concerned in the revision and development of curricular programs in the University.
+
+[REVISED TEXT]
+Committees may follow the curriculum procedure when convenient."
+reordered,The SPMS Calendar requires yearly targets in the first week of the year; IPCR and DPCR submissions for January to June and July to December; DPCR calibration in the second week of the following year; and quarterly monitoring of accomplishment.,The SPMS Calendar shall provide for quarterly monitoring of accomplishments; submission of yearly targets during the first week of the year; submission of IPCRs and DPCRs for January to June and July to December; and DPCR calibration during the second week of the following year.,,The revision changes the order of presentation but retains all required SPMS calendar activities and time periods.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+reordered
+
+[ORIGINAL TEXT]
+The SPMS Calendar requires yearly targets in the first week of the year; IPCR and DPCR submissions for January to June and July to December; DPCR calibration in the second week of the following year; and quarterly monitoring of accomplishment.
+
+[REVISED TEXT]
+The SPMS Calendar shall provide for quarterly monitoring of accomplishments; submission of yearly targets during the first week of the year; submission of IPCRs and DPCRs for January to June and July to December; and DPCR calibration during the second week of the following year."
+removed,"Very Serious Offenses are listed in the manual and state immediate exclusion from the University. The policy lists examples involving serious harm, prohibited conduct, document integrity, misuse of resources, and other conduct determined by the Student Disciplinary Committee.",Any report may result in exclusion after a complaint is received.,missing_approval_step|missing_record_or_evidence|missing_traceability|possible_contradiction,"The revision removes the distinction among report types, formal assessment, notice, response, investigation, committee review, and authorized final decision process.",Needs Revision,1,"[0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+Very Serious Offenses are listed in the manual and state immediate exclusion from the University. The policy lists examples involving serious harm, prohibited conduct, document integrity, misuse of resources, and other conduct determined by the Student Disciplinary Committee.
+
+[REVISED TEXT]
+Any report may result in exclusion after a complaint is received."
+removed,"A reporting person issues a Disciplinary Action Slip, submits a Disciplinary Referral Slip to the VPSD, and OSD Staff records the case. The PHC determines whether formal investigation is warranted; when sufficient, formal charges are served on the respondent and parent or guardian. The respondent may answer in writing within ten calendar days. The Chair of the SDC notifies the student and parent or guardian of the hearing. The SDC renders a decision by majority vote within fifteen days after receiving the complaint. The student may appeal through the applicable review route.",The Committee may decide a case after receiving a report.,missing_record_or_evidence|missing_approval_step|missing_traceability|insufficient_detail,"The revision removes referral documentation, logbook entry, preliminary assessment, formal notice, response opportunity, hearing notification, majority decision documentation, and appeal routing.",Needs Revision,1,"[0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+A reporting person issues a Disciplinary Action Slip, submits a Disciplinary Referral Slip to the VPSD, and OSD Staff records the case. The PHC determines whether formal investigation is warranted; when sufficient, formal charges are served on the respondent and parent or guardian. The respondent may answer in writing within ten calendar days. The Chair of the SDC notifies the student and parent or guardian of the hearing. The SDC renders a decision by majority vote within fifteen days after receiving the complaint. The student may appeal through the applicable review route.
+
+[REVISED TEXT]
+The Committee may decide a case after receiving a report."
+modified,Records that may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.,Applicant records may be shared with offices that request them.,possible_contradiction|missing_approval_step|missing_traceability|insufficient_detail,"The revision removes data-privacy restrictions and does not define authorized access, lawful purpose, or controls for sharing applicant records.",Needs Revision,1,"[0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Records that may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.
+
+[REVISED TEXT]
+Applicant records may be shared with offices that request them."
+modified,Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.,"Rewards and recognition records containing personal information shall be accessed, stored, disclosed, and retained only in accordance with applicable data-privacy requirements and authorized University procedures.",,The revision preserves the privacy requirement and clarifies how nomination and award records must be controlled.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.
+
+[REVISED TEXT]
+Rewards and recognition records containing personal information shall be accessed, stored, disclosed, and retained only in accordance with applicable data-privacy requirements and authorized University procedures."
+modified,"Records containing personal information shall be handled under the Data Privacy Act. The LNU SPMS follows applicable CSC guidelines. The system follows performance-based security of tenure, provides motivation and incentives for performers, and applies sanctions to non-performers.","SPMS records containing personal information shall be accessed, stored, disclosed, and retained only under applicable data-privacy requirements and authorized University procedures. The LNU SPMS shall be implemented in accordance with applicable CSC guidelines and shall support performance-based tenure, incentives, rewards, and appropriate action for non-performance.",,"The revision retains privacy, CSC-alignment, and performance-based tenure principles while clarifying document-control and implementation expectations.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Records containing personal information shall be handled under the Data Privacy Act. The LNU SPMS follows applicable CSC guidelines. The system follows performance-based security of tenure, provides motivation and incentives for performers, and applies sanctions to non-performers.
+
+[REVISED TEXT]
+SPMS records containing personal information shall be accessed, stored, disclosed, and retained only under applicable data-privacy requirements and authorized University procedures. The LNU SPMS shall be implemented in accordance with applicable CSC guidelines and shall support performance-based tenure, incentives, rewards, and appropriate action for non-performance."
+modified,Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.,"Learning and development records containing personal information shall be accessed, stored, disclosed, and retained only in accordance with applicable data-privacy requirements and authorized University procedures.",,The revision preserves the privacy requirement and clarifies the record-handling activities that must be controlled.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.
+
+[REVISED TEXT]
+Learning and development records containing personal information shall be accessed, stored, disclosed, and retained only in accordance with applicable data-privacy requirements and authorized University procedures."
+removed,"Employees may be asked to render services beyond the eight-hour requirement as part of public service. When overtime compensation is fair and proper, the guidelines in the CSC-DBM Joint Circular No. 1, s. 2015 should be observed.",Employees must always work overtime without compensation.,possible_contradiction|missing_approval_step|missing_record_or_evidence|insufficient_detail,"The revision removes the condition that overtime compensation must follow applicable guidelines and does not define authorization, compensation eligibility, or supporting records.",Needs Revision,1,"[0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+Employees may be asked to render services beyond the eight-hour requirement as part of public service. When overtime compensation is fair and proper, the guidelines in the CSC-DBM Joint Circular No. 1, s. 2015 should be observed.
+
+[REVISED TEXT]
+Employees must always work overtime without compensation."
+modified,"The new Policies, Standards, and Guidelines of the Commission on Higher Education shall serve as bases for crafting a new curriculum or revising an existing curriculum.","Applicable CHED Policies, Standards, and Guidelines shall be reviewed and used as a documented basis when crafting a new curriculum or revising an existing curriculum.",,The revision retains the CHED PSG requirement and clarifies that the applicable standards should be reviewed and documented as the basis for revision.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The new Policies, Standards, and Guidelines of the Commission on Higher Education shall serve as bases for crafting a new curriculum or revising an existing curriculum.
+
+[REVISED TEXT]
+Applicable CHED Policies, Standards, and Guidelines shall be reviewed and used as a documented basis when crafting a new curriculum or revising an existing curriculum."
+modified,"The student submits an Application for Student Records, Enrollment and Assessment Form, or Clearance to Accounting Staff-4. Accounting Staff-4 checks the student ledger using the Student Information and Accounting System. If the applicable Undergraduate or Masters/Doctoral accountabilities remain, the student is advised to settle them. The student settles accountabilities at the Cash Management Office, informs Accounting Staff-4, and submits proof. When no accountabilities remain, Accounting Staff-4 signs the Application for Student Records, Enrollment and Assessment Form, or Clearance.","1. The student shall submit the Application for Student Records, Enrollment and Assessment Form, or Clearance to Accounting Staff-4. 2. Accounting Staff-4 shall verify the student's ledger or account using the Student Information and Accounting System. 3. If applicable accountabilities remain, Accounting Staff-4 shall advise the student to settle them with the Cash Management Office. 4. The student shall submit proof of settlement to Accounting Staff-4. 5. Accounting Staff-4 shall sign the applicable form only after confirming that no accountabilities remain.",,"The revision preserves the form submission, SIAS ledger check, settlement advice, proof of payment, and conditional signing sequence.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The student submits an Application for Student Records, Enrollment and Assessment Form, or Clearance to Accounting Staff-4. Accounting Staff-4 checks the student ledger using the Student Information and Accounting System. If the applicable Undergraduate or Masters/Doctoral accountabilities remain, the student is advised to settle them. The student settles accountabilities at the Cash Management Office, informs Accounting Staff-4, and submits proof. When no accountabilities remain, Accounting Staff-4 signs the Application for Student Records, Enrollment and Assessment Form, or Clearance.
+
+[REVISED TEXT]
+1. The student shall submit the Application for Student Records, Enrollment and Assessment Form, or Clearance to Accounting Staff-4. 2. Accounting Staff-4 shall verify the student's ledger or account using the Student Information and Accounting System. 3. If applicable accountabilities remain, Accounting Staff-4 shall advise the student to settle them with the Cash Management Office. 4. The student shall submit proof of settlement to Accounting Staff-4. 5. Accounting Staff-4 shall sign the applicable form only after confirming that no accountabilities remain."
+removed,"Learning and development of academic and non-academic staff shall include a multi-pronged scheme for scholarship or fellowship, research assistance, training, sabbatical leave, and other grants that enhance academic and professional competencies.",Staff development shall focus only on seminars.,insufficient_detail|unclear_scope|possible_contradiction,"The revision improperly narrows the learning and development scheme and removes scholarships, fellowships, research assistance, sabbatical leave, and other competency-enhancing grants.",Needs Revision,1,"[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+Learning and development of academic and non-academic staff shall include a multi-pronged scheme for scholarship or fellowship, research assistance, training, sabbatical leave, and other grants that enhance academic and professional competencies.
+
+[REVISED TEXT]
+Staff development shall focus only on seminars."
+modified,External providers shall be evaluated based on their ability to meet company requirements. Evaluation of accredited external providers shall be done at least once a year.,"Accredited external providers shall be evaluated at least annually based on their demonstrated ability to meet the Agency's quality, price, delivery, and capacity requirements. The completed evaluation shall be retained as supporting evidence for provider-management decisions.",,The revision retains the annual evaluation requirement and adds the relevant criteria and retained evidence needed to support provider-management decisions.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+External providers shall be evaluated based on their ability to meet company requirements. Evaluation of accredited external providers shall be done at least once a year.
+
+[REVISED TEXT]
+Accredited external providers shall be evaluated at least annually based on their demonstrated ability to meet the Agency's quality, price, delivery, and capacity requirements. The completed evaluation shall be retained as supporting evidence for provider-management decisions."
+modified,"Government officials and employees are required to render eight working hours a day for five days a week or 40 hours a week excluding lunch. Normal hours are 8 AM to 12 NN and 1 PM to 5 PM. Flexi-time shall not start earlier than 7 AM or end later than 7 PM and may not be changed by employees for convenience. Repeated tardiness, undertime, or loafing may result in administrative penalties. The University monitors attendance through biometric time clocks.","Employees shall render the required eight working hours per day and 40 hours per week, excluding lunch, subject to approved work schedules. Any approved flexi-time arrangement shall remain within the authorized limits and shall not be changed at an employee's convenience. Attendance shall be recorded through the University biometric system, and repeated tardiness, undertime, or absence from duty during office hours shall be addressed under applicable civil service rules.",,"The revision retains working-hour, flexi-time, biometric-recording, and accountability requirements while using clearer and more inclusive wording.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Government officials and employees are required to render eight working hours a day for five days a week or 40 hours a week excluding lunch. Normal hours are 8 AM to 12 NN and 1 PM to 5 PM. Flexi-time shall not start earlier than 7 AM or end later than 7 PM and may not be changed by employees for convenience. Repeated tardiness, undertime, or loafing may result in administrative penalties. The University monitors attendance through biometric time clocks.
+
+[REVISED TEXT]
+Employees shall render the required eight working hours per day and 40 hours per week, excluding lunch, subject to approved work schedules. Any approved flexi-time arrangement shall remain within the authorized limits and shall not be changed at an employee's convenience. Attendance shall be recorded through the University biometric system, and repeated tardiness, undertime, or absence from duty during office hours shall be addressed under applicable civil service rules."
+reordered,"The Director of HRM publishes job vacancies, receives applications and documentary requirements, evaluates applicants and next-in-rank candidates, establishes qualification standards, prepares shortlisted candidates, and prepares background-review and assessment documents. The PSB or FSB conducts interviews, teaching demonstrations when applicable, verifies qualifications and fitness, schedules deliberation, and prepares deliberation results. The Director of HRM facilitates signing and submits recommendation results to the University President. The Director prepares appointment papers, submits them for signature, releases the approved appointment, introduces the new employee to the unit, and conducts orientation. The successful applicant receives the appointment and reports for duty.",1. The successful applicant shall report for duty. 2. The Director of HRM shall release the appointment. 3. The University President shall approve the appointment. 4. The PSB or FSB shall conduct the interview and deliberation. 5. The Director of HRM shall publish the vacancy and receive applications.,illogical_sequence|missing_record_or_evidence|missing_approval_step|missing_responsibility,"The revision places reporting for duty and release of appointment before recruitment, selection, deliberation, approval, and appointment preparation, breaking the required process sequence.",Needs Revision,1,"[0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]","[CHANGE TYPE]
+reordered
+
+[ORIGINAL TEXT]
+The Director of HRM publishes job vacancies, receives applications and documentary requirements, evaluates applicants and next-in-rank candidates, establishes qualification standards, prepares shortlisted candidates, and prepares background-review and assessment documents. The PSB or FSB conducts interviews, teaching demonstrations when applicable, verifies qualifications and fitness, schedules deliberation, and prepares deliberation results. The Director of HRM facilitates signing and submits recommendation results to the University President. The Director prepares appointment papers, submits them for signature, releases the approved appointment, introduces the new employee to the unit, and conducts orientation. The successful applicant receives the appointment and reports for duty.
+
+[REVISED TEXT]
+1. The successful applicant shall report for duty. 2. The Director of HRM shall release the appointment. 3. The University President shall approve the appointment. 4. The PSB or FSB shall conduct the interview and deliberation. 5. The Director of HRM shall publish the vacancy and receive applications."
+added,1.1 To provide guidelines and policies in handling concessionaires for business at the LNUIGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university’s customers and stakeholders.,1.1 To provide guidelines and policies in handling concessionaires for business at the LNUIGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university’s customers and stakeholders. 1.3 To create a asdasdafasfgasgagh,ambiguous_language|irrelevant_content|insufficient_detail,"The added objective is not intelligible and does not state a clear, relevant outcome for the manual.",Needs Revision,1,"[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+added
+
+[ORIGINAL TEXT]
+1.1 To provide guidelines and policies in handling concessionaires for business at the LNUIGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university’s customers and stakeholders.
+
+[REVISED TEXT]
+1.1 To provide guidelines and policies in handling concessionaires for business at the LNUIGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university’s customers and stakeholders. 1.3 To create a asdasdafasfgasgagh"
+modified,"The Accountant generates a Schedule of Accounts Receivable with Aging using the eNGAS System, sorts accounts aged over one year, prepares Demand Letters for debtors with accounts aging over one year, and forwards copies to the University President for signature. The University President signs the Demand Letters. Records Management Staff sends the Demand Letters to debtors through a courier if necessary.",1. The Accountant shall generate the Schedule of Accounts Receivable with Aging using the eNGAS System. 2. The Accountant shall identify accounts outstanding for more than one year. 3. The Accountant shall prepare Demand Letters for the identified debtors and forward the letters to the University President for signature. 4. The University President shall sign the Demand Letters. 5. Records Management Staff shall send the signed Demand Letters to debtors using the appropriate delivery method and retain dispatch evidence when applicable.,,"The revision preserves aging analysis, one-year account identification, Demand Letter preparation, signature, delivery, and adds traceable evidence of dispatch.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The Accountant generates a Schedule of Accounts Receivable with Aging using the eNGAS System, sorts accounts aged over one year, prepares Demand Letters for debtors with accounts aging over one year, and forwards copies to the University President for signature. The University President signs the Demand Letters. Records Management Staff sends the Demand Letters to debtors through a courier if necessary.
+
+[REVISED TEXT]
+1. The Accountant shall generate the Schedule of Accounts Receivable with Aging using the eNGAS System. 2. The Accountant shall identify accounts outstanding for more than one year. 3. The Accountant shall prepare Demand Letters for the identified debtors and forward the letters to the University President for signature. 4. The University President shall sign the Demand Letters. 5. Records Management Staff shall send the signed Demand Letters to debtors using the appropriate delivery method and retain dispatch evidence when applicable."
+modified,"Learning and development of academic and non-academic staff shall include a multi-pronged scheme for scholarship or fellowship, research assistance, training, sabbatical leave, and other grants that enhance academic and professional competencies.","The University learning and development program shall provide academic and non-academic staff with appropriate interventions such as scholarship or fellowship, research assistance, training, sabbatical leave, and related grants that enhance professional and academic competencies.",,The revision retains the multi-pronged intervention approach and clearly links each intervention to competency enhancement.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Learning and development of academic and non-academic staff shall include a multi-pronged scheme for scholarship or fellowship, research assistance, training, sabbatical leave, and other grants that enhance academic and professional competencies.
+
+[REVISED TEXT]
+The University learning and development program shall provide academic and non-academic staff with appropriate interventions such as scholarship or fellowship, research assistance, training, sabbatical leave, and related grants that enhance professional and academic competencies."
+modified,"An offense is a violation of University rules and regulations. Offenses are classified as Light, Serious, and Very Serious with corresponding sanctions.",Any reported behavior may be treated in the same manner.,ambiguous_language|missing_responsibility|missing_traceability|insufficient_detail,The revision removes the defined classification structure and does not identify how reports are assessed or recorded under the applicable procedure.,Needs Revision,1,"[1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+An offense is a violation of University rules and regulations. Offenses are classified as Light, Serious, and Very Serious with corresponding sanctions.
+
+[REVISED TEXT]
+Any reported behavior may be treated in the same manner."
+removed,"VPs, Deans, and Directors monitor and coach staff, update subordinates, provide interventions for slow performance, and complete the Performance Monitoring and Coaching Journal. Deans and Directors monitor targets using the Tracking Tool and Performance Monitoring Form and prepare quarterly accomplishment reports. PMT reviews final ratings and recommends approval of ranking and forced comparison. The University President approves ratings. The Planning Officer distributes ratings and prepares consolidated reports. The Director HRM submits the Consolidated Individual Performance Review Report to CSC.",Supervisors shall review employee performance and give ratings.,ambiguous_language|missing_record_or_evidence|missing_traceability|missing_approval_step|insufficient_detail,"The revision removes coaching frequency, performance journals, monitoring tools, quarterly reports, PMT review, President approval, rating distribution, consolidation, and CSC submission.",Needs Revision,1,"[1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+VPs, Deans, and Directors monitor and coach staff, update subordinates, provide interventions for slow performance, and complete the Performance Monitoring and Coaching Journal. Deans and Directors monitor targets using the Tracking Tool and Performance Monitoring Form and prepare quarterly accomplishment reports. PMT reviews final ratings and recommends approval of ranking and forced comparison. The University President approves ratings. The Planning Officer distributes ratings and prepares consolidated reports. The Director HRM submits the Consolidated Individual Performance Review Report to CSC.
+
+[REVISED TEXT]
+Supervisors shall review employee performance and give ratings."
+modified,"The student writes and signs a letter to the University President requesting a school-fee refund and states the reason for refund. The request is supported by the corresponding Official Receipt and submitted to the Accounting Office. The Accountant coordinates with the concerned office, validates the reason and amount, recommends valid requests to the University President, and returns invalid requests to the student. The University President approves or disapproves the request. Approved requests proceed through Disbursement Voucher preparation, legality and cash certifications, payment approval, check preparation, check signing, release to the student or authorized representative, and student signature in Box E of the Disbursement Voucher as proof of receipt.","1. The student shall submit a signed refund request letter to the Accounting Office, stating the reason for refund and attaching the corresponding Official Receipt. 2. The Accountant shall coordinate with the concerned office as needed, validate the reason and amount, and either return an invalid request to the student or recommend a valid request to the University President. 3. Accounting Staff-8 shall forward the recommended request to the University President for approval or disapproval. 4. When approved, the request shall proceed to Disbursement Voucher preparation, required legality and cash certifications, payment approval, check processing, and release to the student or duly authorized representative. 5. The recipient shall sign Box E of the Disbursement Voucher as proof of receipt.",,"The revision retains the request letter, Official Receipt, validation, approval decision, payment controls, authorized release, and proof-of-receipt requirements while organizing the decision path clearly.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The student writes and signs a letter to the University President requesting a school-fee refund and states the reason for refund. The request is supported by the corresponding Official Receipt and submitted to the Accounting Office. The Accountant coordinates with the concerned office, validates the reason and amount, recommends valid requests to the University President, and returns invalid requests to the student. The University President approves or disapproves the request. Approved requests proceed through Disbursement Voucher preparation, legality and cash certifications, payment approval, check preparation, check signing, release to the student or authorized representative, and student signature in Box E of the Disbursement Voucher as proof of receipt.
+
+[REVISED TEXT]
+1. The student shall submit a signed refund request letter to the Accounting Office, stating the reason for refund and attaching the corresponding Official Receipt. 2. The Accountant shall coordinate with the concerned office as needed, validate the reason and amount, and either return an invalid request to the student or recommend a valid request to the University President. 3. Accounting Staff-8 shall forward the recommended request to the University President for approval or disapproval. 4. When approved, the request shall proceed to Disbursement Voucher preparation, required legality and cash certifications, payment approval, check processing, and release to the student or duly authorized representative. 5. The recipient shall sign Box E of the Disbursement Voucher as proof of receipt."
+removed,A portion of the Human Resource Office funds shall be allocated for PRAISE and incorporated in the LNU Annual Work and Financial Plan and Budget.,Awards may be funded if money is available.,ambiguous_language|missing_traceability|insufficient_detail,The revision removes the requirement to plan PRAISE funding and incorporate it in the University Annual Work and Financial Plan and Budget.,Needs Revision,1,"[1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+A portion of the Human Resource Office funds shall be allocated for PRAISE and incorporated in the LNU Annual Work and Financial Plan and Budget.
+
+[REVISED TEXT]
+Awards may be funded if money is available."
+modified,This procedure covers and applies the entire agreement between LNU-IGO and STALL HOLDER as stipulated below.,"This procedure applies to the bidding, awarding, occupancy, payment, operational obligations, and termination provisions governing agreements between the LNU-IGO and Stall Holders at the IGO Trade Park.",,The revision clarifies the activities covered by the procedure while retaining the original relationship between the LNU-IGO and Stall Holders.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+This procedure covers and applies the entire agreement between LNU-IGO and STALL HOLDER as stipulated below.
+
+[REVISED TEXT]
+This procedure applies to the bidding, awarding, occupancy, payment, operational obligations, and termination provisions governing agreements between the LNU-IGO and Stall Holders at the IGO Trade Park."
+modified,Records that may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.,"Recruitment and personnel records containing personal information shall be accessed, stored, disclosed, and retained only in accordance with applicable data-privacy requirements and authorized University procedures.",,The revision preserves the privacy requirement and clarifies the personnel-record activities that must be controlled.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+Records that may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.
+
+[REVISED TEXT]
+Recruitment and personnel records containing personal information shall be accessed, stored, disclosed, and retained only in accordance with applicable data-privacy requirements and authorized University procedures."
+added,1.1 To provide guidelines and procedures in evaluation of external providers. 1.2 To ensure that guidelines and procedures in evaluation of external providers are strictly followed.,"1.1 To provide guidelines and procedures in evaluation of external providers. 1.2 To ensure that guidelines and procedures in evaluation of external providers are strictly followed. 1.3 To support evidence-based decisions on retaining, improving, suspending, or engaging external providers.",,The added objective is relevant to the evaluation process and connects the evaluation results to clear supplier-management decisions.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+added
+
+[ORIGINAL TEXT]
+1.1 To provide guidelines and procedures in evaluation of external providers. 1.2 To ensure that guidelines and procedures in evaluation of external providers are strictly followed.
+
+[REVISED TEXT]
+1.1 To provide guidelines and procedures in evaluation of external providers. 1.2 To ensure that guidelines and procedures in evaluation of external providers are strictly followed. 1.3 To support evidence-based decisions on retaining, improving, suspending, or engaging external providers."
+removed,1.1 To provide guidelines and procedures in the revision and development of curricular programs in the University. 1.2 To ensure quality and relevant curricular offerings compliant to CHED memoranda.,1.1 To revise programs when needed.,ambiguous_language|insufficient_detail|unclear_scope,"The revision removes the objective of providing procedures and does not identify curriculum development, quality, relevance, or CHED compliance.",Needs Revision,1,"[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+1.1 To provide guidelines and procedures in the revision and development of curricular programs in the University. 1.2 To ensure quality and relevant curricular offerings compliant to CHED memoranda.
+
+[REVISED TEXT]
+1.1 To revise programs when needed."
+removed,"Light offenses include violations of stated University rules such as ID, uniform, facility, authorized posting, and class-related requirements. The first occurrence results in documented reprimand; the second in eight hours of in-campus duty; and the third in sixteen hours of in-campus duty.",Minor reports may be resolved informally by any staff member.,missing_record_or_evidence|missing_traceability|missing_responsibility|insufficient_detail,"The revision removes the documented progressive procedure, occurrence record, and defined process safeguards for handling reported light-offense matters.",Needs Revision,1,"[0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+Light offenses include violations of stated University rules such as ID, uniform, facility, authorized posting, and class-related requirements. The first occurrence results in documented reprimand; the second in eight hours of in-campus duty; and the third in sixteen hours of in-campus duty.
+
+[REVISED TEXT]
+Minor reports may be resolved informally by any staff member."
+added,1.1 To provide guidelines and policies in handling concessionaires for business at the LNU-IGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university's customers and stakeholders.,1.1 To provide guidelines and policies in handling concessionaires for business at the LNU-IGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university's customers and stakeholders. 1.3 To promote transparent and accountable processes for the selection and management of concessionaires at the LNU-IGO Trade Park.,,The added objective is relevant to concessionaire management and clearly states an intended outcome that supports the manual's existing purpose.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+added
+
+[ORIGINAL TEXT]
+1.1 To provide guidelines and policies in handling concessionaires for business at the LNU-IGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university's customers and stakeholders.
+
+[REVISED TEXT]
+1.1 To provide guidelines and policies in handling concessionaires for business at the LNU-IGO Trade Park. 1.2 To ensure and sustain the existing income generating projects of the university while providing affordable goods and services to the university's customers and stakeholders. 1.3 To promote transparent and accountable processes for the selection and management of concessionaires at the LNU-IGO Trade Park."
+removed,1.1 To provide guidelines and procedures in the observance of the laws of the land and the rules and regulations of the University. 1.2 To ensure student discipline. 1.3 To protect the University community.,1.1 To manage student behavior.,ambiguous_language|insufficient_detail|unclear_scope,"The revision removes the objectives concerning laws, University rules, procedural guidance, discipline, and protection of the University community.",Needs Revision,1,"[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+1.1 To provide guidelines and procedures in the observance of the laws of the land and the rules and regulations of the University. 1.2 To ensure student discipline. 1.3 To protect the University community.
+
+[REVISED TEXT]
+1.1 To manage student behavior."
+removed,"The Director of HRM publishes job vacancies, receives applications and documentary requirements, evaluates applicants and next-in-rank candidates, establishes qualification standards, prepares shortlisted candidates, and prepares background-review and assessment documents. The PSB or FSB conducts interviews, teaching demonstrations when applicable, verifies qualifications and fitness, schedules deliberation, and prepares deliberation results. The Director of HRM facilitates signing and submits recommendation results to the University President. The Director prepares appointment papers, submits them for signature, releases the approved appointment, introduces the new employee to the unit, and conducts orientation. The successful applicant receives the appointment and reports for duty.",The HRM Office selects an applicant and assigns the applicant to a unit.,ambiguous_language|missing_responsibility|missing_record_or_evidence|missing_approval_step|insufficient_detail,"The revision removes vacancy publication, application requirements, qualification evaluation, board interview and deliberation, recommendation, President approval, appointment documentation, and orientation.",Needs Revision,1,"[1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+The Director of HRM publishes job vacancies, receives applications and documentary requirements, evaluates applicants and next-in-rank candidates, establishes qualification standards, prepares shortlisted candidates, and prepares background-review and assessment documents. The PSB or FSB conducts interviews, teaching demonstrations when applicable, verifies qualifications and fitness, schedules deliberation, and prepares deliberation results. The Director of HRM facilitates signing and submits recommendation results to the University President. The Director prepares appointment papers, submits them for signature, releases the approved appointment, introduces the new employee to the unit, and conducts orientation. The successful applicant receives the appointment and reports for duty.
+
+[REVISED TEXT]
+The HRM Office selects an applicant and assigns the applicant to a unit."
+added,"The University President oversees system operation. The PRAISE Committee establishes internal rewards and recognition procedures and strategies. The Search Committee or Director HRM searches, screens, and collects a list of deserving employees from each office. The Performance Management Team identifies potential PRAISE nominees from the collected list. The PRAISE Committee determines top performers who qualify for awards and incentives. The University President rewards deserving employees.","The University President oversees system operation. The PRAISE Committee establishes internal rewards and recognition procedures and strategies. The Search Committee or Director HRM searches, screens, and collects a list of deserving employees from each office. The Performance Management Team identifies potential PRAISE nominees from the collected list. The PRAISE Committee determines top performers who qualify for awards and incentives. The University President rewards deserving employees. The PRAISE Committee shall retain nomination records, evaluation results, committee determinations, and award decisions according to the applicable records-control procedure.",,"The added requirement supports traceability and accountability of nominations, evaluations, award determinations, and final recognition decisions.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+added
+
+[ORIGINAL TEXT]
+The University President oversees system operation. The PRAISE Committee establishes internal rewards and recognition procedures and strategies. The Search Committee or Director HRM searches, screens, and collects a list of deserving employees from each office. The Performance Management Team identifies potential PRAISE nominees from the collected list. The PRAISE Committee determines top performers who qualify for awards and incentives. The University President rewards deserving employees.
+
+[REVISED TEXT]
+The University President oversees system operation. The PRAISE Committee establishes internal rewards and recognition procedures and strategies. The Search Committee or Director HRM searches, screens, and collects a list of deserving employees from each office. The Performance Management Team identifies potential PRAISE nominees from the collected list. The PRAISE Committee determines top performers who qualify for awards and incentives. The University President rewards deserving employees. The PRAISE Committee shall retain nomination records, evaluation results, committee determinations, and award decisions according to the applicable records-control procedure."
+modified,3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of Free Higher Education. 3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all assessed school fees.,"3.4 Before releasing Undergraduate student credentials or official records, the responsible staff shall verify whether school-fee accountabilities covered by the policy remain unpaid. 3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students shall be released only after verification that assessed school fees have been fully settled.",,The revision retains the settlement-before-release controls and adds clear verification responsibilities before official records are issued.,Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of Free Higher Education. 3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all assessed school fees.
+
+[REVISED TEXT]
+3.4 Before releasing Undergraduate student credentials or official records, the responsible staff shall verify whether school-fee accountabilities covered by the policy remain unpaid. 3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students shall be released only after verification that assessed school fees have been fully settled."
+modified,This procedure applies to the performance management of LNU employees in the career and non-career service.,This procedure applies to all University matters involving faculty and staff.,unclear_scope|insufficient_detail,The proposed scope is overly broad and no longer identifies performance management or the career and non-career employee groups covered by the procedure.,Needs Revision,1,"[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+This procedure applies to the performance management of LNU employees in the career and non-career service.
+
+[REVISED TEXT]
+This procedure applies to all University matters involving faculty and staff."
+modified,"The rewards and recognition system aims to identify, select, reward, and provide incentives to deserving employees; identify outstanding accomplishments and best practices; recognize accomplishments and innovations; motivate employees who contribute ideas and superior accomplishments; and reward employees individually or in groups for innovative ideas, exemplary behavior, public-interest service, and efforts that improve government operations and productivity.","The rewards and recognition system aims to establish a transparent mechanism for identifying, selecting, and rewarding deserving employees and groups; recognize outstanding accomplishments, best practices, innovations, exemplary behavior, and public-interest service; and provide incentives that encourage creativity, integrity, efficiency, economy, and organizational productivity.",,"The revision retains the main recognition and incentive objectives while organizing the employee, group, innovation, integrity, efficiency, and productivity outcomes clearly.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The rewards and recognition system aims to identify, select, reward, and provide incentives to deserving employees; identify outstanding accomplishments and best practices; recognize accomplishments and innovations; motivate employees who contribute ideas and superior accomplishments; and reward employees individually or in groups for innovative ideas, exemplary behavior, public-interest service, and efforts that improve government operations and productivity.
+
+[REVISED TEXT]
+The rewards and recognition system aims to establish a transparent mechanism for identifying, selecting, and rewarding deserving employees and groups; recognize outstanding accomplishments, best practices, innovations, exemplary behavior, and public-interest service; and provide incentives that encourage creativity, integrity, efficiency, economy, and organizational productivity."
+modified,"The LNU SPMS operates on shared commitments and objective measures of results. Performance targets and standards are planned and agreed upon by management, supervisors, and employees. The system enhances productivity through targets aligned to organizational goals and promotes transparency, appeals, and resolution of disagreements.","Performance targets and measures shall be planned and agreed upon by management, supervisors, and employees using objective measures aligned with organizational goals and mandate. The SPMS shall provide transparent performance information and a documented mechanism for appeals and resolution of performance-related disagreements.",,"The revision retains shared commitments, objective measures, organizational alignment, transparency, and appeals while making the documentation requirement explicit.",Appropriate,0,"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The LNU SPMS operates on shared commitments and objective measures of results. Performance targets and standards are planned and agreed upon by management, supervisors, and employees. The system enhances productivity through targets aligned to organizational goals and promotes transparency, appeals, and resolution of disagreements.
+
+[REVISED TEXT]
+Performance targets and measures shall be planned and agreed upon by management, supervisors, and employees using objective measures aligned with organizational goals and mandate. The SPMS shall provide transparent performance information and a documented mechanism for appeals and resolution of performance-related disagreements."
+removed,"The student writes and signs a letter to the University President requesting a school-fee refund and states the reason for refund. The request is supported by the corresponding Official Receipt and submitted to the Accounting Office. The Accountant coordinates with the concerned office, validates the reason and amount, recommends valid requests to the University President, and returns invalid requests to the student. The University President approves or disapproves the request. Approved requests proceed through Disbursement Voucher preparation, legality and cash certifications, payment approval, check preparation, check signing, release to the student or authorized representative, and student signature in Box E of the Disbursement Voucher as proof of receipt.","Students may request refunds from the Accounting Office, and payment will be released after processing.",ambiguous_language|missing_record_or_evidence|missing_approval_step|missing_traceability|insufficient_detail,"The revision removes the signed request letter, Official Receipt, reason validation, coordination with the concerned office, University President decision, DV controls, authorized release, and Box E proof of receipt.",Needs Revision,1,"[1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+removed
+
+[ORIGINAL TEXT]
+The student writes and signs a letter to the University President requesting a school-fee refund and states the reason for refund. The request is supported by the corresponding Official Receipt and submitted to the Accounting Office. The Accountant coordinates with the concerned office, validates the reason and amount, recommends valid requests to the University President, and returns invalid requests to the student. The University President approves or disapproves the request. Approved requests proceed through Disbursement Voucher preparation, legality and cash certifications, payment approval, check preparation, check signing, release to the student or authorized representative, and student signature in Box E of the Disbursement Voucher as proof of receipt.
+
+[REVISED TEXT]
+Students may request refunds from the Accounting Office, and payment will be released after processing."
+modified,"The Purchaser or End-User evaluates accredited external providers by accomplishing the External Provider Performance Evaluation Form and forwards results to the Supply and Property Officer for review and approval. The Supply and Property Officer reviews and approves the form and forwards it to the Purchaser. The Purchaser or Supply and Property Officer summarizes the evaluation results, prepares the External Providers Performance Report, and updates the List of Accredited External Providers if needed.","External providers shall be evaluated, and the results shall be handled by the procurement office.",ambiguous_language|missing_responsibility|missing_record_or_evidence|insufficient_detail,"The revision does not identify the evaluation form, Purchaser or End-User, Supply and Property Officer review and approval, performance report, or the basis for updating the accredited-provider list.",Needs Revision,1,"[1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]","[CHANGE TYPE]
+modified
+
+[ORIGINAL TEXT]
+The Purchaser or End-User evaluates accredited external providers by accomplishing the External Provider Performance Evaluation Form and forwards results to the Supply and Property Officer for review and approval. The Supply and Property Officer reviews and approves the form and forwards it to the Purchaser. The Purchaser or Supply and Property Officer summarizes the evaluation results, prepares the External Providers Performance Report, and updates the List of Accredited External Providers if needed.
+
+[REVISED TEXT]
+External providers shall be evaluated, and the results shall be handled by the procurement office."
