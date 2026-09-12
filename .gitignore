@@ -2,3 +2,4 @@ node_modules/
 
 # ML training artifacts (too large for git)
 Backend/ml/training_checkpoints/
+Backend/ml/saved_models/
