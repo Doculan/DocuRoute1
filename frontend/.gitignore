@@ -56,3 +56,8 @@ frontend/node_modules/
 dist/
 build/
 *.log
+*.ckpt
+*.pt
+*.pth
+*.h5
+*.safetensors

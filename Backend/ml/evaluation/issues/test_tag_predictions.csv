@@ -1,44 +1,44 @@
 ﻿actual_tags,predicted_tags,predicted_tag_confidences
 ambiguous_language|insufficient_detail|missing_traceability|missing_record_or_evidence,,{}
-ambiguous_language|insufficient_detail|missing_responsibility|missing_traceability,insufficient_detail,"{""insufficient_detail"": 53.84}"
+ambiguous_language|insufficient_detail|missing_responsibility|missing_traceability,,{}
 ,,{}
 ,,{}
 ,,{}
 ,,{}
-insufficient_detail|missing_approval_step|missing_traceability|possible_contradiction,insufficient_detail,"{""insufficient_detail"": 53.35}"
+insufficient_detail|missing_approval_step|missing_traceability|possible_contradiction,,{}
 ,,{}
 ,,{}
-ambiguous_language|insufficient_detail|unclear_scope,insufficient_detail,"{""insufficient_detail"": 53.01}"
+ambiguous_language|insufficient_detail|unclear_scope,,{}
 ,,{}
-missing_approval_step|missing_traceability|missing_record_or_evidence|possible_contradiction,insufficient_detail,"{""insufficient_detail"": 52.66}"
-insufficient_detail|missing_responsibility|missing_approval_step|missing_traceability,insufficient_detail,"{""insufficient_detail"": 52.86}"
-insufficient_detail|missing_responsibility|missing_approval_step|missing_traceability|missing_record_or_evidence,insufficient_detail,"{""insufficient_detail"": 51.02}"
+missing_approval_step|missing_traceability|missing_record_or_evidence|possible_contradiction,,{}
+insufficient_detail|missing_responsibility|missing_approval_step|missing_traceability,,{}
+insufficient_detail|missing_responsibility|missing_approval_step|missing_traceability|missing_record_or_evidence,,{}
 missing_responsibility|missing_record_or_evidence|illogical_sequence,,{}
 ,,{}
 ,,{}
 insufficient_detail|missing_responsibility|missing_traceability|missing_record_or_evidence,,{}
-ambiguous_language|insufficient_detail|missing_record_or_evidence,insufficient_detail,"{""insufficient_detail"": 51.01}"
-insufficient_detail|missing_traceability|possible_contradiction,insufficient_detail,"{""insufficient_detail"": 51.09}"
+ambiguous_language|insufficient_detail|missing_record_or_evidence,,{}
+insufficient_detail|missing_traceability|possible_contradiction,,{}
 ,,{}
 ambiguous_language|insufficient_detail|missing_responsibility|missing_record_or_evidence,,{}
-insufficient_detail|unclear_scope,insufficient_detail,"{""insufficient_detail"": 52.69}"
+insufficient_detail|unclear_scope,,{}
 insufficient_detail|missing_responsibility|missing_traceability,,{}
 ,,{}
-ambiguous_language|insufficient_detail|unclear_scope,insufficient_detail,"{""insufficient_detail"": 51.22}"
+ambiguous_language|insufficient_detail|unclear_scope,,{}
 ,,{}
 ,,{}
 ,,{}
 ,,{}
-insufficient_detail|missing_approval_step|missing_traceability,insufficient_detail,"{""insufficient_detail"": 54.93}"
+insufficient_detail|missing_approval_step|missing_traceability,,{}
 ,,{}
 ,,{}
 insufficient_detail|missing_responsibility|missing_traceability|missing_record_or_evidence,,{}
-ambiguous_language|insufficient_detail|missing_traceability|missing_record_or_evidence,insufficient_detail,"{""insufficient_detail"": 56.49}"
+ambiguous_language|insufficient_detail|missing_traceability|missing_record_or_evidence,insufficient_detail,"{""insufficient_detail"": 50.99}"
 ,,{}
 ,,{}
 missing_approval_step|missing_record_or_evidence|illogical_sequence,,{}
-insufficient_detail|missing_responsibility|missing_traceability|possible_contradiction,insufficient_detail,"{""insufficient_detail"": 52.01}"
-missing_approval_step|missing_traceability|possible_contradiction,insufficient_detail,"{""insufficient_detail"": 53.19}"
+insufficient_detail|missing_responsibility|missing_traceability|possible_contradiction,,{}
+missing_approval_step|missing_traceability|possible_contradiction,insufficient_detail,"{""insufficient_detail"": 50.69}"
 ,,{}
 ,,{}
 ,,{}

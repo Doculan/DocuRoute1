@@ -1489,6 +1489,64 @@ def review_revision(request, revision_id):
     return Response({'message': f'Revision {new_status}.', 'status': revision.status})
 
 
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def ai_assessment_view(request, revision_id):
+    try:
+        revision = ManualRevision.objects.select_related('section').get(
+            id=revision_id
+        )
+    except ManualRevision.DoesNotExist:
+        return Response({'detail': 'Revision not found.'}, status=404)
+
+    change_type = request.query_params.get('change_type', 'Text Revision')
+    original_text = revision.section.content
+
+    if revision.proposed_content:
+        revised_text = revision.proposed_content
+    elif revision.uploaded_file:
+        try:
+            with revision.uploaded_file.open('rb') as uploaded_file:
+                revised_text = extract_text(
+                    uploaded_file.read(),
+                    revision.uploaded_file.name,
+                )
+        except Exception as error:
+            return Response(
+                {'detail': f'Unable to extract revision text: {error}'},
+                status=400,
+            )
+    elif revision.merge_type == 'merge' and revision.merge_section_ids:
+        source_sections = ManualSection.objects.filter(
+            id__in=revision.merge_section_ids,
+            manual=revision.section.manual,
+        )
+        revised_text = revision.section.content
+        for source_section in source_sections:
+            revised_text = f'{revised_text}\n\n{source_section.content}'.strip()
+    else:
+        return Response(
+            {'detail': 'Revision does not contain content to assess.'},
+            status=400,
+        )
+
+    try:
+        from ml.distilbert_model import assess_revision
+
+        assessment = assess_revision(
+            change_type,
+            original_text,
+            revised_text,
+        )
+    except Exception as error:
+        return Response(
+            {'detail': f'AI assessment failed: {error}'},
+            status=500,
+        )
+
+    return Response({'ai_assessment': assessment})
+
+
 # ─── SVM MODEL EVALUATION ─────────────────────────────────────
 
 @api_view(['GET'])
