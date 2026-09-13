@@ -76,6 +76,8 @@ _INLINE_HTML_RE = re.compile(
 # A table separator row: |---|---| or |:--|--:| etc.
 _MD_TABLE_SEP_RE = re.compile(r'^\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$')
 
+_HTML_COMMENT_RE = re.compile(r'<!--.*?-->', flags=re.DOTALL)
+
 _MD_HEADING_RE = re.compile(r'^\s*#{1,6}\s*')
 _MD_BULLET_RE = re.compile(r'^\s*[-*+]\s+')
 _MD_EMPHASIS_RE = re.compile(r'\*{1,3}|(?<!_)__(?!_)')
@@ -440,9 +442,13 @@ def _clean(text):
     and let ML classifier and users decide than to lose legitimate data.
     """
     out = []
+    # pymupdf4llm marks image regions with HTML comments such as
+    # "<!-- Start of picture text -->". Stripped on the whole text rather than
+    # per line, since a comment may span lines.
+    text = _HTML_COMMENT_RE.sub('', text)
     lines = text.splitlines()
     i = 0
-    
+
     while i < len(lines):
         s = lines[i].strip()
 
