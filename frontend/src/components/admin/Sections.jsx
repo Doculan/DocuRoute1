@@ -3,7 +3,7 @@ import axios from "axios";
 
 const formatOCRContent = (content = "") => {
   return content
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(//g, "•")
     .replace(/\n{3,}/g, "\n\n")

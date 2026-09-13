@@ -33,10 +33,14 @@ def normalize_for_diff(text):
     The editors seed their textarea with the same cleanup applied client-side
     (formatOCRContent), so both sides have to be normalized identically —
     otherwise every line carrying a <br> or bullet glyph reads as changed.
+
+    <br> collapses to a space, not a newline: it marks where a PDF table cell
+    ran out of width mid-sentence, so splitting on it is what produced the
+    one-word-per-line content in legacy sections.
     """
     if not text:
         return ''
-    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<br\s*/?>', ' ', text, flags=re.IGNORECASE)
     text = re.sub(r'&nbsp;', ' ', text, flags=re.IGNORECASE)
     text = text.replace(_OCR_BULLET, '•')
     text = re.sub(r'\n{3,}', '\n\n', text)
@@ -68,12 +72,9 @@ def _split_into_sections(text, fallback_title='Full Document'):
     # Semantic keywords (POLICY, PROCEDURE, RESPONSIBILITY, WORKING INSTRUCTION)
     # must be preserved so the SVM classifier can detect them.
 
-    # Clean markdown syntax for section detection
-    text = re.sub(r'^#+\s*\*+', '', text, flags=re.MULTILINE)  # Remove ## ** from start of lines
-    text = re.sub(r'\*+', '', text)  # Remove remaining **
-    text = re.sub(r'^\|', '', text, flags=re.MULTILINE)  # Remove table | at start
-    text = re.sub(r'\|$', '', text, flags=re.MULTILINE)  # Remove table | at end
-    text = re.sub(r'\s*\|\s*', ' ', text)  # Replace | with space in tables
+    # Markdown syntax is stripped by ocr_engine._clean before this point, so no
+    # cleanup happens here. In particular the "|" cell separators are left
+    # intact — flattening them to spaces destroyed every procedure table.
 
     def is_top_level_number(num_tuple):
         # FIX #2: also treat bare single-digit sections ("1", "2") as top-level

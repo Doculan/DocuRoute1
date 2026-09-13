@@ -6,7 +6,7 @@ import DiffView from "../DiffView";
 // server diffs submitted text against content normalized the same way.
 const formatOCRContent = (content = "") => {
   return content
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(//g, "•")
     .replace(/\n{3,}/g, "\n\n")

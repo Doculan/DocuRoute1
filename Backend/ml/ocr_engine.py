@@ -55,6 +55,96 @@ _SECTION_RE = re.compile(
     flags=re.IGNORECASE
 )
 
+# ── Markdown artifacts ───────────────────────────────────────
+# The PDF path runs pymupdf4llm.to_markdown(), so its output carries Markdown
+# syntax that must be stripped before the text is stored or shown to a user.
+
+# pymupdf4llm emits <br> for a SOFT WRAP inside a table cell — the PDF simply
+# ran out of column width mid-sentence. It is not a paragraph break, so it has
+# to collapse to a space; turning it into a newline is what produced the
+# "one word per line" cells.
+_MD_BR_RE = re.compile(r'<br\s*/?>', flags=re.IGNORECASE)
+
+# A table separator row: |---|---| or |:--|--:| etc.
+_MD_TABLE_SEP_RE = re.compile(r'^\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$')
+
+_MD_HEADING_RE = re.compile(r'^\s*#{1,6}\s*')
+_MD_BULLET_RE = re.compile(r'^\s*[-*+]\s+')
+_MD_EMPHASIS_RE = re.compile(r'\*{1,3}|(?<!_)__(?!_)')
+
+# Header labels that identify a repeated page-header band.
+_HEADER_LABEL_RE = re.compile(
+    r'(VERSION\s*NO|DOCUMENT\s*NO|DOCUMENT\s*NAME|MANUAL\s*TITLE|REVISION\s*NO'
+    r'|EFFECTIVITY\s*DATE|PAGE\s*NO|APPROVAL\s*DATE)',
+    flags=re.IGNORECASE,
+)
+
+# Spacing the PDF text layer loses around punctuation, e.g. "Committee(BAC)as".
+_SPACE_FIXES = (
+    (re.compile(r'(?<=[a-z0-9])\((?=[A-Za-z])'), ' ('),
+    (re.compile(r'(?<=\))(?=[A-Za-z])'), ' '),
+    (re.compile(r'(?<=[–—])(?=[A-Za-z0-9])'), ' '),
+    (re.compile(r'(?<=[A-Za-z0-9])(?=[–—])'), ' '),
+)
+
+
+def _strip_markdown_line(s):
+    """Remove Markdown syntax from one line, preserving its text."""
+    s = _MD_BR_RE.sub(' ', s)
+    # Word's Symbol-font bullet survives extraction as a private-use codepoint.
+    s = s.replace('', '•').replace('&nbsp;', ' ')
+    s = _MD_HEADING_RE.sub('', s)
+    s = _MD_EMPHASIS_RE.sub('', s)
+    s = _MD_BULLET_RE.sub('', s)
+
+    # Table row: keep the cells, drop the delimiting pipes at the edges.
+    if s.startswith('|') or s.endswith('|'):
+        cells = [c.strip() for c in s.strip('|').split('|')]
+        s = ' | '.join(c for c in cells if c)
+
+    for pattern, repl in _SPACE_FIXES:
+        s = pattern.sub(repl, s)
+
+    return re.sub(r'\s{2,}', ' ', s).strip()
+
+
+def _mostly_upper(s):
+    """True when the line's letters are overwhelmingly uppercase.
+
+    Distinguishes a metadata band ("HUMAN RESOURCE MANUAL | HRM 4.01") from body
+    prose, which is always mixed case. Section headings like "1.0 OBJECTIVES"
+    are also uppercase, so this is only ever used together with a metadata cue.
+    """
+    letters = [c for c in s if c.isalpha()]
+    if len(letters) < 4:
+        return False
+    return sum(1 for c in letters if c.isupper()) / len(letters) >= 0.7
+
+
+def _is_page_header_line(s):
+    """True for the repeated page-header band, in any of the forms it survives as.
+
+    The band is a table in the source PDF, so depending on how its cells get
+    merged it can arrive whole, split by label, or as a bare row of values.
+    """
+    # Whole band: several metadata labels run together on one line.
+    if len(_HEADER_LABEL_RE.findall(s)) >= 2:
+        return True
+
+    # Split-off fragment: a short "LABEL value" line, e.g. "PAGE NO. 3 of 3".
+    if len(s) <= 60 and _HEADER_LABEL_RE.match(s):
+        return True
+
+    # Value-only row: uppercase metadata carrying a label or a document code
+    # such as "HRM 4.01". Body prose never looks like this.
+    if _mostly_upper(s):
+        if _HEADER_LABEL_RE.search(s):
+            return True
+        if re.search(r'\b[A-Z]{2,4}\s?\d+\.\d+\b', s):
+            return True
+
+    return False
+
 
 # ── DOCX ──────────────────────────────────────────────────────
 
@@ -378,13 +468,30 @@ def _clean(text):
             i += 1
             continue
 
-        # -- Normalize whitespace but KEEP everything else --
-        # Multiple spaces → single space (preserves readability)
-        s = re.sub(r'\s{2,}', ' ', s).strip()
-        
-        if s:
-            out.append(s)
+        # -- Markdown table separator rows carry no content --
+        if _MD_TABLE_SEP_RE.match(s):
+            i += 1
+            continue
 
+        # -- Strip Markdown syntax before any content checks --
+        s = _strip_markdown_line(s)
+
+        if not s:
+            i += 1
+            continue
+
+        # -- Drop the page-header band repeated on every page --
+        # Checked after stripping so "**VERSION NO. ... PAGE NO. 1 of 3**" is seen.
+        if _is_page_header_line(s):
+            i += 1
+            continue
+
+        # -- "X of Y" can survive as a tail once the header band is split --
+        if re.match(r'^\d+\s+of\s+\d+$', s):
+            i += 1
+            continue
+
+        out.append(s)
         i += 1
 
     # Collapse excessive blank lines (4+ → 2-3)
@@ -394,6 +501,16 @@ def _clean(text):
 
 
 # ── PUBLIC API ───────────────────────────────────────────────
+
+def clean_extracted_text(text: str) -> str:
+    """Apply the extraction cleanup rules to text that is already stored.
+
+    Lets previously-extracted content be brought up to the current rules
+    without re-running extraction, which would mean recreating sections and
+    cascade-deleting their revision history.
+    """
+    return _clean(text or '')
+
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
     ext = filename.split('.')[-1].lower()
