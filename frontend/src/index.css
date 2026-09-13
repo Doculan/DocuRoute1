@@ -693,23 +693,6 @@ a:hover { color: var(--brand-500); }
 .accordion.is-success { border-left: 3px solid var(--success); }
 .accordion.is-danger  { border-left: 3px solid var(--danger); }
 
-/* Dark diff block — reads as "code", on-brand rather than pure black */
-.diff-box {
-  margin: 0;
-  padding: 0.9rem 1.1rem;
-  max-height: 260px;
-  overflow: auto;
-  border-radius: var(--r-md);
-  background: linear-gradient(160deg, var(--brand-950), #0b0940);
-  color: #b9b5f5;
-  font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 0.78rem;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  word-break: break-word;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
 /* ============================================================
    Buttons
    ============================================================ */
@@ -1537,6 +1520,20 @@ a:hover { color: var(--brand-500); }
 .diff-cell.is-changed-old { background: rgba(234, 154, 8, 0.11);  color: var(--warning-ink); }
 .diff-cell.is-changed-new { background: rgba(14, 163, 115, 0.11); color: var(--success-ink); }
 
+/* Cells carrying a line-number gutter */
+.diff-cell.has-gutter { display: flex; gap: 0.75rem; }
+
+/* No counterpart on this side — hatched so it reads as absence, not emptiness */
+.diff-cell.is-blank {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--n-50),
+    var(--n-50) 6px,
+    var(--n-100) 6px,
+    var(--n-100) 12px
+  );
+}
+
 /* File preview */
 .file-viewer {
   display: flex;
@@ -1611,7 +1608,7 @@ a:hover { color: var(--brand-500); }
   font-weight: 600;
 }
 
-.diff-scroll { max-height: 280px; overflow: auto; background: var(--surface); }
+.diff-scroll { max-height: 440px; overflow: auto; background: var(--surface); }
 
 .diff-view {
   display: flex;

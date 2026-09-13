@@ -35,25 +35,87 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
-function computeDiff(oldText, newText) {
-  const oldLines = oldText.split("\n");
-  const newLines = newText.split("\n");
-  const result = [];
-  const maxLen = Math.max(oldLines.length, newLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    const o = oldLines[i] ?? "";
-    const n = newLines[i] ?? "";
-    if (o === n) {
-      result.push({ type: "same", old: o, new: n });
-    } else if (o && !n) {
-      result.push({ type: "removed", old: o, new: "" });
-    } else if (!o && n) {
-      result.push({ type: "added", old: "", new: n });
-    } else {
-      result.push({ type: "changed", old: o, new: n });
+// Align two line arrays by longest common subsequence, so inserted or deleted
+// lines shift the alignment instead of knocking every later line out of sync.
+function alignLines(oldLines, newLines) {
+  const n = oldLines.length;
+  const m = newLines.length;
+  const width = m + 1;
+
+  // lcs[i][j] = length of the longest common subsequence of old[i..] and new[j..]
+  const lcs = new Uint32Array((n + 1) * width);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i * width + j] =
+        oldLines[i] === newLines[j]
+          ? lcs[(i + 1) * width + (j + 1)] + 1
+          : Math.max(lcs[(i + 1) * width + j], lcs[i * width + (j + 1)]);
     }
   }
-  return result;
+
+  const ops = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (oldLines[i] === newLines[j]) {
+      ops.push({ op: "same", old: oldLines[i], new: newLines[j] });
+      i++;
+      j++;
+    } else if (lcs[(i + 1) * width + j] >= lcs[i * width + (j + 1)]) {
+      ops.push({ op: "removed", old: oldLines[i] });
+      i++;
+    } else {
+      ops.push({ op: "added", new: newLines[j] });
+      j++;
+    }
+  }
+  while (i < n) ops.push({ op: "removed", old: oldLines[i++] });
+  while (j < m) ops.push({ op: "added", new: newLines[j++] });
+
+  return ops;
+}
+
+function computeDiff(oldText, newText) {
+  // Normalize both sides first. Older versions still carry literal <br> markup
+  // from OCR extraction while newer ones hold real newlines, so comparing them
+  // raw reports every marked-up line as rewritten.
+  const ops = alignLines(
+    formatOCRContent(oldText).split("\n"),
+    formatOCRContent(newText).split("\n")
+  );
+  const rows = [];
+
+  let k = 0;
+  while (k < ops.length) {
+    if (ops[k].op === "same") {
+      rows.push({ type: "same", old: ops[k].old, new: ops[k].new });
+      k++;
+      continue;
+    }
+
+    // Pair each run of removals with the insertions that replaced them, so an
+    // edited line shows its old and new text on one row.
+    const removed = [];
+    const added = [];
+    while (k < ops.length && ops[k].op !== "same") {
+      if (ops[k].op === "removed") removed.push(ops[k].old);
+      else added.push(ops[k].new);
+      k++;
+    }
+
+    const paired = Math.min(removed.length, added.length);
+    for (let p = 0; p < paired; p++) {
+      rows.push({ type: "changed", old: removed[p], new: added[p] });
+    }
+    for (let p = paired; p < removed.length; p++) {
+      rows.push({ type: "removed", old: removed[p], new: "" });
+    }
+    for (let p = paired; p < added.length; p++) {
+      rows.push({ type: "added", old: "", new: added[p] });
+    }
+  }
+
+  return rows;
 }
 
 function parseRow(line) {
@@ -325,19 +387,27 @@ export default function Sections() {
     fetchHistory(s.id);
   };
 
-  const handleVersionChange = (e) => {
-    const ver = parseInt(e.target.value);
-    const selected = history.find((h) => h.version === ver);
-    setSelectedVersion(selected);
-    const idx = history.indexOf(selected);
+  // Diff a version against the one immediately before it. The oldest version
+  // has no predecessor, so there is nothing to compare it against.
+  const compareWithPrevious = (versions, version) => {
+    const idx = versions.findIndex((h) => h.version === version?.version);
     if (idx > 0) {
-      const prev = history[idx - 1];
-      setDiffLines(computeDiff(prev.content, selected.content));
+      setDiffLines(computeDiff(versions[idx - 1].content, version.content));
       setShowDiff(true);
     } else {
       setDiffLines([]);
       setShowDiff(false);
     }
+  };
+
+  const hasPreviousVersion =
+    history.findIndex((h) => h.version === selectedVersion?.version) > 0;
+
+  const handleVersionChange = (e) => {
+    const ver = parseInt(e.target.value);
+    const selected = history.find((h) => h.version === ver);
+    setSelectedVersion(selected);
+    compareWithPrevious(history, selected);
   };
 
   const showMsg = (msg) => {
@@ -519,7 +589,7 @@ export default function Sections() {
           <p className="page-subtitle">Read, edit, merge and version the sections of a manual.</p>
         </div>
         <div className="row-wrap" style={{ gap: "0.6rem" }}>
-          <select className="select" style={{ minWidth: "260px" }} onChange={handleManualChange} defaultValue="">
+          <select className="select" style={{ width: "auto", minWidth: "260px" }} onChange={handleManualChange} defaultValue="">
             <option value="">— Select a manual —</option>
             {manuals.map((m) => (
               <option key={m.id} value={m.id}>{m.title} ({m.department})</option>
@@ -859,7 +929,7 @@ export default function Sections() {
                       <div className="row-wrap" style={{ gap: "0.5rem" }}>
                         <select
                           className="select"
-                          style={{ minWidth: "220px" }}
+                          style={{ width: "auto", minWidth: "220px" }}
                           value={selectedVersion?.version ?? ""}
                           onChange={handleVersionChange}
                         >
@@ -871,13 +941,22 @@ export default function Sections() {
                             </option>
                           ))}
                         </select>
-                        {showDiff && (
+                        {showDiff ? (
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={() => { setShowDiff(false); setSelectedVersion(history[history.length - 1]); }}
                           >
                             ✕ Clear diff
                           </button>
+                        ) : (
+                          hasPreviousVersion && (
+                            <button
+                              className="btn btn-subtle btn-sm"
+                              onClick={() => compareWithPrevious(history, selectedVersion)}
+                            >
+                              ⇄ Compare with previous
+                            </button>
+                          )
                         )}
                       </div>
                     )}

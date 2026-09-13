@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import DiffView from "../DiffView";
 
+// Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
+// server diffs submitted text against content normalized the same way.
 const formatOCRContent = (content = "") => {
   return content
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/&nbsp;/gi, " ")
     .replace(//g, "•")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 };
 
@@ -590,7 +594,14 @@ export default function StaffSections({ manualId, onBack }) {
                             <strong>Admin notes:</strong> {r.reviewer_notes}
                           </div>
                         )}
-                        {r.diff_preview && <pre className="diff-box">{r.diff_preview}</pre>}
+                        {r.diff_preview && (
+                          <div className="diff-wrap">
+                            <div className="diff-wrap-head">Your proposed changes</div>
+                            <div className="diff-scroll">
+                              <DiffView diffText={r.diff_preview} />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

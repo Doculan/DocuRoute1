@@ -23,6 +23,46 @@ class IsAdminRole(BasePermission):
 
 # ─── HELPERS ─────────────────────────────────────────────────
 
+# Word/Symbol-font bullet that survives OCR extraction.
+_OCR_BULLET = ''
+
+
+def normalize_for_diff(text):
+    """Strip OCR/HTML artifacts so a diff reflects real edits, not markup noise.
+
+    The editors seed their textarea with the same cleanup applied client-side
+    (formatOCRContent), so both sides have to be normalized identically —
+    otherwise every line carrying a <br> or bullet glyph reads as changed.
+    """
+    if not text:
+        return ''
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'&nbsp;', ' ', text, flags=re.IGNORECASE)
+    text = text.replace(_OCR_BULLET, '•')
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def build_diff(old_text, new_text):
+    """Unified diff of two blocks of section content, normalized on both sides."""
+    return '\n'.join(difflib.unified_diff(
+        normalize_for_diff(old_text).splitlines(),
+        normalize_for_diff(new_text).splitlines(),
+        lineterm='',
+    ))
+
+
+def preview_diff(diff_text, max_lines=12):
+    """Trim a unified diff to whole lines, so a preview never cuts mid-line."""
+    if not diff_text:
+        return ''
+    lines = diff_text.splitlines()
+    if len(lines) <= max_lines:
+        return diff_text
+    hidden = len(lines) - max_lines
+    return '\n'.join(lines[:max_lines] + [f'… {hidden} more line{"" if hidden == 1 else "s"}'])
+
+
 def _split_into_sections(text, fallback_title='Full Document'):
     # FIX #1: INLINE_TAGS are NO LONGER stripped from lines.
     # Semantic keywords (POLICY, PROCEDURE, RESPONSIBILITY, WORKING INSTRUCTION)
@@ -525,7 +565,7 @@ def staff_my_revisions(request):
         'status': r.status,
         'reviewer_notes': r.reviewer_notes,
         'reviewed_at': r.reviewed_at,
-        'diff_preview': r.diff_text[:400] if r.diff_text else '',
+        'diff_preview': preview_diff(r.diff_text),
     } for r in revisions]
     return Response(data)
 
@@ -1282,11 +1322,7 @@ def upload_revision(request, section_id):
     uploaded_file.seek(0)
     text_new = extract_text(file_bytes, uploaded_file.name)
 
-    diff = "\n".join(difflib.unified_diff(
-        section.content.splitlines(),
-        text_new.splitlines(),
-        lineterm=""
-    ))
+    diff = build_diff(section.content, text_new)
 
     revision = ManualRevision.objects.create(
         section=section,
@@ -1298,7 +1334,7 @@ def upload_revision(request, section_id):
 
     return Response({
         'revision_id': revision.id,
-        'diff_preview': diff[:500],
+        'diff_preview': preview_diff(diff),
         'status': revision.status
     }, status=201)
 
@@ -1318,11 +1354,7 @@ def propose_text_revision(request, section_id):
     if not proposed_content:
         return Response({'error': 'Proposed content is required'}, status=400)
 
-    diff = "\n".join(difflib.unified_diff(
-        section.content.splitlines(),
-        proposed_content.splitlines(),
-        lineterm=""
-    ))
+    diff = build_diff(section.content, proposed_content)
 
     revision = ManualRevision.objects.create(
         section=section,
@@ -1334,7 +1366,7 @@ def propose_text_revision(request, section_id):
 
     return Response({
         'revision_id': revision.id,
-        'diff_preview': diff[:500],
+        'diff_preview': preview_diff(diff),
         'status': revision.status
     }, status=201)
 
@@ -1364,11 +1396,7 @@ def propose_merge(request):
         return Response({'error': 'Source and target must be different sections.'}, status=400)
 
     merged_content = f"{target.content}\n\n{source.content}".strip()
-    diff = "\n".join(difflib.unified_diff(
-        target.content.splitlines(),
-        merged_content.splitlines(),
-        lineterm=""
-    ))
+    diff = build_diff(target.content, merged_content)
 
     revision = ManualRevision.objects.create(
         section=target,
@@ -1381,7 +1409,7 @@ def propose_merge(request):
 
     return Response({
         'revision_id': revision.id,
-        'diff_preview': diff[:500],
+        'diff_preview': preview_diff(diff),
         'status': revision.status
     }, status=201)
 
@@ -1410,7 +1438,7 @@ def list_revisions(request):
         'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
         'submitted_at': r.submitted_at,
         'status': r.status,
-        'diff_preview': r.diff_text[:300],
+        'diff_preview': preview_diff(r.diff_text),
         'diff_text': r.diff_text,
     } for r in revisions]
     return Response(data)

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import DiffView from "../DiffView";
 
 const BASE_URL = "http://127.0.0.1:8000";
 
@@ -140,9 +141,11 @@ export default function StaffRevisions() {
                     )}
 
                     {r.diff_preview && (
-                      <div>
-                        <p className="label" style={{ marginBottom: "0.4rem" }}>Change preview</p>
-                        <pre className="diff-box">{r.diff_preview}</pre>
+                      <div className="diff-wrap">
+                        <div className="diff-wrap-head">Your proposed changes</div>
+                        <div className="diff-scroll">
+                          <DiffView diffText={r.diff_preview} />
+                        </div>
                       </div>
                     )}
                   </div>

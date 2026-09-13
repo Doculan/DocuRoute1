@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import DiffView from "../DiffView";
 
 const BASE_URL = "http://127.0.0.1:8000";
 
@@ -16,77 +17,104 @@ const STATUS_TONE = {
 };
 
 function parseUnifiedDiff(text) {
-  return text.split("\n").reduce((acc, line) => {
-    if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("@@")) return acc;
-    if (line.startsWith("-")) acc.push({ type: "removed", text: line.slice(1) });
-    else if (line.startsWith("+")) acc.push({ type: "added", text: line.slice(1) });
-    else acc.push({ type: "context", text: line.startsWith(" ") ? line.slice(1) : line });
-    return acc;
-  }, []);
+  const items = [];
+  let inHunk = false;
+
+  for (const line of text.split("\n")) {
+    // The --- / +++ banner only appears before the first hunk. Checking that
+    // keeps a removed line whose own text starts with "--" from being eaten.
+    if (!inHunk && (line.startsWith("---") || line.startsWith("+++"))) continue;
+
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (m) items.push({ type: "hunk", oldStart: Number(m[1]), newStart: Number(m[2]) });
+      continue;
+    }
+
+    if (line.startsWith("-")) items.push({ type: "removed", text: line.slice(1) });
+    else if (line.startsWith("+")) items.push({ type: "added", text: line.slice(1) });
+    else items.push({ type: "context", text: line.startsWith(" ") ? line.slice(1) : line });
+  }
+
+  return items;
 }
 
-function ColorizedDiff({ diffText }) {
-  if (!diffText) return <p className="muted text-sm" style={{ padding: "0.75rem" }}>No changes detected.</p>;
+// Turn a flat diff into aligned row pairs. Each side only ever carries its own
+// lines: the original never shows an insertion, the proposal never shows a
+// deletion, and the shorter side of an edit gets a blank filler cell.
+function buildSideBySideRows(items) {
+  const rows = [];
+  let oldNo = 0;
+  let newNo = 0;
+  let i = 0;
 
-  return (
-    <div className="diff-view">
-      {diffText.split("\n").map((line, idx) => {
-        const key = `${idx}-${line.slice(0, 12)}`;
-        if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("@@")) {
-          return <div key={key} className="diff-line is-meta">{line}</div>;
-        }
-        if (line.startsWith("-")) {
-          return (
-            <div key={key} className="diff-line is-removed">
-              <span className="diff-sign">−</span><span>{line.slice(1)}</span>
-            </div>
-          );
-        }
-        if (line.startsWith("+")) {
-          return (
-            <div key={key} className="diff-line is-added">
-              <span className="diff-sign">+</span><span>{line.slice(1)}</span>
-            </div>
-          );
-        }
-        return (
-          <div key={key} className="diff-line">
-            <span className="diff-sign" />
-            <span>{line.startsWith(" ") ? line.slice(1) : line}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
+  while (i < items.length) {
+    const item = items[i];
+
+    if (item.type === "hunk") {
+      oldNo = item.oldStart - 1;
+      newNo = item.newStart - 1;
+      i++;
+      continue;
+    }
+
+    if (item.type === "context") {
+      rows.push({
+        left: { no: ++oldNo, text: item.text },
+        right: { no: ++newNo, text: item.text },
+      });
+      i++;
+      continue;
+    }
+
+    const removed = [];
+    const added = [];
+    while (i < items.length && (items[i].type === "removed" || items[i].type === "added")) {
+      if (items[i].type === "removed") removed.push(items[i].text);
+      else added.push(items[i].text);
+      i++;
+    }
+
+    for (let p = 0; p < Math.max(removed.length, added.length); p++) {
+      rows.push({
+        left: p < removed.length ? { no: ++oldNo, text: removed[p], changed: true } : null,
+        right: p < added.length ? { no: ++newNo, text: added[p], changed: true } : null,
+      });
+    }
+  }
+
+  return rows;
 }
 
 function SideBySideDiff({ rev }) {
-  const items = parseUnifiedDiff(rev.diff_text || rev.diff_preview || "");
+  const rows = buildSideBySideRows(parseUnifiedDiff(rev.diff_text || rev.diff_preview || ""));
 
-  const renderColumn = (side) => {
-    const highlight = side === "left" ? "removed" : "added";
-    return (
-      <div className="diff-pane">
-        <div className="diff-pane-head">{side === "left" ? "Original" : "Proposed"}</div>
-        <div className="diff-view">
-          {items.map((item, idx) => (
-            <div
-              key={`${side}-${idx}`}
-              className={`diff-line${item.type === highlight ? ` is-${highlight}` : ""}`}
-            >
-              <span className="diff-gutter">{idx + 1}</span>
-              <span>{item.text}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  if (rows.length === 0) {
+    return <p className="muted text-sm">No changes to compare.</p>;
+  }
+
+  const cell = (entry, tone) => (
+    <div className={`diff-cell has-gutter${entry ? (entry.changed ? ` is-${tone}` : "") : " is-blank"}`}>
+      {entry && (
+        <>
+          <span className="diff-gutter">{entry.no}</span>
+          <span>{entry.text}</span>
+        </>
+      )}
+    </div>
+  );
 
   return (
-    <div className="diff-split">
-      {renderColumn("left")}
-      {renderColumn("right")}
+    <div className="diff-grid">
+      <div className="diff-grid-head">Original</div>
+      <div className="diff-grid-head">Proposed</div>
+      {rows.map((row, idx) => (
+        <Fragment key={idx}>
+          {cell(row.left, "removed")}
+          {cell(row.right, "added")}
+        </Fragment>
+      ))}
     </div>
   );
 }
@@ -327,7 +355,8 @@ export default function RevisionReview() {
                   Changes in <strong>{r.section}</strong>
                 </div>
                 <div className="diff-scroll">
-                  <ColorizedDiff diffText={r.diff_preview || r.diff_text || ""} />
+                  {/* diff_text is the full diff; diff_preview is only a trimmed fallback */}
+                  <DiffView diffText={r.diff_text || r.diff_preview || ""} />
                 </div>
               </div>
 
