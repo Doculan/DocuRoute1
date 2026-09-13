@@ -47,15 +47,15 @@ export default function App() {
 
   // Fallback — not approved or unknown role
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", backgroundColor:"#f0f2f5", flexDirection:"column", gap:"1rem" }}>
-      <div style={{ backgroundColor:"#fff", padding:"2rem 3rem", borderRadius:"12px", boxShadow:"0 4px 16px rgba(0,0,0,0.08)", textAlign:"center" }}>
-        <h2 style={{ color:"#090749", margin:"0 0 0.5rem" }}>Account Pending Approval</h2>
-        <p style={{ color:"#718096", margin:"0 0 1.5rem" }}>Your account is waiting for admin approval. Please check back later.</p>
-        <button
-          style={{ padding:"0.6rem 1.5rem", backgroundColor:"#e53e3e", color:"#fff", border:"none", borderRadius:"8px", cursor:"pointer", fontWeight:"600" }}
-          onClick={handleLogout}
-        >
-          Logout
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", padding: "1.5rem" }}>
+      <div className="card card-pad anim-scale-in" style={{ maxWidth: "26rem", textAlign: "center" }}>
+        <div className="empty-icon" style={{ margin: "0 auto 1rem" }}>⏳</div>
+        <h2 className="auth-title">Account pending approval</h2>
+        <p className="auth-subtitle">
+          Your account is waiting for administrator approval. Please check back later.
+        </p>
+        <button className="btn btn-ghost btn-block" onClick={handleLogout}>
+          Sign out
         </button>
       </div>
     </div>

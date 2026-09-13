@@ -60,157 +60,117 @@ export default function UserManagement() {
 
   return (
     <div>
-      <h2 style={styles.pageTitle}>User Management</h2>
-
-      <div style={styles.statsRow}>
-        <div style={styles.statCard}>
-          <span style={styles.statNum}>{pendingUsers.length}</span>
-          <span style={styles.statLabel}>Pending Approval</span>
+      <header className="page-head">
+        <div>
+          <h1 className="page-title">User Management</h1>
+          <p className="page-subtitle">Review access requests and manage approved accounts</p>
         </div>
-        <div style={styles.statCard}>
-          <span style={styles.statNum}>{approvedUsers.length}</span>
-          <span style={styles.statLabel}>Approved Users</span>
+      </header>
+
+      <div className="stat-grid">
+        <div className="stat-card is-warning">
+          <span className="stat-value">{pendingUsers.length}</span>
+          <span className="stat-label">Pending approval</span>
+        </div>
+        <div className="stat-card is-success">
+          <span className="stat-value">{approvedUsers.length}</span>
+          <span className="stat-label">Approved users</span>
         </div>
       </div>
 
-      {message && <div style={styles.toast}>{message}</div>}
+      {message && <div className="toast">{message}</div>}
 
-      <div style={styles.tabs}>
+      <div className="tabs">
         <button
-          style={activeTab === "pending" ? styles.tabActive : styles.tab}
+          className={`tab${activeTab === "pending" ? " is-active" : ""}`}
           onClick={() => setActiveTab("pending")}
         >
-          Pending ({pendingUsers.length})
+          Pending <span className="tab-count">{pendingUsers.length}</span>
         </button>
         <button
-          style={activeTab === "approved" ? styles.tabActive : styles.tab}
+          className={`tab${activeTab === "approved" ? " is-active" : ""}`}
           onClick={() => setActiveTab("approved")}
         >
-          Approved ({approvedUsers.length})
+          Approved <span className="tab-count">{approvedUsers.length}</span>
         </button>
       </div>
 
       {loading ? (
-        <p style={styles.loading}>Loading...</p>
+        <div className="loading-row"><span className="spinner" /> Loading users…</div>
       ) : activeTab === "pending" ? (
         pendingUsers.length === 0 ? (
-          <div style={styles.empty}>🎉 No pending users.</div>
+          <div className="empty-state">
+            <div className="empty-icon">🎉</div>
+            <p className="empty-title">All caught up</p>
+            <p className="empty-text">There are no pending access requests right now.</p>
+          </div>
         ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Username</th>
-                <th style={styles.th}>Email</th>
-                <th style={styles.th}>Department</th>
-                <th style={styles.th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingUsers.map((user) => (
-                <tr key={user.id} style={styles.tr}>
-                  <td style={styles.td}>{user.username}</td>
-                  <td style={styles.td}>{user.email}</td>
-                  <td style={styles.td}>{user.department}</td>
-                  <td style={styles.td}>
-                    <button style={styles.approveBtn} onClick={() => handleApprove(user.id, user.username)}>
-                      Approve
-                    </button>
-                    <button style={styles.rejectBtn} onClick={() => handleReject(user.id, user.username)}>
-                      Reject
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-wrap anim-fade-up">
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Department</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingUsers.map((user) => (
+                    <tr key={user.id}>
+                      <td className="table-strong">{user.username}</td>
+                      <td>{user.email}</td>
+                      <td>{user.department}</td>
+                      <td>
+                        <div className="table-actions">
+                          <button className="btn btn-success btn-sm" onClick={() => handleApprove(user.id, user.username)}>
+                            Approve
+                          </button>
+                          <button className="btn btn-danger-soft btn-sm" onClick={() => handleReject(user.id, user.username)}>
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )
       ) : approvedUsers.length === 0 ? (
-        <div style={styles.empty}>No approved users yet.</div>
+        <div className="empty-state">
+          <div className="empty-icon">👥</div>
+          <p className="empty-title">No approved users yet</p>
+          <p className="empty-text">Approved accounts will appear here once you action a request.</p>
+        </div>
       ) : (
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Username</th>
-              <th style={styles.th}>Email</th>
-              <th style={styles.th}>Department</th>
-              <th style={styles.th}>Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {approvedUsers.map((user) => (
-              <tr key={user.id} style={styles.tr}>
-                <td style={styles.td}>{user.username}</td>
-                <td style={styles.td}>{user.email}</td>
-                <td style={styles.td}>{user.department}</td>
-                <td style={styles.td}>
-                  <span style={styles.badge}>{user.role}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap anim-fade-up">
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Department</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvedUsers.map((user) => (
+                  <tr key={user.id}>
+                    <td className="table-strong">{user.username}</td>
+                    <td>{user.email}</td>
+                    <td>{user.department}</td>
+                    <td><span className="badge">{user.role}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
 }
-
-const styles = {
-  pageTitle: { margin: "0 0 1.5rem 0", color: "#1a1a2e" },
-  statsRow: { display: "flex", gap: "1rem", marginBottom: "1.5rem" },
-  statCard: {
-    flex: 1, backgroundColor: "#fff", borderRadius: "10px",
-    padding: "1.2rem", textAlign: "center",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-    display: "flex", flexDirection: "column", gap: "0.3rem",
-  },
-  statNum: { fontSize: "2rem", fontWeight: "700", color: "#4f46e5" },
-  statLabel: { fontSize: "0.85rem", color: "#666" },
-  toast: {
-    backgroundColor: "#ebf8ff", border: "1px solid #bee3f8",
-    borderRadius: "8px", padding: "0.75rem 1rem",
-    marginBottom: "1rem", color: "#2b6cb0", fontWeight: "500",
-  },
-  tabs: { display: "flex", gap: "0.5rem", marginBottom: "1rem" },
-  tab: {
-    padding: "0.5rem 1.2rem", border: "2px solid #ddd",
-    borderRadius: "8px", backgroundColor: "#fff",
-    cursor: "pointer", fontWeight: "600", color: "#666",
-  },
-  tabActive: {
-    padding: "0.5rem 1.2rem", border: "2px solid #4f46e5",
-    borderRadius: "8px", backgroundColor: "#4f46e5",
-    cursor: "pointer", fontWeight: "600", color: "#fff",
-  },
-  table: {
-    width: "100%", borderCollapse: "collapse", backgroundColor: "#fff",
-    borderRadius: "10px", overflow: "hidden",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-  },
-  th: {
-    padding: "0.85rem 1rem", backgroundColor: "#f7f8fc",
-    textAlign: "left", fontSize: "0.8rem",
-    fontWeight: "700", color: "#444", textTransform: "uppercase",
-  },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  td: { padding: "0.85rem 1rem", fontSize: "0.9rem", color: "#333" },
-  approveBtn: {
-    padding: "0.35rem 0.85rem", backgroundColor: "#38a169",
-    color: "#fff", border: "none", borderRadius: "6px",
-    cursor: "pointer", fontWeight: "600", marginRight: "0.5rem",
-  },
-  rejectBtn: {
-    padding: "0.35rem 0.85rem", backgroundColor: "#e53e3e",
-    color: "#fff", border: "none", borderRadius: "6px",
-    cursor: "pointer", fontWeight: "600",
-  },
-  badge: {
-    padding: "0.25rem 0.6rem", backgroundColor: "#ebf4ff",
-    color: "#4f46e5", borderRadius: "20px",
-    fontSize: "0.78rem", fontWeight: "600",
-  },
-  empty: {
-    textAlign: "center", padding: "3rem", color: "#888",
-    backgroundColor: "#fff", borderRadius: "10px",
-  },
-  loading: { textAlign: "center", color: "#888", padding: "2rem" },
-};

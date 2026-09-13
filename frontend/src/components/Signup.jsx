@@ -2,6 +2,20 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import logo from '../assets/QMS.png';
 
+function BrandPanel() {
+  return (
+    <div className="auth-brand">
+      <div className="auth-brand-inner">
+        <img src={logo} alt="DocuRoute" />
+        <p className="auth-brand-text">
+          <strong>Quality Management System on Administrative Services</strong>
+          Controlled Document Management System
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Signup({ onBackToLogin }) {
   const [formData, setFormData] = useState({
     username: "",
@@ -17,26 +31,13 @@ export default function Signup({ onBackToLogin }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    console.log('Fetching departments...');
     setDepartmentsLoading(true);
     axios.get("/api/departments/")
       .then((res) => {
-        console.log('Departments received:', res.data);
-        console.log('Departments type:', typeof res.data);
-        console.log('Departments length:', res.data.length);
-        if (Array.isArray(res.data)) {
-          setDepartments(res.data);
-        } else {
-          console.error('Departments response is not an array:', res.data);
-          setDepartments([]);
-        }
-        setDepartmentsLoading(false);
+        setDepartments(Array.isArray(res.data) ? res.data : []);
       })
-      .catch((error) => {
-        console.error('Error fetching departments:', error);
-        setDepartments([]);
-        setDepartmentsLoading(false);
-      });
+      .catch(() => setDepartments([]))
+      .finally(() => setDepartmentsLoading(false));
   }, []);
 
   const handleChange = (e) => {
@@ -73,23 +74,18 @@ export default function Signup({ onBackToLogin }) {
 
   if (success) {
     return (
-      <div style={styles.page}>
-        <div style={styles.left}>
-          <div style={styles.brand}>
-           <img src={logo} alt="DocuRoute logo" style={{ height: '250px', width: 'auto' }} />
-                     <p style={styles.brandSub}>QUALITY MANAGEMENT SYSTEM ON ADMINISTRATIVE SERVICES <br></br>Controlled Document Management System</p>
-                   </div>
-        </div>
-        <div style={styles.right}>
-          <div style={styles.card}>
-            <div style={styles.successIcon}>✅</div>
-            <h2 style={styles.title}>Registration Sent!</h2>
-            <p style={styles.successText}>
-              Your account is pending admin approval. You'll be able to log in
-              once an admin approves your account.
+      <div className="auth-page">
+        <BrandPanel />
+        <div className="auth-panel">
+          <div className="auth-card" style={{ textAlign: "center" }}>
+            <div className="empty-icon" style={{ margin: "0 auto 1rem" }}>✓</div>
+            <h2 className="auth-title">Registration sent</h2>
+            <p className="auth-subtitle">
+              Your account is pending admin approval. You&apos;ll be able to sign in
+              once an administrator approves it.
             </p>
-            <button style={styles.button} onClick={onBackToLogin}>
-              Back to Login
+            <button className="btn btn-deep btn-lg btn-block" onClick={onBackToLogin}>
+              Back to sign in
             </button>
           </div>
         </div>
@@ -98,244 +94,111 @@ export default function Signup({ onBackToLogin }) {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.left}>
-        <div style={styles.brand}>
-         <img src={logo} alt="DocuRoute logo" style={{ height: '250px', width: 'auto' }} />
-                   <p style={styles.brandSub}>QUALITY MANAGEMENT SYSTEM ON ADMINISTRATIVE SERVICES <br></br>Controlled Document Management System</p>
-                 </div>
-      </div>
+    <div className="auth-page">
+      <BrandPanel />
 
-      <div style={styles.right}>
-        <div style={styles.card}>
-          <h2 style={styles.title}>Create account</h2>
-          <p style={styles.subtitle}>Fill in your details to register</p>
+      <div className="auth-panel">
+        <div className="auth-card">
+          <h2 className="auth-title">Create account</h2>
+          <p className="auth-subtitle">Fill in your details to request access</p>
 
-          <form onSubmit={handleSignup} style={styles.form}>
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Username</label>
+          <form onSubmit={handleSignup} className="auth-form">
+            <div className="field">
+              <label className="label" htmlFor="su-username">Username</label>
               <input
-                style={styles.input}
+                id="su-username"
+                className="input"
                 type="text"
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
-                placeholder="Enter username"
+                placeholder="Choose a username"
+                autoComplete="username"
                 required
               />
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Email</label>
+            <div className="field">
+              <label className="label" htmlFor="su-email">Email</label>
               <input
-                style={styles.input}
+                id="su-email"
+                className="input"
                 type="email"
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="Enter email"
+                placeholder="you@example.com"
+                autoComplete="email"
                 required
               />
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Department</label>
+            <div className="field">
+              <label className="label" htmlFor="su-dept">Department</label>
               <select
-                key={departments.length}
-                style={{
-                  ...styles.input,
-                  backgroundColor: 'white',
-                  cursor: departmentsLoading ? 'not-allowed' : 'pointer',
-                  minHeight: '40px'
-                }}
+                id="su-dept"
+                className="select"
                 name="department_id"
                 value={formData.department_id}
                 onChange={handleChange}
                 disabled={departmentsLoading}
               >
                 <option value="">
-                  {departmentsLoading ? "Loading departments..." : "Select your department"}
+                  {departmentsLoading ? "Loading departments…" : "Select your department"}
                 </option>
-                {console.log('Rendering departments:', departments)}
-                {departments && departments.length > 0 ? (
-                  departments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))
-                ) : (
-                  !departmentsLoading && <option disabled>No departments available</option>
-                )}
+                {departments.length > 0
+                  ? departments.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))
+                  : !departmentsLoading && <option disabled>No departments available</option>}
               </select>
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Password</label>
+            <div className="field">
+              <label className="label" htmlFor="su-password">Password</label>
               <input
-                style={styles.input}
+                id="su-password"
+                className="input"
                 type="password"
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
                 placeholder="At least 8 characters"
+                autoComplete="new-password"
                 required
               />
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Confirm Password</label>
+            <div className="field">
+              <label className="label" htmlFor="su-confirm">Confirm password</label>
               <input
-                style={styles.input}
+                id="su-confirm"
+                className="input"
                 type="password"
                 name="confirmPassword"
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 placeholder="Repeat your password"
+                autoComplete="new-password"
                 required
               />
             </div>
 
-            {error && <p style={styles.error}>{error}</p>}
+            {error && <div className="alert alert-danger">{error}</div>}
 
-            <button style={styles.button} type="submit" disabled={loading}>
-              {loading ? "Registering..." : "Sign Up"}
+            <button className="btn btn-deep btn-lg btn-block" type="submit" disabled={loading}>
+              {loading ? <><span className="spinner spinner-light" /> Creating account…</> : "Create account"}
             </button>
           </form>
 
-          <p style={styles.loginText}>
+          <p className="auth-foot">
             Already have an account?{" "}
-            <span style={styles.link} onClick={onBackToLogin}>
-              Log in
-            </span>
+            <button type="button" className="link-btn" onClick={onBackToLogin}>
+              Sign in
+            </button>
           </p>
         </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    display: "flex",
-    height: "100vh",
-    width: "100vw",
-    overflow: "hidden",
-  },
-  left: {
-    flex: 1,
-    backgroundColor: "#090749",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "3rem",
-  },
-  brand: {
-    textAlign: "center",
-  },
-  brandTitle: {
-    color: "#fff",
-    fontSize: "3rem",
-    fontWeight: "800",
-    margin: "0 0 1rem 0",
-    letterSpacing: "-1px",
-  },
-  brandSub: {
-    color: "#8888aa",
-    fontSize: "1rem",
-    lineHeight: "1.6",
-    maxWidth: "300px",
-    margin: "0 auto",
-  },
-  right: {
-    width: "480px",
-    minWidth: "480px",
-    backgroundColor: "#f0f2f5",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "2rem",
-    overflowY: "auto",
-  },
-  card: {
-    backgroundColor: "#fff",
-    padding: "2.5rem",
-    borderRadius: "16px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-    width: "100%",
-  },
-  title: {
-    margin: "0 0 0.25rem 0",
-    fontSize: "1.6rem",
-    fontWeight: "700",
-    color: "#1a1a2e",
-  },
-  subtitle: {
-    color: "#888",
-    marginBottom: "1.8rem",
-    marginTop: 0,
-    fontSize: "0.9rem",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-  },
-  inputGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.3rem",
-  },
-  label: {
-    fontSize: "0.85rem",
-    fontWeight: "600",
-    color: "#333",
-  },
-  input: {
-    padding: "0.75rem 1rem",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    fontSize: "0.95rem",
-    outline: "none",
-  },
-  button: {
-    marginTop: "0.5rem",
-    padding: "0.85rem",
-    backgroundColor: "#4f46e5",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "1rem",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-  error: {
-    color: "#e53e3e",
-    fontSize: "0.85rem",
-    textAlign: "center",
-    margin: 0,
-    padding: "0.5rem",
-    backgroundColor: "#fff5f5",
-    borderRadius: "8px",
-    border: "1px solid #fed7d7",
-  },
-  successIcon: {
-    fontSize: "3rem",
-    textAlign: "center",
-    marginBottom: "1rem",
-  },
-  successText: {
-    textAlign: "center",
-    color: "#555",
-    marginBottom: "1.5rem",
-    lineHeight: "1.6",
-  },
-  loginText: {
-    textAlign: "center",
-    marginTop: "1.2rem",
-    fontSize: "0.875rem",
-    color: "#666",
-  },
-  link: {
-    color: "#4f46e5",
-    cursor: "pointer",
-    fontWeight: "600",
-  },
-};

@@ -17,12 +17,13 @@ const NAV_ITEMS = [
   { key: "departments", icon: departmentsIcon, label: "Departments" },
   { key: "manuals",     icon: manualsIcon,     label: "Manuals" },
   { key: "sections",    icon: sectionsIcon,    label: "Sections" },
-  { key: "review",   icon: reviewIcon,   label: "Revision Review" },
-  { key: "evaluation",  icon: reviewIcon,     label: "SVM Evaluation" },
+  { key: "review",      icon: reviewIcon,      label: "Revision Review" },
+  { key: "evaluation",  icon: reviewIcon,      label: "SVM Evaluation" },
 ];
 
 export default function AdminDashboard({ onLogout }) {
   const [activePage, setActivePage] = useState("users");
+  const username = localStorage.getItem("username") || "Admin";
 
   const renderPage = () => {
     switch (activePage) {
@@ -37,142 +38,44 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   return (
-    <div style={styles.wrapper}>
-      {/* Sidebar */}
-      <div style={styles.sidebar}>
-        <div style={styles.sidebarTitle}>
-          <img src={logo} alt="DocuRoute logo" style={{ height: '80px', width: 'auto' }} />
-          </div>
-
-        <div style={styles.sidebarSubtitle}>Admin Panel</div>
-        <nav style={styles.nav}>
-  {NAV_ITEMS.map((item) => (
-    <button
-      key={item.key}
-      style={activePage === item.key ? styles.navItemActive : styles.navItem}
-      onClick={() => setActivePage(item.key)}
-    >
-      <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <img
-          src={item.icon}
-          alt=""
-          style={{
-            width: "25px",
-            height: "25px",
-            filter: "brightness(0) invert(1)", // makes dark SVG appear white
-          }}
-        />
-        <span>{item.label}</span>
-      </span>
-    </button>
-  ))}
-</nav>
-        <div style={styles.sidebarBottom}>
-          <span style={styles.adminName}>
-            {localStorage.getItem("username")}
-          </span>
-          <button style={styles.logoutBtn} onClick={onLogout}>
-            Logout
-          </button>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <img src={logo} alt="DocuRoute" />
         </div>
-      </div>
+        <div className="sidebar-eyebrow">Admin Panel</div>
 
-      {/* Main Content */}
-      <div style={styles.content}>
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              className={`nav-item${activePage === item.key ? " is-active" : ""}`}
+              onClick={() => setActivePage(item.key)}
+            >
+              <img className="nav-icon" src={item.icon} alt="" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <div className="sidebar-avatar">{username.slice(0, 2)}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="sidebar-username">{username}</div>
+              <div className="sidebar-role">Administrator</div>
+            </div>
+          </div>
+          <button className="btn-logout" onClick={onLogout}>Sign out</button>
+        </div>
+      </aside>
+
+      <main className="app-content">
+        {/* key forces a remount so each tab animates in */}
+        <div className="tab-panel" key={activePage}>
           {renderPage()}
-      </div>
-
+        </div>
+      </main>
     </div>
   );
 }
-
-const styles = {
-  wrapper: {
-    display: "flex",
-    height: "100vh",
-    backgroundColor: "#f0f2f5",
-    overflow: "hidden",
-    width: '100vw'
-  },
-  sidebar: {
-    width: "240px",
-    minWidth: "240px",
-    backgroundColor: "#090749",
-    display: "flex",
-    flexDirection: "column",
-    padding: "1.5rem 0",
-  },
-  sidebarTitle: {
-    color: "#fff",
-    fontSize: "1.3rem",
-    fontWeight: "700",
-    padding: "0 1.5rem",
-    marginBottom: "0.2rem",
-  },
-  sidebarSubtitle: {
-    color: "#8888aa",
-    fontSize: "0.75rem",
-    padding: "0 1.5rem",
-    marginBottom: "2rem",
-    textTransform: "uppercase",
-    letterSpacing: "1px",
-  },
-  nav: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.25rem",
-    flex: 1,
-  },
-  navItem: {
-    background: "none",
-    border: "none",
-    color: "#aaa",
-    padding: "0.75rem 1.5rem",
-    textAlign: "left",
-    cursor: "pointer",
-    fontSize: "0.75rem",
-    fontWeight: "500",
-    transition: "all 0.2s",
-    height: "60px",
-  },
-  navItemActive: {
-    background: "rgba(79, 70, 229, 0.2)",
-    border: "none",
-    borderLeftWidth: "3px",
-    borderLeftStyle: "solid",
-    borderLeftColor: "#48bb78",
-    color: "#fff",
-    padding: "0.75rem 1.5rem",
-    textAlign: "left",
-    cursor: "pointer",
-    fontSize: "0.9rem",
-    fontWeight: "600",
-    height: "63px",
-  },
-  sidebarBottom: {
-    padding: "1rem 1.5rem",
-    borderTop: "1px solid #2a2a4a",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.75rem",
-  },
-  adminName: {
-    color: "#aaa",
-    fontSize: "0.85rem",
-  },
-  logoutBtn: {
-    padding: "0.5rem",
-    backgroundColor: "#e53e3e",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontWeight: "600",
-    fontSize: "0.85rem",
-  },
-  content: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "2rem",
-  },
-};

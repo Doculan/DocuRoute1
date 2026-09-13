@@ -34,183 +34,66 @@ export default function Login({ onLoginSuccess }) {
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.left}>
-        <div style={styles.brand}>
-          <img src={logo} alt="DocuRoute logo" style={{ height: '250px', width: 'auto' }} />
-          <p style={styles.brandSub}>QUALITY MANAGEMENT SYSTEM ON ADMINISTRATIVE SERVICES <br></br>Controlled Document Management System</p>
+    <div className="auth-page">
+      <div className="auth-brand">
+        <div className="auth-brand-inner">
+          <img src={logo} alt="DocuRoute" />
+          <p className="auth-brand-text">
+            <strong>Quality Management System on Administrative Services</strong>
+            Controlled Document Management System
+          </p>
         </div>
       </div>
 
-      <div style={styles.right}>
-        <div style={styles.card}>
-          <h2 style={styles.title}>Welcome back</h2>
-          <p style={styles.subtitle}>Sign in to your account</p>
+      <div className="auth-panel">
+        <div className="auth-card">
+          <h2 className="auth-title">Welcome back</h2>
+          <p className="auth-subtitle">Sign in to continue to your workspace</p>
 
-          <form onSubmit={handleLogin} style={styles.form}>
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Username</label>
+          <form onSubmit={handleLogin} className="auth-form">
+            <div className="field">
+              <label className="label" htmlFor="login-username">Username</label>
               <input
-                style={styles.input}
+                id="login-username"
+                className="input"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
+                placeholder="Enter your username"
+                autoComplete="username"
                 required
               />
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Password</label>
+            <div className="field">
+              <label className="label" htmlFor="login-password">Password</label>
               <input
-                style={styles.input}
+                id="login-password"
+                className="input"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder="Enter your password"
+                autoComplete="current-password"
                 required
               />
             </div>
 
-            {error && <p style={styles.error}>{error}</p>}
+            {error && <div className="alert alert-danger">{error}</div>}
 
-            <button style={styles.button} type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Login"}
+            <button className="btn btn-deep btn-lg btn-block" type="submit" disabled={loading}>
+              {loading ? <><span className="spinner spinner-light" /> Signing in…</> : "Sign in"}
             </button>
           </form>
 
-          <p style={styles.registerText}>
-            Don't have an account?{" "}
-            <span style={styles.link} onClick={() => onLoginSuccess("signup")}>
-              Sign up
-            </span>
+          <p className="auth-foot">
+            Don&apos;t have an account?{" "}
+            <button type="button" className="link-btn" onClick={() => onLoginSuccess("signup")}>
+              Create one
+            </button>
           </p>
-
-          <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "#f8f9fa", borderRadius: "8px", border: "1px solid #e9ecef" }}>
-            <p style={{ textAlign: "center", margin: "0 0 0.5rem 0", color: "#6c757d", fontSize: "0.9rem" }}>
-              Demo Feature
-            </p>
-            
-          </div>
         </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    display: "flex",
-    height: "100vh",
-    width: "100vw",
-    overflow: "hidden",
-  },
-  left: {
-    flex: 1,
-    backgroundColor: "#090749",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "3rem",
-  },
-  brand: {
-    textAlign: "center",
-  },
-  brandTitle: {
-    color: "#fff",
-    fontSize: "3rem",
-    fontWeight: "800",
-    margin: "0 0 1rem 0",
-    letterSpacing: "-1px",
-  },
-  brandSub: {
-    color: "#8888aa",
-    fontSize: "1rem",
-    lineHeight: "1.6",
-    maxWidth: "600px",
-    margin: "0 auto",
-  },
-  right: {
-    width: "480px",
-    minWidth: "480px",
-    backgroundColor: "#f0f2f5",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "2rem",
-  },
-  card: {
-    backgroundColor: "#fff",
-    padding: "2.5rem",
-    borderRadius: "16px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-    width: "100%",
-  },
-  title: {
-    margin: "0 0 0.25rem 0",
-    fontSize: "1.6rem",
-    fontWeight: "700",
-    color: "#1a1a2e",
-  },
-  subtitle: {
-    color: "#888",
-    marginBottom: "1.8rem",
-    marginTop: 0,
-    fontSize: "0.9rem",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-  },
-  inputGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.3rem",
-  },
-  label: {
-    fontSize: "0.85rem",
-    fontWeight: "600",
-    color: "#182549",
-  },
-  input: {
-    padding: "0.75rem 1rem",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    fontSize: "0.95rem",
-    outline: "none",
-    transition: "border 0.2s",
-  },
-  button: {
-    marginTop: "0.5rem",
-    padding: "0.85rem",
-    backgroundColor: "#090749",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "1rem",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-  error: {
-    color: "#e53e3e",
-    fontSize: "0.85rem",
-    textAlign: "center",
-    margin: 0,
-    padding: "0.5rem",
-    backgroundColor: "#fff5f5",
-    borderRadius: "8px",
-    border: "1px solid #fed7d7",
-  },
-  registerText: {
-    textAlign: "center",
-    marginTop: "1.2rem",
-    fontSize: "0.875rem",
-    color: "#666",
-  }, 
-  link: {
-    color: "#100c80",
-    cursor: "pointer",
-    fontWeight: "600",
-  },
-};

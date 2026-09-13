@@ -60,107 +60,69 @@ export default function Departments() {
 
   return (
     <div>
-      <h2 style={styles.pageTitle}>Departments</h2>
+      <header className="page-head">
+        <div>
+          <h1 className="page-title">Departments</h1>
+          <p className="page-subtitle">Organizational units that own manuals and staff accounts</p>
+        </div>
+      </header>
 
-      {/* Create Form */}
-      <div style={styles.card}>
-        <h3 style={styles.cardTitle}>Add New Department</h3>
-        <form onSubmit={handleCreate} style={styles.form}>
+      <div className="card card-pad" style={{ marginBottom: "1.5rem" }}>
+        <h3 className="section-title" style={{ marginBottom: "0.9rem" }}>Add new department</h3>
+        <form onSubmit={handleCreate} className="row" style={{ gap: "0.75rem" }}>
           <input
-            style={styles.input}
+            className="input"
             type="text"
             placeholder="e.g. Business Affairs"
             value={newDeptName}
             onChange={(e) => setNewDeptName(e.target.value)}
             required
           />
-          <button style={styles.createBtn} type="submit">
-            + Create
-          </button>
+          <button className="btn btn-primary" type="submit">Create</button>
         </form>
       </div>
 
-      {message && <div style={styles.toast}>{message}</div>}
+      {message && <div className="toast">{message}</div>}
 
-      {/* Departments List */}
       {loading ? (
-        <p style={styles.loading}>Loading...</p>
+        <div className="loading-row"><span className="spinner" /> Loading departments…</div>
       ) : departments.length === 0 ? (
-        <div style={styles.empty}>No departments yet. Create one above.</div>
+        <div className="empty-state">
+          <div className="empty-icon">🏛️</div>
+          <p className="empty-title">No departments yet</p>
+          <p className="empty-text">Create your first department using the form above.</p>
+        </div>
       ) : (
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Department Name</th>
-              <th style={styles.th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {departments.map((dept) => (
-              <tr key={dept.id} style={styles.tr}>
-                <td style={styles.td}>{dept.id}</td>
-                <td style={styles.td}>{dept.name}</td>
-                <td style={styles.td}>
-                  <button
-                    style={styles.deleteBtn}
-                    onClick={() => handleDelete(dept.id, dept.name)}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap anim-fade-up">
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: "80px" }}>ID</th>
+                  <th>Department name</th>
+                  <th style={{ width: "120px" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {departments.map((dept) => (
+                  <tr key={dept.id}>
+                    <td className="muted">{dept.id}</td>
+                    <td className="table-strong">{dept.name}</td>
+                    <td>
+                      <button
+                        className="btn btn-danger-soft btn-sm"
+                        onClick={() => handleDelete(dept.id, dept.name)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
 }
-
-const styles = {
-  pageTitle: { margin: "0 0 1.5rem 0", color: "#1a1a2e" },
-  card: {
-    backgroundColor: "#fff", borderRadius: "10px",
-    padding: "1.5rem", marginBottom: "1.5rem",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-  },
-  cardTitle: { margin: "0 0 1rem 0", color: "#333", fontSize: "1rem" },
-  form: { display: "flex", gap: "1rem" },
-  input: {
-    flex: 1, padding: "0.7rem 1rem", borderRadius: "8px",
-    border: "1px solid #ddd", fontSize: "0.95rem", outline: "none",
-  },
-  createBtn: {
-    padding: "0.7rem 1.5rem", backgroundColor: "#4f46e5",
-    color: "#fff", border: "none", borderRadius: "8px",
-    cursor: "pointer", fontWeight: "600",
-  },
-  toast: {
-    backgroundColor: "#ebf8ff", border: "1px solid #bee3f8",
-    borderRadius: "8px", padding: "0.75rem 1rem",
-    marginBottom: "1rem", color: "#2b6cb0", fontWeight: "500",
-  },
-  table: {
-    width: "100%", borderCollapse: "collapse", backgroundColor: "#fff",
-    borderRadius: "10px", overflow: "hidden",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-  },
-  th: {
-    padding: "0.85rem 1rem", backgroundColor: "#f7f8fc",
-    textAlign: "left", fontSize: "0.8rem",
-    fontWeight: "700", color: "#444", textTransform: "uppercase",
-  },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  td: { padding: "0.85rem 1rem", fontSize: "0.9rem", color: "#333" },
-  deleteBtn: {
-    padding: "0.35rem 0.85rem", backgroundColor: "#e53e3e",
-    color: "#fff", border: "none", borderRadius: "6px",
-    cursor: "pointer", fontWeight: "600",
-  },
-  empty: {
-    textAlign: "center", padding: "3rem", color: "#888",
-    backgroundColor: "#fff", borderRadius: "10px",
-  },
-  loading: { textAlign: "center", color: "#888", padding: "2rem" },
-};

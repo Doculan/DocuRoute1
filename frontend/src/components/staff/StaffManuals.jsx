@@ -31,71 +31,61 @@ export default function StaffManuals({ onSelectManual }) {
   };
 
   if (loading) {
-    return (
-      <div style={styles.center}>
-        <div style={styles.spinner} />
-        <p style={{ color: "#888", marginTop: "1rem" }}>Loading your manuals...</p>
-      </div>
-    );
+    return <div className="loading-row"><span className="spinner" /> Loading your manuals…</div>;
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
+    <div>
+      <header className="page-head">
         <div>
-          <h1 style={styles.title}>My Manuals</h1>
-          <p style={styles.subtitle}>
-            Manuals assigned to your department. Click one to read sections or submit a revision.
+          <h1 className="page-title">My Manuals</h1>
+          <p className="page-subtitle">
+            Manuals assigned to your department — open one to read sections or submit a revision.
           </p>
         </div>
-      </div>
+      </header>
 
-      {error && (
-        <div style={styles.errorBox}>{error}</div>
-      )}
+      {error && <div className="alert alert-danger" style={{ marginBottom: "1.5rem" }}>{error}</div>}
 
       {!error && manuals.length === 0 ? (
-        <div style={styles.emptyState}>
-          <div style={{ fontSize: "3rem", marginBottom: "0.75rem" }}>📂</div>
-          <h3 style={{ color: "#1a1a2e", margin: "0 0 0.5rem" }}>No manuals yet</h3>
-          <p style={{ color: "#888", margin: 0 }}>
+        <div className="empty-state">
+          <div className="empty-icon">📂</div>
+          <p className="empty-title">No manuals yet</p>
+          <p className="empty-text">
             No manuals have been assigned to your department. Contact your administrator.
           </p>
         </div>
       ) : (
-        <div style={styles.grid}>
+        <div className="grid-auto stagger">
           {manuals.map((manual) => (
-            <div key={manual.id} style={styles.card}>
-              <div style={styles.cardTop}>
-                <div style={styles.cardIcon}>📋</div>
-                <div style={styles.cardBadge}>v{manual.version}</div>
+            <article
+              key={manual.id}
+              className="card card-pad card-hover card-interactive card-rail"
+              style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}
+              onClick={() => onSelectManual(manual.id, manual.title)}
+            >
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span style={{ fontSize: "1.6rem", lineHeight: 1 }}>📋</span>
+                <span className="badge">v{manual.version}</span>
               </div>
-              <h3 style={styles.cardTitle}>{manual.title}</h3>
-              <div style={styles.cardMeta}>
-                <div style={styles.metaRow}>
-                  <span style={styles.metaLabel}>Department</span>
-                  <span style={styles.metaValue}>{manual.department}</span>
-                </div>
-                <div style={styles.metaRow}>
-                  <span style={styles.metaLabel}>Sections</span>
-                  <span style={styles.metaValue}>{manual.section_count}</span>
-                </div>
-                <div style={styles.metaRow}>
-                  <span style={styles.metaLabel}>Uploaded</span>
-                  <span style={styles.metaValue}>{new Date(manual.uploaded_at).toLocaleDateString()}</span>
-                </div>
-                <div style={styles.metaRow}>
-                  <span style={styles.metaLabel}>By</span>
-                  <span style={styles.metaValue}>{manual.uploaded_by}</span>
-                </div>
-              </div>
+
+              <h3 className="section-title" style={{ lineHeight: 1.4 }}>{manual.title}</h3>
+
+              <dl className="col" style={{ gap: "0.35rem", margin: 0 }}>
+                <MetaRow label="Department" value={manual.department} />
+                <MetaRow label="Sections" value={manual.section_count} />
+                <MetaRow label="Uploaded" value={new Date(manual.uploaded_at).toLocaleDateString()} />
+                <MetaRow label="By" value={manual.uploaded_by} />
+              </dl>
+
               <button
-                style={styles.viewBtn}
-                onClick={() => onSelectManual(manual.id, manual.title)}
+                className="btn btn-deep btn-block"
+                style={{ marginTop: "auto" }}
+                onClick={(e) => { e.stopPropagation(); onSelectManual(manual.id, manual.title); }}
               >
-                View Sections →
+                View sections →
               </button>
-            </div>
+            </article>
           ))}
         </div>
       )}
@@ -103,24 +93,11 @@ export default function StaffManuals({ onSelectManual }) {
   );
 }
 
-const styles = {
-  container: { maxWidth: "1200px" },
-  center:    { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh" },
-  spinner:   { width: "36px", height: "36px", border: "3px solid #e2e8f0", borderTop: "3px solid #4a47a3", borderRadius: "50%", animation: "spin 0.8s linear infinite" },
-  header:    { marginBottom: "2rem" },
-  title:     { fontSize: "1.8rem", fontWeight: "700", color: "#090749", margin: "0 0 0.25rem" },
-  subtitle:  { color: "#718096", fontSize: "0.9rem", margin: 0 },
-  errorBox:  { backgroundColor: "#fff5f5", color: "#c53030", border: "1px solid #feb2b2", borderRadius: "8px", padding: "1rem", marginBottom: "1.5rem" },
-  emptyState:{ textAlign: "center", padding: "4rem 2rem", backgroundColor: "#fff", borderRadius: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
-  grid:      { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1.5rem" },
-  card:      { backgroundColor: "#fff", borderRadius: "12px", padding: "1.5rem", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", gap: "0.75rem", transition: "box-shadow 0.2s" },
-  cardTop:   { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  cardIcon:  { fontSize: "1.8rem" },
-  cardBadge: { backgroundColor: "#eff2ff", color: "#4a47a3", borderRadius: "20px", padding: "0.2rem 0.7rem", fontSize: "0.75rem", fontWeight: "700" },
-  cardTitle: { fontSize: "1rem", fontWeight: "700", color: "#090749", margin: 0, lineHeight: "1.4" },
-  cardMeta:  { display: "flex", flexDirection: "column", gap: "0.3rem" },
-  metaRow:   { display: "flex", justifyContent: "space-between", fontSize: "0.83rem" },
-  metaLabel: { color: "#aaa", fontWeight: "600" },
-  metaValue: { color: "#333", fontWeight: "500" },
-  viewBtn:   { marginTop: "auto", padding: "0.7rem", backgroundColor: "#090749", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600", fontSize: "0.9rem", transition: "background 0.2s" },
-};
+function MetaRow({ label, value }) {
+  return (
+    <div className="row text-sm" style={{ justifyContent: "space-between", gap: "1rem" }}>
+      <dt className="subtle" style={{ fontWeight: 600 }}>{label}</dt>
+      <dd className="strong" style={{ margin: 0, textAlign: "right" }}>{value}</dd>
+    </div>
+  );
+}
