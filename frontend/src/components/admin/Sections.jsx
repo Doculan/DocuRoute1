@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import DocTable from "../DocTable";
 
 const formatOCRContent = (content = "") => {
   return content
@@ -216,34 +217,7 @@ function renderSectionContent(content) {
 
   return blocks.map((block, idx) => {
     if (block.type === "table") {
-      return (
-        <div key={idx} className="table-scroll doc-table-wrap">
-          <table className="doc-table">
-            <colgroup>
-              {block.rows[0] && block.rows[0].length === 2 ? (
-                <>
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "75%" }} />
-                </>
-              ) : null}
-            </colgroup>
-            <tbody>
-              {block.rows.map((row, rIndex) => (
-                <tr key={rIndex}>
-                  {row.map((cell, cIndex) => (
-                    <td
-                      key={cIndex}
-                      className={rIndex === 0 ? "is-head" : cIndex === 0 ? "is-label" : ""}
-                    >
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
+      return <DocTable key={idx} rows={block.rows} />;
     }
 
     if (block.type === "inline-tagged") {

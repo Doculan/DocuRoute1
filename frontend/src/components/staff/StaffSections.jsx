@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import DiffView from "../DiffView";
+import DocTable from "../DocTable";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
 // server diffs submitted text against content normalized the same way.
@@ -83,28 +84,7 @@ function SectionContent({ content }) {
     <div className="prose">
       {blocks.map((block, idx) => {
         if (block.type === "table") {
-          return (
-            <div key={idx} className="table-scroll doc-table-wrap">
-              <table className="doc-table">
-                <colgroup>
-                  {block.rows[0]?.length === 2 ? (
-                    <><col style={{ width: "25%" }} /><col style={{ width: "75%" }} /></>
-                  ) : null}
-                </colgroup>
-                <tbody>
-                  {block.rows.map((row, ri) => (
-                    <tr key={ri}>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className={ri === 0 ? "is-head" : ci === 0 ? "is-label" : ""}>
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
+          return <DocTable key={idx} rows={block.rows} />;
         }
         return <p key={idx}>{block.text}</p>;
       })}
