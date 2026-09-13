@@ -76,10 +76,18 @@ def _split_into_sections(text, fallback_title='Full Document'):
     # cleanup happens here. In particular the "|" cell separators are left
     # intact — flattening them to spaces destroyed every procedure table.
 
+    # A manual numbers its sections one way throughout. If it uses "1.0" style,
+    # a bare integer further down is a numbered step inside a procedure table
+    # ("9 Calculates total points earned"), not a new section — promoting those
+    # split procedure tables into fragments.
+    uses_dotted_sections = bool(re.search(r'(?m)^\s*\d+\.0\s+\S', text))
+
     def is_top_level_number(num_tuple):
-        # FIX #2: also treat bare single-digit sections ("1", "2") as top-level
-        # Previously only "1.0", "2.0" matched; "1" or "2" were silently dropped.
-        return len(num_tuple) == 1 or (len(num_tuple) == 2 and num_tuple[1] == 0)
+        # FIX #2: bare single-digit sections ("1", "2") count as top-level, but
+        # only in documents that actually number their sections that way.
+        if len(num_tuple) == 1:
+            return not uses_dotted_sections
+        return len(num_tuple) == 2 and num_tuple[1] == 0
 
     def is_subsection_number(num_tuple):
         # Only depth-2 sub-sections like 1.1, 1.2, 2.3 are treated as section headers.

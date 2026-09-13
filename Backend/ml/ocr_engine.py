@@ -65,6 +65,14 @@ _SECTION_RE = re.compile(
 # "one word per line" cells.
 _MD_BR_RE = re.compile(r'<br\s*/?>', flags=re.IGNORECASE)
 
+# Other inline HTML pymupdf4llm emits — <mark> for highlighted source text,
+# plus the usual styling tags. Only this fixed set is stripped, so genuine
+# content like "value < 10" is left alone.
+_INLINE_HTML_RE = re.compile(
+    r'</?(?:mark|sup|sub|b|i|u|em|strong|span)\b[^>]*>',
+    flags=re.IGNORECASE,
+)
+
 # A table separator row: |---|---| or |:--|--:| etc.
 _MD_TABLE_SEP_RE = re.compile(r'^\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$')
 
@@ -91,6 +99,7 @@ _SPACE_FIXES = (
 def _strip_markdown_line(s):
     """Remove Markdown syntax from one line, preserving its text."""
     s = _MD_BR_RE.sub(' ', s)
+    s = _INLINE_HTML_RE.sub('', s)
     # Word's Symbol-font bullet survives extraction as a private-use codepoint.
     s = s.replace('', '•').replace('&nbsp;', ' ')
     s = _MD_HEADING_RE.sub('', s)
