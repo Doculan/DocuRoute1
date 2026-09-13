@@ -392,7 +392,7 @@ def _find_parent_section_in_manual(manual, subtitle):
         return None
 
     # Look for parent section in database
-    sections = manual.manualsection_set.all().order_by('order')
+    sections = manual.sections.all().order_by('order')
     for section in sections:
         sec_subtitle_num = _parse_section_number(section.subtitle)
         if sec_subtitle_num == parent_num:
