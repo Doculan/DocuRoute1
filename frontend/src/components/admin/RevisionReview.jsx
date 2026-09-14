@@ -268,7 +268,7 @@ export default function RevisionReview() {
     <div>
       <header className="page-head">
         <div>
-          <h1 className="page-title">Revision Review</h1>
+          <h1 className="page-title">Revisions</h1>
           <p className="page-subtitle">Compare proposed changes against the master copy before approving.</p>
         </div>
       </header>

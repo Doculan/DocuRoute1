@@ -66,10 +66,10 @@ export default function StaffManuals({ onSelectManual }) {
             >
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <span style={{ fontSize: "1.6rem", lineHeight: 1 }}>📋</span>
-                <span className="badge">v{manual.version}</span>
+                <span className="badge badge-id">v{manual.version}</span>
               </div>
 
-              <h3 className="section-title" style={{ lineHeight: 1.4 }}>{manual.title}</h3>
+              <h3 className="card-title" style={{ lineHeight: 1.4 }}>{manual.title}</h3>
 
               <dl className="col" style={{ gap: "0.35rem", margin: 0 }}>
                 <MetaRow label="Department" value={manual.department} />

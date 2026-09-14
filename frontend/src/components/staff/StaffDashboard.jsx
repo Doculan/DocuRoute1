@@ -1,6 +1,7 @@
 import { useState } from "react";
 import StaffManuals from "./StaffManuals";
 import StaffSections from "./StaffSections";
+import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
@@ -14,6 +15,9 @@ export default function StaffDashboard({ onLogout }) {
   const [activePage, setActivePage] = useState("manuals");
   const [selectedManualId, setSelectedManualId] = useState(null);
   const username = localStorage.getItem("username") || "Staff";
+  // Which department you belong to is the useful fact here — "Staff" only
+  // repeats what the portal heading already says. Stored at login.
+  const department = localStorage.getItem("department");
 
   const handleSelectManual = (manualId) => {
     setSelectedManualId(manualId);
@@ -44,11 +48,13 @@ export default function StaffDashboard({ onLogout }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <img src={logo} alt="DocuRoute" />
+          <img src={logo} alt="QMS" />
+          <div className="sidebar-brand-sub">Document control</div>
         </div>
         <div className="sidebar-eyebrow">Staff Portal</div>
 
         <nav className="sidebar-nav">
+          <div className="nav-group">Documents</div>
           {NAV_ITEMS.map((item) => (
             <button
               key={item.key}
@@ -69,18 +75,22 @@ export default function StaffDashboard({ onLogout }) {
             <div className="sidebar-avatar">{username.slice(0, 2)}</div>
             <div style={{ minWidth: 0 }}>
               <div className="sidebar-username">{username}</div>
-              <div className="sidebar-role">Staff</div>
+              <div className="sidebar-role">{department || "Staff"}</div>
             </div>
           </div>
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
         </div>
       </aside>
 
-      <main className="app-content">
-        <div className="tab-panel" key={`${activePage}-${selectedManualId ?? ""}`}>
-          {renderPage()}
-        </div>
-      </main>
+      <div className="app-main">
+        <Topbar crumb={activePage === "manuals" ? "My Manuals" : "Sections"} />
+
+        <main className="app-content">
+          <div className="tab-panel" key={`${activePage}-${selectedManualId ?? ""}`}>
+            {renderPage()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

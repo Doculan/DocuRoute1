@@ -49,7 +49,13 @@ function MetricBar({ label, value }) {
         <span className="metric-label" title={label}>{label}</span>
         <span className="metric-value">{value}%</span>
       </div>
-      <div className="meter"><span className="meter-fill" style={{ width: `${value}%` }} /></div>
+      {/* Below 60% the class is not reliable enough to trust unreviewed. */}
+      <div className="meter">
+        <span
+          className={`meter-fill${value < 60 ? " is-low" : ""}`}
+          style={{ width: `${value}%` }}
+        />
+      </div>
     </div>
   );
 }

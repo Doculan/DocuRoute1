@@ -3,7 +3,7 @@ import axios from "axios";
 
 const BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
-export default function Manuals() {
+export default function Manuals({ initialSearch = "" }) {
   const [manuals, setManuals] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [form, setForm] = useState({ title: "", department_id: "", file: null });
@@ -26,10 +26,13 @@ export default function Manuals() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [expandedRows, setExpandedRows] = useState(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [searchBy, setSearchBy] = useState("all");
   const [selectedManualIds, setSelectedManualIds] = useState([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // Uploading is occasional; reading the list is constant. The form stays
+  // folded away so it costs nothing on the visits where you are not uploading.
+  const [showUpload, setShowUpload] = useState(false);
   const [filters, setFilters] = useState({
     department: "",
     author: "",
@@ -409,12 +412,17 @@ export default function Manuals() {
           <h1 className="page-title">Manuals</h1>
           <p className="page-subtitle">Upload master copies, review extracted sections and manage versions.</p>
         </div>
+        <button
+          className={`btn ${showUpload ? "btn-ghost" : "btn-primary"}`}
+          onClick={() => setShowUpload(!showUpload)}
+        >
+          {showUpload ? "Close upload" : "Upload master copy"}
+        </button>
       </header>
 
-      {/* ── Upload ── */}
-      <div className="card card-pad" style={{ marginBottom: "1.5rem" }}>
-        <h3 className="section-title" style={{ marginBottom: "1rem" }}>Upload master copy</h3>
-
+      {/* ── Upload (folded away until asked for) ── */}
+      {(showUpload || previewManual) && (
+      <div className="card card-pad anim-fade-up" style={{ marginBottom: "1.25rem" }}>
         <form onSubmit={handleUpload} className="col">
           <div className="form-row">
             <div className="field">
@@ -579,6 +587,7 @@ export default function Manuals() {
           </div>
         )}
       </div>
+      )}
 
       {message && <div className="toast">{message}</div>}
 
@@ -587,44 +596,81 @@ export default function Manuals() {
       ) : (
         <div>
           {/* ── Filters ── */}
+          {/* ── Filters read as a toolbar: no card, no "Search" label,
+                 and the rarely-touched fields fold away behind a pill. ── */}
           <div className="filter-panel">
             <div className="filter-row">
-              <div className="field" style={{ flex: 2, minWidth: "260px" }}>
-                <label className="label">Search</label>
-                <div className="row" style={{ gap: "0.5rem" }}>
-                  <select
-                    className="select"
-                    style={{ maxWidth: "150px" }}
-                    value={searchBy}
-                    onChange={(e) => { setSearchBy(e.target.value); setCurrentPage(1); }}
-                  >
-                    <option value="all">Search all</option>
-                    <option value="title">By title</option>
-                    <option value="department">By department</option>
-                    <option value="author">By author</option>
-                  </select>
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder={
-                      searchBy === "all" ? "Search title, department, or author…"
-                        : searchBy === "title" ? "Search manual titles…"
-                        : searchBy === "department" ? "Search departments…"
-                        : "Search author names…"
-                    }
-                    value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  />
-                </div>
-              </div>
+              <select
+                className="select"
+                style={{ width: "auto" }}
+                value={searchBy}
+                onChange={(e) => { setSearchBy(e.target.value); setCurrentPage(1); }}
+              >
+                <option value="all">All fields</option>
+                <option value="title">Title</option>
+                <option value="department">Department</option>
+                <option value="author">Author</option>
+              </select>
+
+              <input
+                className="input"
+                style={{ width: "260px" }}
+                type="search"
+                placeholder={
+                  searchBy === "all" ? "Filter by title, department or author…"
+                    : searchBy === "title" ? "Filter by title…"
+                    : searchBy === "department" ? "Filter by department…"
+                    : "Filter by author…"
+                }
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              />
+
+              <select
+                className="select"
+                style={{ width: "auto" }}
+                value={filters.department}
+                onChange={(e) => { setFilters({ ...filters, department: e.target.value }); setCurrentPage(1); }}
+              >
+                <option value="">All departments</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+
+              <select
+                className="select"
+                style={{ width: "auto" }}
+                value={filters.sortBy}
+                onChange={(e) => { setFilters({ ...filters, sortBy: e.target.value }); setCurrentPage(1); }}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="recentEdit">Recently edited</option>
+              </select>
 
               <button
-                className={`btn btn-sm ${showAdvanced ? "btn-primary" : "btn-ghost"}`}
+                className={`pill${showAdvanced ? " is-on" : ""}`}
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
-                {showAdvanced ? "Hide" : "Show"} advanced
+                More filters
                 <span className={`chevron${showAdvanced ? " is-open" : ""}`}>▾</span>
               </button>
+
+              {hasActiveFilters && (
+                <button
+                  className="pill"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSearchBy("all");
+                    setShowAdvanced(false);
+                    setFilters({ department: "", author: "", version: "", minSections: "", dateFrom: "", dateTo: "", sortBy: "newest" });
+                    setCurrentPage(1);
+                  }}
+                >
+                  Clear
+                </button>
+              )}
             </div>
 
             {showAdvanced && (
@@ -634,7 +680,7 @@ export default function Manuals() {
                   <input
                     className="input"
                     type="text"
-                    placeholder="Filter by uploader…"
+                    placeholder="Uploader…"
                     value={filters.author}
                     onChange={(e) => { setFilters({ ...filters, author: e.target.value }); setCurrentPage(1); }}
                   />
@@ -644,7 +690,7 @@ export default function Manuals() {
                   <input
                     className="input"
                     type="number"
-                    placeholder="e.g. 1, 2, 3"
+                    placeholder="e.g. 1"
                     value={filters.version}
                     onChange={(e) => { setFilters({ ...filters, version: e.target.value }); setCurrentPage(1); }}
                   />
@@ -654,99 +700,57 @@ export default function Manuals() {
                   <input
                     className="input"
                     type="number"
-                    placeholder="Minimum sections…"
+                    placeholder="e.g. 5"
                     value={filters.minSections}
                     onChange={(e) => { setFilters({ ...filters, minSections: e.target.value }); setCurrentPage(1); }}
+                  />
+                </div>
+                <div className="field">
+                  <label className="label">From date</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setCurrentPage(1); }}
+                  />
+                </div>
+                <div className="field">
+                  <label className="label">To date</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setCurrentPage(1); }}
                   />
                 </div>
               </div>
             )}
 
-            <div className="filter-row">
-              <div className="field">
-                <label className="label">Department</label>
-                <select
-                  className="select"
-                  value={filters.department}
-                  onChange={(e) => { setFilters({ ...filters, department: e.target.value }); setCurrentPage(1); }}
-                >
-                  <option value="">All departments</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label className="label">From date</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setCurrentPage(1); }}
-                />
-              </div>
-              <div className="field">
-                <label className="label">To date</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setCurrentPage(1); }}
-                />
-              </div>
-              <div className="field">
-                <label className="label">Sort by</label>
-                <select
-                  className="select"
-                  value={filters.sortBy}
-                  onChange={(e) => { setFilters({ ...filters, sortBy: e.target.value }); setCurrentPage(1); }}
-                >
-                  <option value="newest">Newest first</option>
-                  <option value="oldest">Oldest first</option>
-                  <option value="recentEdit">Recently edited</option>
-                </select>
-              </div>
-            </div>
-
             <div className="filter-summary">
-              <span className="muted text-sm">
-                Showing {filteredManuals.length === 0 ? 0 : startIndex + 1}–
-                {Math.min(startIndex + itemsPerPage, filteredManuals.length)} of {filteredManuals.length} manuals
-              </span>
-
-              <div className="row-wrap" style={{ gap: "0.75rem" }}>
-                <label className="row text-sm" style={{ gap: "0.4rem" }}>
+              <div className="row" style={{ gap: "0.75rem" }}>
+                <label className="row text-sm subtle" style={{ gap: "0.4rem" }}>
                   <input
                     type="checkbox"
                     checked={selectedManualIds.length === paginatedManuals.length && paginatedManuals.length > 0}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
                   />
-                  Select all on page
+                  Select all
                 </label>
-                <button
-                  className="btn btn-danger-soft btn-sm"
-                  onClick={handleBulkDelete}
-                  disabled={selectedManualIds.length === 0}
-                >
-                  Delete selected ({selectedManualIds.length})
-                </button>
-                {hasActiveFilters && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setSearchQuery("");
-                      setSearchBy("all");
-                      setShowAdvanced(false);
-                      setFilters({ department: "", author: "", version: "", minSections: "", dateFrom: "", dateTo: "", sortBy: "newest" });
-                      setCurrentPage(1);
-                    }}
-                  >
-                    Clear filters
+                {selectedManualIds.length > 0 && (
+                  <button className="btn btn-danger-soft btn-sm" onClick={handleBulkDelete}>
+                    Delete selected ({selectedManualIds.length})
                   </button>
                 )}
               </div>
+
+              <span className="subtle text-sm">
+                {filteredManuals.length === 0 ? 0 : startIndex + 1}–
+                {Math.min(startIndex + itemsPerPage, filteredManuals.length)} of {filteredManuals.length}
+              </span>
             </div>
           </div>
+
+          <h3 className="section-title">Master copies</h3>
 
           {/* ── List ── */}
           {manuals.length === 0 ? (
@@ -763,7 +767,7 @@ export default function Manuals() {
             </div>
           ) : (
             <div>
-              <div className="card" style={{ overflow: "hidden", marginBottom: "1.5rem" }}>
+              <div style={{ marginBottom: "1.25rem" }}>
                 {paginatedManuals.map((m) => (
                   <div key={m.id} className="list-row">
                     <div className="list-row-head" onClick={() => toggleExpandRow(m.id)}>
@@ -775,21 +779,25 @@ export default function Manuals() {
                       />
                       <span className={`chevron${expandedRows.has(m.id) ? " is-open" : ""}`}>▾</span>
 
-                      <div className="row-wrap" style={{ flex: 1, gap: "0.65rem" }}>
-                        <strong>{m.title}</strong>
-                        <span className="badge">{m.department}</span>
-                        <span className="badge badge-warning">{m.section_count} sections</span>
-                        <span className="subtle text-xs">
-                          Uploaded {new Date(m.uploaded_at).toLocaleDateString()}
-                        </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* The title is a document number, so it is set in mono
+                            and never mistaken for the sentence beneath it. */}
+                        <div className="list-row-title">{m.title}</div>
+                        <div className="list-row-sub">
+                          Uploaded {new Date(m.uploaded_at).toLocaleDateString()} by {m.uploaded_by}
+                        </div>
                       </div>
+
+                      <span className="badge">{m.department}</span>
+                      <span className="badge badge-neutral">{m.section_count} sections</span>
+                      <span className="badge badge-id">v{m.version} · rev {m.revision || 0}</span>
                     </div>
 
                     {expandedRows.has(m.id) && (
                       <div className="list-row-body">
                         <dl className="detail-grid">
                           <dt>QMS status</dt>
-                          <dd><span className="badge badge-warning">v{m.version} rev{m.revision || 0}</span></dd>
+                          <dd><span className="badge badge-id">v{m.version} rev {m.revision || 0}</span></dd>
 
                           <dt>Change version</dt>
                           <dd className="row" style={{ gap: "0.5rem" }}>

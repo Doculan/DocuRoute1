@@ -106,15 +106,17 @@ export default function Departments() {
               <tbody>
                 {departments.map((dept) => (
                   <tr key={dept.id}>
-                    <td className="muted">{dept.id}</td>
+                    <td className="mono subtle">{dept.id}</td>
                     <td className="table-strong">{dept.name}</td>
                     <td>
-                      <button
-                        className="btn btn-danger-soft btn-sm"
-                        onClick={() => handleDelete(dept.id, dept.name)}
-                      >
-                        Delete
-                      </button>
+                      <span className="table-actions on-hover">
+                        <button
+                          className="btn btn-danger-soft btn-sm"
+                          onClick={() => handleDelete(dept.id, dept.name)}
+                        >
+                          Delete
+                        </button>
+                      </span>
                     </td>
                   </tr>
                 ))}

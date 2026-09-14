@@ -62,7 +62,7 @@ export default function UserManagement() {
     <div>
       <header className="page-head">
         <div>
-          <h1 className="page-title">User Management</h1>
+          <h1 className="page-title">Users</h1>
           <p className="page-subtitle">Review access requests and manage approved accounts</p>
         </div>
       </header>

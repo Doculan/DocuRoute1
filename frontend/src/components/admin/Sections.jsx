@@ -523,7 +523,7 @@ export default function Sections() {
           </span>
           <span className="row-wrap" style={{ gap: "0.35rem" }}>
             <span className={`badge ${tagClass(section.tag)}`}>{section.tag}</span>
-            {section.version > 1 && <span className="badge badge-warning">v{section.version}</span>}
+            {section.version > 1 && <span className="badge badge-id">v{section.version}</span>}
             {section.page_number && <span className="toc-item-meta">p.{section.page_number}</span>}
           </span>
         </div>
@@ -559,7 +559,7 @@ export default function Sections() {
     <div className="reader">
       <div className="page-head" style={{ marginBottom: "1.15rem" }}>
         <div>
-          <h1 className="page-title">Manual Sections</h1>
+          <h1 className="page-title">Sections</h1>
           <p className="page-subtitle">Read, edit, merge and version the sections of a manual.</p>
         </div>
         <div className="row-wrap" style={{ gap: "0.6rem" }}>
@@ -785,7 +785,7 @@ export default function Sections() {
                           <span>{s.subtitle}</span>
                           <span className="row" style={{ gap: "0.4rem" }}>
                             <span className={`badge ${tagClass(s.tag)}`}>{s.tag}</span>
-                            {s.version > 1 && <span className="badge badge-warning">v{s.version}</span>}
+                            {s.version > 1 && <span className="badge badge-id">v{s.version}</span>}
                           </span>
                         </div>
                         <div className="prose">{renderSectionContent(s.content)}</div>
@@ -880,7 +880,7 @@ export default function Sections() {
                   <div className="row-wrap" style={{ gap: "0.5rem" }}>
                     <span className={`badge ${tagClass(activeSection.tag)}`}>{activeSection.tag}</span>
                     {activeSection.version > 1 && (
-                      <span className="badge badge-warning">v{activeSection.version}</span>
+                      <span className="badge badge-id">v{activeSection.version}</span>
                     )}
                     <button className="btn btn-primary btn-sm" onClick={() => handleEditClick(activeSection)}>
                       ✏️ Edit

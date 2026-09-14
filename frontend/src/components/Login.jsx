@@ -23,6 +23,12 @@ export default function Login({ onLoginSuccess }) {
       localStorage.setItem("refresh_token", response.data.refresh);
       localStorage.setItem("role", response.data.role);
       localStorage.setItem("username", response.data.username);
+      // The sidebar names the department a user belongs to, not just "Staff".
+      if (response.data.department) {
+        localStorage.setItem("department", response.data.department);
+      } else {
+        localStorage.removeItem("department");
+      }
 
       onLoginSuccess(response.data.role);
     } catch (err) {

@@ -51,7 +51,13 @@ function MetricBar({ label, value }) {
         <span className="metric-label" title={label}>{label}</span>
         <span className="metric-value">{value}%</span>
       </div>
-      <div className="meter"><span className="meter-fill" style={{ width: `${value}%` }} /></div>
+      {/* Below 60% the class is not reliable enough to trust unreviewed. */}
+      <div className="meter">
+        <span
+          className={`meter-fill${value < 60 ? " is-low" : ""}`}
+          style={{ width: `${value}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -80,7 +86,7 @@ export default function SVMEvaluation() {
     <div>
       <header className="page-head">
         <div>
-          <h1 className="page-title">SVM Model Evaluation</h1>
+          <h1 className="page-title">Model health</h1>
           <p className="page-subtitle">
             Measure the text-categorization model&apos;s performance on the expanded dataset.
           </p>
