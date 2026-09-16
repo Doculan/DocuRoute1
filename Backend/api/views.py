@@ -67,6 +67,11 @@ def preview_diff(diff_text, max_lines=12):
     return '\n'.join(lines[:max_lines] + [f'… {hidden} more line{"" if hidden == 1 else "s"}'])
 
 
+# A Markdown table separator: |---|---| or | --- | :--: |. Must survive the
+# artifact filter below, since it carries the table's column count.
+_MD_TABLE_SEP_RE = re.compile(r'^\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$')
+
+
 def _split_into_sections(text, fallback_title='Full Document'):
     # FIX #1: INLINE_TAGS are NO LONGER stripped from lines.
     # Semantic keywords (POLICY, PROCEDURE, RESPONSIBILITY, WORKING INSTRUCTION)
@@ -250,8 +255,10 @@ def _split_into_sections(text, fallback_title='Full Document'):
         if PAGE_HEADER_KEYS.search(s):
             continue
 
-        # Drop artifact lines
-        if re.match(r'^[\s:|\-\.]+$', s):
+        # Drop artifact lines - but not a Markdown table separator, which is
+        # made of exactly these characters and is the row that declares the
+        # table's column count and marks its header.
+        if re.match(r'^[\s:|\-\.]+$', s) and not _MD_TABLE_SEP_RE.match(s):
             continue
 
         # A line with pipe characters is table content — never a section heading.
