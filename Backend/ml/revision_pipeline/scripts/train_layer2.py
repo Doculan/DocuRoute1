@@ -43,6 +43,21 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
+def peak_memory_mb() -> float:
+    """Resident-set size in MB.
+
+    This laptop has 8 GB with about 1 GB usually free, so a run that quietly
+    swaps is the difference between slow and unusable. Reported rather than
+    guessed at.
+    """
+    try:
+        import psutil
+
+        return psutil.Process().memory_info().rss / 1e6
+    except Exception:
+        return 0.0
+
+
 def configure_threads(threads: int = None) -> int:
     """torch defaults to physical cores; on this machine that is 6 of 8.
 
@@ -102,6 +117,41 @@ def evaluate(model, loader, device) -> dict:
     return metrics
 
 
+@torch.no_grad()
+def dump_predictions(model, rows, loader, device, split: str, fold=None) -> list:
+    """Per-example Layer 2 outputs, for the fusion model to train on.
+
+    Fold models exist only to measure performance, so their weights are thrown
+    away; these predictions are the part worth keeping. Fusion joins them back
+    to the dataset rows by id and recomputes the Layer 1 features itself.
+    """
+    model.eval()
+    records, index = [], 0
+    for batch in loader:
+        out = model(
+            input_ids=batch["input_ids"].to(device),
+            attention_mask=batch["attention_mask"].to(device),
+        )
+        verdict_probs = torch.softmax(out.verdict_logits, dim=-1).cpu().tolist()
+        issue_probs = torch.sigmoid(out.issue_logits).cpu().tolist()
+        for vp, ip in zip(verdict_probs, issue_probs):
+            row = rows[index]
+            index += 1
+            records.append({
+                "id": row.get("id"),
+                "document_no": row.get("document_no"),
+                "split": split,
+                "fold": fold,
+                "verdict_true": row["verdict"],
+                "issues_true": row.get("issues") or [],
+                "issues_labeled": bool(row.get("issues_labeled", True)),
+                "generator": row.get("generator"),
+                "verdict_probs": [round(x, 5) for x in vp],
+                "issue_probs": [round(x, 5) for x in ip],
+            })
+    return records
+
+
 def tune_thresholds(issue_true, issue_prob) -> dict:
     """Pick the per-label cut-off that maximises F1 on the validation set.
 
@@ -141,6 +191,12 @@ def train(args) -> dict:
     threads = configure_threads(args.threads)
     device = pick_device(args.device)
 
+    # 8 GB of RAM with ~1 GB free will not hold a batch of 16 at 384 tokens.
+    # Effective batch stays the same via gradient accumulation.
+    if args.batch_size is None:
+        args.batch_size = 16 if device.type == "cuda" else 4
+    effective_batch = args.batch_size * args.grad_accum
+
     data_dir = Path(args.data_dir)
     train_rows = load_jsonl(data_dir / "train.jsonl", args.max_examples)
     val_rows = load_jsonl(data_dir / "val.jsonl", args.max_examples)
@@ -148,6 +204,7 @@ def train(args) -> dict:
         raise SystemExit(f"no training rows found in {data_dir}")
 
     print(f"device={device}  threads={threads}  max_length={args.max_length}  "
+          f"batch={args.batch_size}x{args.grad_accum}={effective_batch}  "
           f"train={len(train_rows)}  val={len(val_rows)}")
 
     tokenizer = build_tokenizer()
@@ -193,8 +250,13 @@ def train(args) -> dict:
             optimizer.step()
             optimizer.zero_grad()
         per_step = (time.time() - started) / 20
-        print(f"~{per_step:.2f}s/step -> ~{per_step * len(train_loader) * args.epochs / 60:.1f} min "
-              f"for {args.epochs} epochs")
+        peak = peak_memory_mb()
+        print(f"~{per_step:.2f}s/step ({per_step / args.batch_size * 1000:.0f} ms/example) "
+              f"-> ~{per_step * len(train_loader) * args.epochs / 60:.1f} min for {args.epochs} epochs")
+        print(f"   peak RSS {peak:.0f} MB")
+        if device.type == "cpu" and peak > 3000:
+            print("   WARNING: that is a large share of 8 GB - lower --batch-size "
+                  "and raise --grad-accum if the machine starts swapping")
         set_seed(args.seed)
 
     best_score, best_epoch, patience_left = -1.0, -1, args.patience
@@ -204,7 +266,8 @@ def train(args) -> dict:
         model.train()
         epoch_started = time.time()
         total_loss = 0.0
-        for batch in train_loader:
+        optimizer.zero_grad()
+        for step, batch in enumerate(train_loader, 1):
             out = model(
                 input_ids=batch["input_ids"].to(device),
                 attention_mask=batch["attention_mask"].to(device),
@@ -212,16 +275,19 @@ def train(args) -> dict:
                 issue_labels=batch["issue_labels"].to(device),
                 issues_labeled=batch["issues_labeled"].to(device),
             )
-            out.loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            optimizer.zero_grad()
             total_loss += out.loss.detach().item()
+            # Scaled so the accumulated gradient matches one large batch.
+            (out.loss / args.grad_accum).backward()
+            if step % args.grad_accum == 0 or step == len(train_loader):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                optimizer.zero_grad()
 
         row = {
             "epoch": epoch,
             "train_loss": round(total_loss / max(len(train_loader), 1), 4),
             "seconds": round(time.time() - epoch_started, 1),
+            "peak_rss_mb": round(peak_memory_mb()),
         }
         if val_loader:
             metrics = evaluate(model, val_loader, device)
@@ -256,11 +322,50 @@ def train(args) -> dict:
         final = evaluate(model, val_loader, device)
         thresholds = tune_thresholds(final["_issue_true"], final["_issue_prob"])
 
-    model.save(
-        out_dir, tokenizer=tokenizer, thresholds=thresholds,
-        extra={"best_epoch": best_epoch, "train_examples": len(train_rows),
-               "fold": args.fold},
-    )
+    # Fold runs measure performance; only the final all-documents model is
+    # kept. Skipping the encoder saves ~254 MB per fold.
+    if args.save_weights:
+        model.save(
+            out_dir, tokenizer=tokenizer, thresholds=thresholds,
+            extra={"best_epoch": best_epoch, "train_examples": len(train_rows),
+                   "fold": args.fold},
+        )
+    else:
+        (out_dir / "thresholds.json").write_text(
+            json.dumps(thresholds, indent=2), encoding="utf-8"
+        )
+        print("weights not saved (--no-save-weights)")
+
+    # Predictions for every split we have, so fusion and evaluation can run
+    # later without the model - in Colab or locally.
+    predictions = []
+    if val_loader:
+        predictions += dump_predictions(model, val_rows, val_loader, device, "val", args.fold)
+    test_rows = load_jsonl(data_dir / "test.jsonl", args.max_examples)
+    if test_rows:
+        test_loader = DataLoader(
+            RevisionDataset(test_rows, tokenizer, max_length=args.max_length),
+            batch_size=args.batch_size, collate_fn=collate,
+        )
+        predictions += dump_predictions(model, test_rows, test_loader, device, "test", args.fold)
+
+    if predictions:
+        pred_path = out_dir / "predictions.jsonl"
+        pred_path.write_text(
+            "\n".join(json.dumps(r) for r in predictions), encoding="utf-8"
+        )
+        print(f"wrote {len(predictions)} predictions to {pred_path}")
+
+    metrics_path = out_dir / "metrics.json"
+    metrics_path.write_text(json.dumps({
+        "fold": args.fold,
+        "best_epoch": best_epoch,
+        "train_examples": len(train_rows),
+        "val_examples": len(val_rows),
+        "thresholds": thresholds,
+        "epochs": log_rows,
+        "pipeline_fingerprint": config.pipeline_fingerprint(),
+    }, indent=2), encoding="utf-8")
 
     if log_rows:
         with log_path.open("w", newline="", encoding="utf-8") as fh:
@@ -278,7 +383,14 @@ def main() -> int:
     ap.add_argument("--out-dir", default=str(config.MODEL_DIR))
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--lr", type=float, default=3e-5)
-    ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--batch-size", type=int, default=None,
+                    help="default 16 on CUDA, 4 on CPU")
+    ap.add_argument("--grad-accum", type=int, default=1,
+                    help="accumulate this many batches before stepping")
+    ap.add_argument("--save-weights", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="--no-save-weights for fold runs: predictions and "
+                         "metrics are kept, the 254 MB encoder is not")
     ap.add_argument("--max-examples", type=int, default=None)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--seed", type=int, default=config.SEED)

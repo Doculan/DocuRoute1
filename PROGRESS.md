@@ -120,7 +120,10 @@ alone is 254 MB).
 
 ## Training budget and the fold decision
 
-Measured on this machine (8 cores, no GPU), DistilBERT at batch size 8:
+**Hardware of record: i3-1215U (2 performance + 4 efficiency cores), 8 GB RAM
+with roughly 1 GB usually free.** Local training is a **fallback only**.
+
+Measured on this machine, DistilBERT at batch size 8:
 
 | Setting | ms/example | min/fold (2,180 ex × 3 epochs) |
 |---|---|---|
@@ -145,10 +148,35 @@ pairs — nowhere near 95%. The more useful figure is the change alone
 smaller, so re-measure after Phase 4 before lowering the default.
 
 **Fold decision: Colab.** The best local figure, 86 min/fold, is over the
-~1 hour bar, so `scripts/train_on_colab.ipynb` clones the repo, trains each
-fold on a T4, saves after every fold (a disconnect costs one fold, not the
-run), and zips the weights for download into `ml/saved_models/`.
-`MAX_LENGTH` stays **384** — the CPU compromise is unnecessary on a GPU.
+~1 hour bar. `MAX_LENGTH` stays **384** — the CPU compromise is unnecessary
+on a GPU.
+
+### How the Colab run is organised
+
+- **Google Drive is mounted**, and each fold's `metrics.json`,
+  `predictions.jsonl`, `thresholds.json` and `training_log.csv` are copied
+  there as soon as that fold finishes. Re-running skips any fold already
+  present in Drive, so a disconnect costs one fold rather than the run.
+- **Fold weights are never saved.** Folds exist to measure performance, so
+  `--no-save-weights` keeps the metrics and predictions and discards the
+  encoder: **18 KB per fold instead of 254 MB**.
+- **Fusion trains from the saved prediction files**, so it runs in Colab or
+  locally after downloading `folds/` — it never needs a fold model.
+- **One final model** is trained afterwards on every document, holding out 8%
+  purely so early stopping and threshold tuning have something to watch. Only
+  that model — encoder, tokenizer, `heads.pt`, `thresholds.json`,
+  `label_config.json` — is zipped to Drive.
+- Colab clones from **GitHub**, so whatever is being trained must be pushed
+  first. The Phase 7 size check runs before that push.
+
+### Local fallback
+
+`train_layer2.py` now takes `--grad-accum` (effective batch unchanged while
+the resident batch shrinks), defaults to **batch 4 on CPU** and 16 on CUDA,
+and `--estimate-first` prints peak RSS with a warning past 3 GB. Measured
+1,410 MB at batch 2 × 128 tokens, so batch 4 × 384 needs watching on a machine
+with 1 GB free. TF-IDF stays the default retrieval backend — no model
+download, no extra memory.
 
 ---
 
@@ -169,6 +197,13 @@ run), and zips the weights for download into `ml/saved_models/`.
    President`, `Accounting Staff-1 or 6`).
 4. **`DATASET_CARD.md` must report example counts per section type**
    (Objectives / Scope / Policies / Procedures).
+5. **Before Phase 5:** run the Phase 7 size check (`scripts/check_repo_size.py`)
+   and prepare a safe first push — Colab clones from GitHub, so the dataset and
+   pipeline have to be on the remote before any training can start.
+6. **Phase 7 README must cover** how to fetch the final model from Drive and
+   where to unzip it: `Backend/ml/saved_models/context_v2/`, so the folder ends
+   up holding `encoder/`, `tokenizer/`, `heads.pt`, `thresholds.json` and
+   `label_config.json`. Also: creating and activating the venv.
 
 ---
 
