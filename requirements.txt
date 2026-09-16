@@ -16,6 +16,7 @@ torch
 transformers
 datasets
 accelerate
-scikit-learn
 pandas
 numpy
+pytest
+sentence-transformers

@@ -1339,12 +1339,14 @@ def upload_revision(request, section_id):
     text_new = extract_text(file_bytes, uploaded_file.name)
 
     diff = build_diff(section.content, text_new)
+    change_reason = (request.data.get('change_reason') or '').strip()
 
     revision = ManualRevision.objects.create(
         section=section,
         submitted_by=request.user,
         uploaded_file=uploaded_file,
         diff_text=diff,
+        change_reason=change_reason,
         status='pending'
     )
 
@@ -1371,12 +1373,14 @@ def propose_text_revision(request, section_id):
         return Response({'error': 'Proposed content is required'}, status=400)
 
     diff = build_diff(section.content, proposed_content)
+    change_reason = (request.data.get('change_reason') or '').strip()
 
     revision = ManualRevision.objects.create(
         section=section,
         submitted_by=request.user,
         proposed_content=proposed_content,
         diff_text=diff,
+        change_reason=change_reason,
         status='pending'
     )
 
@@ -1413,6 +1417,7 @@ def propose_merge(request):
 
     merged_content = f"{target.content}\n\n{source.content}".strip()
     diff = build_diff(target.content, merged_content)
+    change_reason = (request.data.get('change_reason') or '').strip()
 
     revision = ManualRevision.objects.create(
         section=target,
@@ -1420,6 +1425,7 @@ def propose_merge(request):
         merge_section_ids=[source.id],
         merge_type='merge',
         diff_text=diff,
+        change_reason=change_reason,
         status='pending'
     )
 
@@ -1454,6 +1460,12 @@ def list_revisions(request):
         'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
         'submitted_at': r.submitted_at,
         'status': r.status,
+        'change_reason': r.change_reason,
+        'reviewed_by': r.reviewed_by.username if r.reviewed_by else None,
+        'reviewed_at': r.reviewed_at,
+        'ai_verdict': r.ai_verdict,
+        'ai_issues': r.ai_issues,
+        'ai_explanation': r.ai_explanation,
         'diff_preview': preview_diff(r.diff_text),
         'diff_text': r.diff_text,
     } for r in revisions]
@@ -1475,6 +1487,9 @@ def review_revision(request, revision_id):
     revision.status = new_status
     revision.reviewer_notes = request.data.get('reviewer_notes', '')
     revision.reviewed_at = timezone.now()
+    # Who made the call, not just when - an approval with no named approver is
+    # not an audit trail.
+    revision.reviewed_by = request.user
     revision.save()
 
     if new_status == 'approved':

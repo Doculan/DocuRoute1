@@ -118,6 +118,9 @@ export default function StaffSections({ manualId, onBack }) {
   const [revLoading, setRevLoading]   = useState(false);
   const [revMsg, setRevMsg]           = useState("");
   const [revMsgType, setRevMsgType]   = useState("success");
+  // ISO 9001 clause 6.3 expects changes to be planned, so every revision has
+  // to say why it is being made. Layer 1 treats an empty reason as a hard fail.
+  const [changeReason, setChangeReason] = useState("");
   const fileInputRef                  = useRef();
 
   // Text edit
@@ -188,10 +191,14 @@ export default function StaffSections({ manualId, onBack }) {
   const handleSubmitRevision = async (e) => {
     e.preventDefault();
     if (!revFile) { setRevMsg("Please select a file."); setRevMsgType("error"); return; }
+    if (!changeReason.trim()) {
+      setRevMsg("Please give a reason for this change."); setRevMsgType("error"); return;
+    }
     setRevLoading(true);
     setRevMsg("");
     const formData = new FormData();
     formData.append("file", revFile);
+    formData.append("change_reason", changeReason.trim());
     try {
       await axios.post(
         `${BASE_URL}/api/revisions/upload/${activeSection.id}/`,
@@ -201,6 +208,7 @@ export default function StaffSections({ manualId, onBack }) {
       setRevMsg("Revision submitted successfully. An admin will review it.");
       setRevMsgType("success");
       setRevFile(null);
+      setChangeReason("");
       setShowRevForm(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadSectionRevisions(activeSection.id);
@@ -219,18 +227,24 @@ export default function StaffSections({ manualId, onBack }) {
       setRevMsgType("error");
       return;
     }
+    if (!changeReason.trim()) {
+      setRevMsg("Please give a reason for this change.");
+      setRevMsgType("error");
+      return;
+    }
     setRevLoading(true);
     setRevMsg("");
     try {
       await axios.post(
         `${BASE_URL}/api/revisions/propose-text/${activeSection.id}/`,
-        { proposed_content: editedContent },
+        { proposed_content: editedContent, change_reason: changeReason.trim() },
         getAuth()
       );
       setRevMsg("Text revision proposed successfully. An admin will review it.");
       setRevMsgType("success");
       setIsEditing(false);
       setEditedContent("");
+      setChangeReason("");
       loadSectionRevisions(activeSection.id);
     } catch (err) {
       const msg = err.response?.data?.error || "Submission failed. Try again.";
@@ -258,6 +272,7 @@ export default function StaffSections({ manualId, onBack }) {
         {
           source_section_id: mergeSource.id,
           target_section_id: mergeTarget.id,
+          change_reason: changeReason.trim(),
         },
         getAuth()
       );
@@ -509,6 +524,20 @@ export default function StaffSections({ manualId, onBack }) {
                         required
                       />
                     </div>
+                    <div className="field">
+                      <label className="label">Reason for change <span style={{ color: "var(--danger)" }}>*</span></label>
+                      <textarea
+                        className="textarea"
+                        style={{ minHeight: "70px" }}
+                        placeholder="Why is this change needed? e.g. the approving role changed in August 2026."
+                        value={changeReason}
+                        onChange={(e) => setChangeReason(e.target.value)}
+                        required
+                      />
+                      <span className="subtle text-xs">
+                        Required. Recorded against the revision for document control.
+                      </span>
+                    </div>
                     <button type="submit" className="btn btn-success" disabled={revLoading}>
                       {revLoading ? <><span className="spinner spinner-light" /> Submitting…</> : "Submit revision"}
                     </button>
@@ -541,11 +570,25 @@ export default function StaffSections({ manualId, onBack }) {
                       onChange={(e) => setEditedContent(e.target.value)}
                       placeholder="Enter the revised content…"
                     />
+                    <div className="field">
+                      <label className="label">Reason for change <span style={{ color: "var(--danger)" }}>*</span></label>
+                      <textarea
+                        className="textarea"
+                        style={{ minHeight: "70px" }}
+                        placeholder="Why is this change needed? e.g. the approving role changed in August 2026."
+                        value={changeReason}
+                        onChange={(e) => setChangeReason(e.target.value)}
+                        required
+                      />
+                      <span className="subtle text-xs">
+                        Required. Recorded against the revision for document control.
+                      </span>
+                    </div>
                     <div className="row-wrap" style={{ gap: "0.5rem" }}>
                       <button className="btn btn-success" onClick={handleSubmitTextRevision} disabled={revLoading}>
                         {revLoading ? <><span className="spinner spinner-light" /> Submitting…</> : "Propose changes"}
                       </button>
-                      <button className="btn btn-ghost" onClick={() => { setIsEditing(false); setEditedContent(""); }}>
+                      <button className="btn btn-ghost" onClick={() => { setIsEditing(false); setEditedContent(""); setChangeReason(""); }}>
                         Cancel
                       </button>
                     </div>

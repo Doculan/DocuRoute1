@@ -3,3 +3,18 @@ node_modules/
 # ML training artifacts (too large for git)
 Backend/ml/training_checkpoints/
 Backend/ml/saved_models/
+
+# Virtual environment — each clone creates its own (see the pipeline README).
+venv/
+.venv/
+
+# Python bytecode and test cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local database backups
+Backend/db.sqlite3.bak-*
+
+# Regenerable drafts — the reviewed glossary.txt / entities.json are committed
+Backend/ml/revision_pipeline/*_draft.*

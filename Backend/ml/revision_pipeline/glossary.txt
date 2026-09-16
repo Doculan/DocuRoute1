@@ -1,0 +1,88 @@
+# Controlled term-equivalence list for the revision assessment pipeline.
+#
+# Format:  term | alternative | relation
+# Relation is `equivalent` or `not_equivalent`. Relations are symmetric.
+# A pair that is not listed is `unknown` - never assumed equivalent.
+#
+# Seeded by hand with obvious QMS pairs so the pipeline works immediately.
+# scripts/build_glossary_draft.py proposes more from the master copies; a human
+# reviews glossary_draft.txt and copies accepted lines here.
+
+# --- Obligation modals -------------------------------------------------
+# Appendix A4: this corpus uses shall / must / will interchangeably for
+# obligations, so swapping between them is not a weakening.
+shall | must | equivalent
+shall | will | equivalent
+must | will | equivalent
+may | can | equivalent
+may | could | equivalent
+# Weakening: an obligation becoming a permission changes the requirement.
+shall | should | not_equivalent
+shall | may | not_equivalent
+shall | can | not_equivalent
+must | should | not_equivalent
+must | may | not_equivalent
+will | may | not_equivalent
+should | may | not_equivalent
+
+# --- Verification and approval ----------------------------------------
+verify | confirm | equivalent
+verify | validate | not_equivalent
+verify | check | not_equivalent
+approve | authorise | equivalent
+approve | authorize | equivalent
+approve | review | not_equivalent
+approve | endorse | not_equivalent
+approve | acknowledge | not_equivalent
+review | evaluate | equivalent
+review | note | not_equivalent
+certify | attest | equivalent
+
+# --- Records and documents --------------------------------------------
+record | document | equivalent
+record | log | equivalent
+record | note | not_equivalent
+form | template | equivalent
+file | record | not_equivalent
+retain | keep | equivalent
+retain | archive | not_equivalent
+submit | send | equivalent
+submit | forward | equivalent
+submit | file | not_equivalent
+
+# --- Process verbs -----------------------------------------------------
+prepare | draft | equivalent
+process | handle | equivalent
+issue | release | equivalent
+issue | print | not_equivalent
+receive | accept | not_equivalent
+complete | accomplish | equivalent
+complete | start | not_equivalent
+update | revise | equivalent
+update | replace | not_equivalent
+monitor | track | equivalent
+monitor | audit | not_equivalent
+
+# --- Spelling and regional variants ------------------------------------
+# Appendix A7: the master copies mix these.
+enrolment | enrollment | equivalent
+authorise | authorize | equivalent
+organisation | organization | equivalent
+fulfil | fulfill | equivalent
+programme | program | equivalent
+cancelled | canceled | equivalent
+
+# --- Quantifiers and scope --------------------------------------------
+all | each | equivalent
+all | some | not_equivalent
+all | any | not_equivalent
+every | each | equivalent
+at least | no less than | equivalent
+at least | at most | not_equivalent
+at least | up to | not_equivalent
+before | prior to | equivalent
+before | after | not_equivalent
+include | comprise | equivalent
+include | exclude | not_equivalent
+required | mandatory | equivalent
+required | optional | not_equivalent

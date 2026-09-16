@@ -154,7 +154,26 @@ class ManualRevision(models.Model):
     )
     submitted_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_revisions'
+    )
     reviewer_notes = models.TextField(blank=True)
+
+    # Why the submitter is making this change. ISO 9001 clause 6.3 expects
+    # changes to be planned, so Layer 1 treats an empty reason as a hard fail.
+    change_reason = models.TextField(blank=True)
+
+    # Advisory output of the revision-assessment pipeline. Persisted so an
+    # admin's view of the assessment matches what the model actually said at
+    # submission time, rather than being recomputed on every page load.
+    ai_verdict = models.CharField(max_length=32, blank=True)
+    ai_issues = models.JSONField(default=list, blank=True)
+    ai_explanation = models.TextField(blank=True)
+    ai_trace = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"Revision by {self.submitted_by} on {self.section.subtitle}"
