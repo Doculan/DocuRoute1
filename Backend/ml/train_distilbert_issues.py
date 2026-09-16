@@ -20,7 +20,7 @@ from transformers import (
 
 BASE_MODEL = "distilbert-base-uncased"
 
-TRAIN_FILE = "ml/datasets/train.csv"
+TRAIN_FILE = "ml/datasets/train_manual_augmented.csv"
 VALIDATION_FILE = "ml/datasets/validation.csv"
 TEST_FILE = "ml/datasets/test.csv"
 TAG_MAPPING_FILE = "ml/datasets/issue_tag_mapping.json"
