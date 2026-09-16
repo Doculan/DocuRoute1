@@ -1,18 +1,21 @@
 import os
-from django.utils import text
-import torch
 import re
-from transformers import (
-    AutoTokenizer,
-    AutoModelForSequenceClassification,
-)
 from difflib import SequenceMatcher
+
+import torch
+from django.utils import text
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+)
+
 from ml.active_issue_tags import ACTIVE_ISSUE_TAGS
 from ml.explanation_templates import build_explanation
+from ml.issue_guidance import ISSUE_GUIDANCE
+from ml.verdict_mapping import get_issue_verdict, get_overall_verdict
 
 
 BASE_DIR = os.path.dirname(__file__)
-
 
 ASSESSMENT_MODEL_DIR = os.path.join(
     BASE_DIR,
@@ -44,8 +47,8 @@ def build_model_input(change_type, original_text, revised_text):
 
 def models_are_available():
     return (
-        os.path.isdir(ASSESSMENT_MODEL_DIR) and
-        os.path.isdir(ISSUE_MODEL_DIR)
+        os.path.isdir(ASSESSMENT_MODEL_DIR)
+        and os.path.isdir(ISSUE_MODEL_DIR)
     )
 
 
@@ -82,9 +85,9 @@ def load_models():
         ISSUE_MODEL.eval()
 
 
-def predict_assessment(text):
+def predict_assessment(model_input):
     inputs = ASSESSMENT_TOKENIZER(
-        text,
+        model_input,
         return_tensors="pt",
         truncation=True,
         max_length=512,
@@ -112,9 +115,9 @@ def predict_assessment(text):
     }
 
 
-def predict_issue_tags(text):
+def predict_issue_tags(model_input):
     inputs = ISSUE_TOKENIZER(
-        text,
+        model_input,
         return_tensors="pt",
         truncation=True,
         max_length=512,
@@ -148,6 +151,52 @@ def predict_issue_tags(text):
         key=lambda item: item["confidence"],
         reverse=True,
     )
+
+
+def build_verdict_results(issue_tags):
+    findings = []
+
+    for issue in issue_tags:
+        tag = issue["tag"]
+        guidance = ISSUE_GUIDANCE.get(tag)
+
+        if guidance is None:
+            findings.append(
+                {
+                    "tag": tag,
+                    "title": tag.replace("_", " ").title(),
+                    "confidence": issue["confidence"],
+                    "verdict": get_issue_verdict(tag),
+                    "identification": (
+                        "A potential document issue was identified and "
+                        "should be verified by an authorized reviewer."
+                    ),
+                    "action": (
+                        "Review the affected document section and make "
+                        "the required correction if applicable."
+                    ),
+                }
+            )
+            continue
+
+        findings.append(
+            {
+                "tag": tag,
+                "title": guidance["title"],
+                "confidence": issue["confidence"],
+                "verdict": get_issue_verdict(tag),
+                "identification": guidance["identification"],
+                "action": guidance["action"],
+            }
+        )
+
+    overall_verdict = get_overall_verdict(
+        [finding["tag"] for finding in findings]
+    )
+
+    return findings, overall_verdict
+
+
 PLACEHOLDER_PATTERN = re.compile(
     r"\b(todo|tbd|for demo|demo only|lorem ipsum|placeholder|test)\b",
     re.IGNORECASE,
@@ -170,11 +219,11 @@ def get_added_text(original_text, revised_text):
     return "\n".join(added_lines)
 
 
-def is_low_quality_added_text(text):
+def is_low_quality_added_text(value):
     clean = re.sub(
         r"^[\-\+\u2022\d.\s]+",
         "",
-        text or "",
+        value or "",
     ).strip()
 
     if not clean:
@@ -192,6 +241,7 @@ def is_low_quality_added_text(text):
         return True, "a short incomplete addition"
 
     return False, None
+
 
 def requires_revision_for_content_removal(original_text, revised_text):
     original_lines = [
@@ -215,11 +265,39 @@ def requires_revision_for_content_removal(original_text, revised_text):
             "The proposed revision removes all original content.",
         )
 
-    removed_lines = [
-        line
-        for line in original_lines
-        if line not in revised_lines
+    def normalize_line(line):
+        line = line.lower()
+        line = re.sub(r"^\d+[\.\)]\s*", "", line)
+        line = re.sub(r"[^a-z0-9\s]", " ", line)
+        return re.sub(r"\s+", " ", line).strip()
+
+    normalized_revised_lines = [
+        normalize_line(line)
+        for line in revised_lines
     ]
+
+    removed_lines = []
+
+    for original_line in original_lines:
+        normalized_original = normalize_line(original_line)
+
+        if not normalized_original:
+            continue
+
+        best_similarity = max(
+            (
+                SequenceMatcher(
+                    None,
+                    normalized_original,
+                    normalized_revised_line,
+                ).ratio()
+                for normalized_revised_line in normalized_revised_lines
+            ),
+            default=0,
+        )
+
+        if best_similarity < 0.55:
+            removed_lines.append(original_line)
 
     if not removed_lines:
         return False, None
@@ -238,6 +316,11 @@ def requires_revision_for_content_removal(original_text, revised_text):
         "compliance",
         "control",
         "procedure",
+        "ched",
+        "curriculum",
+        "endorsement",
+        "approves",
+        "submits",
     )
 
     removed_critical_lines = [
@@ -246,43 +329,39 @@ def requires_revision_for_content_removal(original_text, revised_text):
         if any(term in line.lower() for term in critical_terms)
     ]
 
-    if removal_ratio >= 0.50:
+    if removal_ratio >= 0.70:
         return (
             True,
             (
-                f"The proposed revision removes {len(removed_lines)} of "
-                f"{len(original_lines)} existing content lines."
+                f"The proposed revision removes or substantially changes "
+                f"{len(removed_lines)} of {len(original_lines)} existing "
+                "content lines."
             ),
         )
 
-    if len(removed_lines) >= 2:
+    if len(removed_critical_lines) >= 3 and removal_ratio >= 0.50:
         return (
             True,
             (
-                f"The proposed revision removes {len(removed_lines)} "
-                "substantive content lines."
+                "The proposed revision removes or substantially changes "
+                "multiple critical policy or control requirements."
             ),
-        )
-
-    if removed_critical_lines:
-        return (
-            True,
-            "The proposed revision removes a line containing critical "
-            "policy or control language.",
         )
 
     return False, None
 
+
 def assess_revision(change_type, original_text, revised_text):
     load_models()
 
-    text = build_model_input(
+    model_input = build_model_input(
         change_type=change_type,
         original_text=original_text,
         revised_text=revised_text,
     )
 
-    assessment_result = predict_assessment(text)
+    assessment_result = predict_assessment(model_input)
+
     print("\n=== AI ASSESSMENT DEBUG ===")
     print("change_type:", change_type)
     print("original_text:", repr(original_text))
@@ -295,6 +374,7 @@ def assess_revision(change_type, original_text, revised_text):
             revised_text,
         )
     )
+
     print("removal_risk:", removal_risk)
     print("removal_reason:", removal_reason)
 
@@ -304,10 +384,9 @@ def assess_revision(change_type, original_text, revised_text):
     )
 
     low_quality, low_quality_reason = (
-        is_low_quality_added_text(
-            added_text,
-        )
+        is_low_quality_added_text(added_text)
     )
+
     print("added_text:", repr(added_text))
     print("low_quality:", low_quality)
     print("low_quality_reason:", low_quality_reason)
@@ -315,7 +394,6 @@ def assess_revision(change_type, original_text, revised_text):
 
     issue_tags = []
 
-    # Priority 1: major removal is the strongest risk.
     if removal_risk:
         assessment_result["assessment"] = "Needs Revision"
 
@@ -332,7 +410,6 @@ def assess_revision(change_type, original_text, revised_text):
             "The revision should be revised before approval."
         )
 
-    # Priority 2: low-quality/placeholder content needs review.
     elif low_quality:
         assessment_result["assessment"] = "Needs Human Review"
 
@@ -345,25 +422,35 @@ def assess_revision(change_type, original_text, revised_text):
 
         explanation = (
             "The proposed revision adds content that appears incomplete, "
-            f"unexplained, or non-substantive "
-            f"({low_quality_reason}). "
+            f"unexplained, or non-substantive ({low_quality_reason}). "
             "An authorized reviewer should confirm its meaning and "
             "relevance before approval."
         )
 
-    # Priority 3: normal model result.
     else:
-        if assessment_result["assessment"] == "Needs Revision":
-            issue_tags = predict_issue_tags(text)
+        issue_tags = predict_issue_tags(model_input)
 
         explanation = build_explanation(
             assessment_result["assessment"],
             issue_tags,
         )
 
+    findings, overall_verdict = build_verdict_results(issue_tags)
+
+    if overall_verdict == "Not ready for approval":
+        assessment_result["assessment"] = "Needs Revision"
+
+    elif overall_verdict == "Needs revision":
+        assessment_result["assessment"] = "Needs Revision"
+
+    elif overall_verdict == "Needs review":
+        assessment_result["assessment"] = "Needs Human Review"
+
     return {
         **assessment_result,
+        "overall_verdict": overall_verdict,
         "issue_tags": issue_tags,
+        "findings": findings,
         "explanation": explanation,
         "disclaimer": (
             "AI-assisted preliminary feedback only. "
