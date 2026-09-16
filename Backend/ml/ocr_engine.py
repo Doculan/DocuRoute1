@@ -98,8 +98,12 @@ _SPACE_FIXES = (
 )
 
 
-def _strip_markdown_line(s):
-    """Remove Markdown syntax from one line, preserving its text."""
+def _strip_inline(s):
+    """Remove inline Markdown/HTML from a fragment, preserving its text.
+
+    Used for both whole lines and individual table cells, so it must not know
+    anything about pipes.
+    """
     s = _MD_BR_RE.sub(' ', s)
     s = _INLINE_HTML_RE.sub('', s)
     # Word's Symbol-font bullet survives extraction as a private-use codepoint.
@@ -108,15 +112,89 @@ def _strip_markdown_line(s):
     s = _MD_EMPHASIS_RE.sub('', s)
     s = _MD_BULLET_RE.sub('', s)
 
-    # Table row: keep the cells, drop the delimiting pipes at the edges.
-    if s.startswith('|') or s.endswith('|'):
-        cells = [c.strip() for c in s.strip('|').split('|')]
-        s = ' | '.join(c for c in cells if c)
-
     for pattern, repl in _SPACE_FIXES:
         s = pattern.sub(repl, s)
 
     return re.sub(r'\s{2,}', ' ', s).strip()
+
+
+def _strip_markdown_line(s):
+    """Remove Markdown syntax from one non-table line."""
+    return _strip_inline(s)
+
+
+def _split_row(line):
+    """Split one Markdown table row into its cells.
+
+    Strips exactly one delimiting pipe from each end - not all of them. The
+    header row of these manuals is "|Responsibility||Activity|", whose middle
+    cell is deliberately empty (the step-number column has no heading), and
+    "||VERSION NO.|..." opens with an empty cell. Using strip('|') would eat
+    those and silently change the column count.
+    """
+    s = line.strip()
+    if s.startswith('|'):
+        s = s[1:]
+    if s.endswith('|'):
+        s = s[:-1]
+    return [_strip_inline(c) for c in s.split('|')]
+
+
+def _render_table(rows, header_rows=1):
+    """Emit rows as a well-formed Markdown table.
+
+    Every row is padded to the same width and a separator row is always
+    written, so downstream readers never have to guess the column count.
+    """
+    width = max(len(r) for r in rows)
+    padded = [r + [''] * (width - len(r)) for r in rows]
+    out = ['| ' + ' | '.join(r) + ' |' for r in padded]
+    out.insert(header_rows, '| ' + ' | '.join(['---'] * width) + ' |')
+    return out
+
+
+def _consume_table(lines, i):
+    """Read the table block starting at lines[i].
+
+    Returns (rendered_lines_or_None, next_index). None means the block was the
+    repeated page-header band and should be dropped.
+    """
+    rows, sep_at = [], None
+    while i < len(lines) and lines[i].strip().startswith('|'):
+        raw = lines[i].strip()
+        if _MD_TABLE_SEP_RE.match(raw):
+            # The separator declares the real column count - keep it as the
+            # width authority, but do not carry it into the data.
+            if sep_at is None:
+                sep_at = len(rows)
+                rows.append(['---'] * len(_split_row(raw)))
+        else:
+            rows.append(_split_row(raw))
+        i += 1
+
+    width = 1
+    if sep_at is not None:
+        width = len(rows[sep_at])
+        rows.pop(sep_at)
+    if rows:
+        width = max(width, max(len(r) for r in rows))
+    rows = [r + [''] * (width - len(r)) for r in rows]
+
+    # Drop rows that are entirely empty once stripped.
+    rows = [r for r in rows if any(c for c in r)]
+    if not rows:
+        return [], i
+
+    # The page-header band is itself a table in the source PDF.
+    if _is_page_header_line(' '.join(c for r in rows for c in r if c)):
+        return None, i
+
+    # A single row with one cell was never a table.
+    if len(rows) == 1 and width == 1:
+        return [rows[0][0]], i
+
+    header_rows = 1 if sep_at is None else max(sep_at, 1)
+    return _render_table(rows, header_rows), i
 
 
 def _mostly_upper(s):
@@ -483,7 +561,19 @@ def _clean(text):
             i += 1
             continue
 
-        # -- Markdown table separator rows carry no content --
+        # -- Tables are kept as tables --
+        # pymupdf4llm emits real Markdown tables. Flattening them to
+        # "a | b | c" threw away the column count and the header row, which
+        # every reader downstream then had to guess at. Consume the whole
+        # block here instead, where the separator row is still available to
+        # say how wide it is.
+        if s.startswith('|'):
+            block, i = _consume_table(lines, i)
+            if block:
+                out.extend(block)
+            continue
+
+        # -- A stray separator row outside a table block carries no content --
         if _MD_TABLE_SEP_RE.match(s):
             i += 1
             continue

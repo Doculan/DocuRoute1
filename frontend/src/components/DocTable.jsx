@@ -1,45 +1,14 @@
-// Shared renderer for the pipe-delimited tables the OCR pipeline produces.
+import { normalizeTableRows } from "../docTable";
+
+// Renders a table block from section content.
 //
-// Extracted text has ragged rows: a header may carry two cells while the rows
-// under it carry three, because pymupdf4llm splits a numbered activity into its
-// own cell ("OSD Staff | 1. | Provides the link..."). With table-layout: fixed
-// and a colgroup sized from the header alone, the extra column was handed 0% of
-// the width and its text vanished behind the wrapper's overflow: hidden — the
-// content was in the database the whole time, just unrenderable.
+// `declaredWidth` is the column count the source stated in its "| --- |"
+// separator row. When present it is authoritative — an empty header cell is a
+// real column, not something to tidy away. When absent the content predates the
+// extraction fix and the width has to be inferred; see docTable.js.
 
-// "1." / "2)" / "a." — a list marker that the extractor peeled into its own cell.
-const NUMBER_CELL = /^(?:\d{1,3}|[a-z])[.)]?$/i;
-
-function normalizeTableRows(rows) {
-  // Fold a bare list marker back into the cell it belongs to, which usually
-  // restores the document's real column count.
-  const merged = rows.map((row) => {
-    const cells = [];
-    for (let i = 0; i < row.length; i++) {
-      if (i < row.length - 1 && NUMBER_CELL.test(row[i])) {
-        cells.push(`${row[i]} ${row[i + 1]}`.trim());
-        i++; // the marker and the text it labels become one cell
-      } else {
-        cells.push(row[i]);
-      }
-    }
-    return cells;
-  });
-
-  // Pad every row to the widest one so no column is ever left without a header
-  // slot — a short row would otherwise skew the fixed layout.
-  const colCount = merged.reduce((max, row) => Math.max(max, row.length), 0);
-  return {
-    colCount,
-    rows: merged.map((row) => [
-      ...row,
-      ...Array(colCount - row.length).fill(""),
-    ]),
-  };
-}
-
-export default function DocTable({ rows }) {
-  const { colCount, rows: normalized } = normalizeTableRows(rows);
+export default function DocTable({ rows, declaredWidth = null }) {
+  const { colCount, rows: normalized } = normalizeTableRows(rows, declaredWidth);
   if (!colCount) return null;
 
   return (

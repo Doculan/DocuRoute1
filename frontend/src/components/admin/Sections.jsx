@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import DocTable from "../DocTable";
+import { parseTableRow, isTableSeparator } from "../../docTable";
 
 const formatOCRContent = (content = "") => {
   return content
@@ -119,15 +120,6 @@ function computeDiff(oldText, newText) {
   return rows;
 }
 
-function parseRow(line) {
-  // Parse a pipe-delimited table row like "Cell A | Cell B | Cell C"
-  // Returns an array of non-empty cell strings, or null if not a valid table row.
-  if (!line.includes("|")) return null;
-  const cells = line.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
-  // Must have at least 2 real cells (guards against ||TABLE_START|| style markers)
-  return cells.length >= 2 ? cells : null;
-}
-
 function renderSectionContent(content) {
   // Strip legacy TABLE_START/TABLE_END markers from old extractions
   const cleaned = content
@@ -143,13 +135,16 @@ function renderSectionContent(content) {
   let tableRows = [];
   let inTable = false;
   let lastRow = null;
+  // Column count declared by a "| --- |" separator, when the content carries one.
+  let declaredWidth = null;
 
   const flushTable = () => {
     if (tableRows.length > 0) {
-      blocks.push({ type: "table", rows: tableRows });
+      blocks.push({ type: "table", rows: tableRows, declaredWidth });
       tableRows = [];
       lastRow = null;
     }
+    declaredWidth = null;
     inTable = false;
   };
 
@@ -161,9 +156,20 @@ function renderSectionContent(content) {
   lines.forEach((line) => {
     const normalizedLine = line.replace(/\s+/g, " ").trim();
 
+    // The separator is structure, not content: it states the column count and
+    // marks the row above it as the header, then drops out.
+    if (isTableSeparator(line)) {
+      const spec = parseTableRow(line);
+      if (spec) {
+        declaredWidth = spec.length;
+        inTable = true;
+      }
+      return;
+    }
+
     if (isTableHeaderLine(normalizedLine)) {
       inTable = true;
-      const headerRow = parseRow(normalizedLine);
+      const headerRow = parseTableRow(normalizedLine);
       if (headerRow) {
         tableRows.push(headerRow);
         lastRow = headerRow;
@@ -172,7 +178,7 @@ function renderSectionContent(content) {
     }
 
     if (inTable) {
-      const row = parseRow(line);
+      const row = parseTableRow(line);
       if (row) {
         tableRows.push(row);
         lastRow = row;
@@ -189,7 +195,7 @@ function renderSectionContent(content) {
     }
 
     // If a line looks like it can be the start of a table row even if we were not in table yet
-    const potentialRow = parseRow(line);
+    const potentialRow = parseTableRow(line);
     if (potentialRow) {
       inTable = true;
       tableRows.push(potentialRow);
@@ -217,7 +223,7 @@ function renderSectionContent(content) {
 
   return blocks.map((block, idx) => {
     if (block.type === "table") {
-      return <DocTable key={idx} rows={block.rows} />;
+      return <DocTable key={idx} rows={block.rows} declaredWidth={block.declaredWidth} />;
     }
 
     if (block.type === "inline-tagged") {

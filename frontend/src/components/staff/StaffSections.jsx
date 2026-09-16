@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import DiffView from "../DiffView";
 import DocTable from "../DocTable";
+import { parseTableRow, isTableSeparator } from "../../docTable";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
 // server diffs submitted text against content normalized the same way.
@@ -36,12 +37,6 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
-function parseRow(line) {
-  if (!line.includes("|")) return null;
-  const cells = line.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
-  return cells.length >= 2 ? cells : null;
-}
-
 function SectionContent({ content }) {
   const cleaned = (content || "")
     .replace(/\|\|TABLE_START\|\|/g, "")
@@ -52,18 +47,30 @@ function SectionContent({ content }) {
   let tableRows = [];
   let inTable = false;
   let lastRow = null;
+  let declaredWidth = null;
 
   const flushTable = () => {
     if (tableRows.length > 0) {
-      blocks.push({ type: "table", rows: tableRows });
+      blocks.push({ type: "table", rows: tableRows, declaredWidth });
       tableRows = [];
       lastRow = null;
     }
+    declaredWidth = null;
     inTable = false;
   };
 
   lines.forEach((line) => {
-    const row = parseRow(line);
+    // The separator states the column count, then drops out.
+    if (isTableSeparator(line)) {
+      const spec = parseTableRow(line);
+      if (spec) {
+        declaredWidth = spec.length;
+        inTable = true;
+      }
+      return;
+    }
+
+    const row = parseTableRow(line);
     if (row) {
       inTable = true;
       tableRows.push(row);
@@ -84,7 +91,7 @@ function SectionContent({ content }) {
     <div className="prose">
       {blocks.map((block, idx) => {
         if (block.type === "table") {
-          return <DocTable key={idx} rows={block.rows} />;
+          return <DocTable key={idx} rows={block.rows} declaredWidth={block.declaredWidth} />;
         }
         return <p key={idx}>{block.text}</p>;
       })}
