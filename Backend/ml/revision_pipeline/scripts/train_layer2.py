@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import json
 import random
 import sys
@@ -27,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from revision_pipeline import config                     # noqa: E402
 from revision_pipeline.data import (                     # noqa: E402
-    RevisionDataset, issue_rows, load_jsonl, verdict_ids,
+    RevisionDataset, issue_rows, load_jsonl, make_collate_fn, verdict_ids,
 )
 from revision_pipeline.layer2_model import (             # noqa: E402
     RevisionAssessmentModel, build_tokenizer,
@@ -40,6 +41,17 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def configure_threads(threads: int = None) -> int:
+    """torch defaults to physical cores; on this machine that is 6 of 8.
+
+    Using all logical cores measured ~9% faster for this workload, so the
+    default is every core unless told otherwise.
+    """
+    count = threads or os.cpu_count() or 1
+    torch.set_num_threads(count)
+    return count
 
 
 def pick_device(requested: str) -> torch.device:
@@ -126,6 +138,7 @@ def tune_thresholds(issue_true, issue_prob) -> dict:
 
 def train(args) -> dict:
     set_seed(args.seed)
+    threads = configure_threads(args.threads)
     device = pick_device(args.device)
 
     data_dir = Path(args.data_dir)
@@ -134,7 +147,8 @@ def train(args) -> dict:
     if not train_rows:
         raise SystemExit(f"no training rows found in {data_dir}")
 
-    print(f"device={device}  train={len(train_rows)}  val={len(val_rows)}")
+    print(f"device={device}  threads={threads}  max_length={args.max_length}  "
+          f"train={len(train_rows)}  val={len(val_rows)}")
 
     tokenizer = build_tokenizer()
     model = RevisionAssessmentModel(
@@ -144,11 +158,14 @@ def train(args) -> dict:
     model.issue_pos_weights = issue_pos_weights(issue_rows(train_rows)).to(device)
     model.to(device)
 
+    collate = make_collate_fn(tokenizer)
     train_loader = DataLoader(
-        RevisionDataset(train_rows, tokenizer), batch_size=args.batch_size, shuffle=True
+        RevisionDataset(train_rows, tokenizer, max_length=args.max_length),
+        batch_size=args.batch_size, shuffle=True, collate_fn=collate,
     )
     val_loader = DataLoader(
-        RevisionDataset(val_rows, tokenizer), batch_size=args.batch_size
+        RevisionDataset(val_rows, tokenizer, max_length=args.max_length),
+        batch_size=args.batch_size, collate_fn=collate,
     ) if val_rows else None
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -266,6 +283,10 @@ def main() -> int:
     ap.add_argument("--device", default="auto")
     ap.add_argument("--seed", type=int, default=config.SEED)
     ap.add_argument("--patience", type=int, default=2)
+    ap.add_argument("--threads", type=int, default=None,
+                    help="CPU threads (default: every core)")
+    ap.add_argument("--max-length", type=int, default=config.MAX_LENGTH,
+                    help="token budget per example; the main speed lever on CPU")
     ap.add_argument("--issue-loss-weight", type=float, default=1.0)
     ap.add_argument("--fold", default=None, help="fold id, recorded in label_config")
     ap.add_argument("--estimate-first", action="store_true",

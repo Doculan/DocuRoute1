@@ -44,7 +44,8 @@ def build_tokenizer(model_name: str = BASE_MODEL):
     return tokenizer
 
 
-def encode_pair(tokenizer, text_a: str, text_b: str, max_length: int = None):
+def encode_pair(tokenizer, text_a: str, text_b: str, max_length: int = None,
+                padding="max_length", return_tensors="pt"):
     """Tokenize one example.
 
     ``only_second`` truncates the context, never the change. If text_a alone
@@ -54,30 +55,54 @@ def encode_pair(tokenizer, text_a: str, text_b: str, max_length: int = None):
     """
     max_length = max_length or config.MAX_LENGTH
     ids = tokenizer(text_a, add_special_tokens=False)["input_ids"]
-    # Two [SEP]s, one [CLS], and at least a little room for context.
+    # Two [SEP]s, one [CLS], and a little room for context.
     budget = max_length - 8
     if len(ids) > budget:
-        text_a = _window_around_change(tokenizer, text_a, budget)
+        text_a = _window_around_change(tokenizer, ids, budget)
     return tokenizer(
         text_a,
         text_b or "",
         truncation="only_second",
         max_length=max_length,
-        padding="max_length",
-        return_tensors="pt",
+        padding=padding,
+        return_tensors=return_tensors,
     )
 
 
-def _window_around_change(tokenizer, text_a: str, budget: int) -> str:
-    """Keep the marked spans and as much surrounding wording as fits."""
-    tokens = text_a.split()
-    marks = [i for i, tok in enumerate(tokens) if tok in ("[DEL]", "[INS]")]
+def _window_around_change(tokenizer, ids: list, budget: int) -> str:
+    """Keep the marked spans and as much surrounding wording as fits.
+
+    Windowing is done on **token ids**, not words: the budget is a token count,
+    and a 248-word window can easily be 400 tokens. Slicing by words left text_a
+    over the limit, and ``only_second`` then had nothing left to truncate -
+    the tokenizer raised "Sequence to truncate too short".
+    """
+    marker_ids = {
+        tokenizer.convert_tokens_to_ids(token)
+        for token in ("[DEL]", "[/DEL]", "[INS]", "[/INS]")
+    }
+    marks = [i for i, tid in enumerate(ids) if tid in marker_ids]
     if not marks:
-        return " ".join(tokens[:budget])
-    centre = (marks[0] + marks[-1]) // 2
-    half = max(budget // 2, 1)
-    start = max(0, centre - half)
-    return " ".join(tokens[start:start + budget])
+        return tokenizer.decode(ids[:budget], skip_special_tokens=False)
+
+    # Head and tail rather than one centred window. A long deletion puts the
+    # midpoint inside the deleted span, so a centred window kept neither
+    # marker and the model could not see what had changed. This keeps the
+    # start of the change and the end of it, with a gap marked in between.
+    lead = 16
+    head_len = budget // 2
+    tail_len = max(budget - head_len - 4, 1)
+
+    head_start = max(0, marks[0] - lead)
+    head = ids[head_start:head_start + head_len]
+
+    tail_start = max(head_start + head_len, min(marks[-1] + lead, len(ids)) - tail_len)
+    tail = ids[tail_start:tail_start + tail_len]
+
+    decoded_head = tokenizer.decode(head, skip_special_tokens=False)
+    if not tail:
+        return decoded_head
+    return decoded_head + " ... " + tokenizer.decode(tail, skip_special_tokens=False)
 
 
 # -- model -----------------------------------------------------
@@ -222,7 +247,7 @@ class RevisionAssessmentModel(nn.Module):
             model_name=str(out / "encoder"),
             issue_loss_weight=label_config.get("issue_loss_weight", 1.0),
         )
-        heads = torch.load(out / "heads.pt", map_location=device)
+        heads = torch.load(out / "heads.pt", map_location=device, weights_only=True)
         model.verdict_head.load_state_dict(heads["verdict_head"])
         model.issue_head.load_state_dict(heads["issue_head"])
         model.verdict_class_weights = heads["verdict_class_weights"].to(device)

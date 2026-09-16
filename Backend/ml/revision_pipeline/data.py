@@ -96,11 +96,17 @@ class RevisionDataset(Dataset):
         text_a = build_text_a(
             row.get("section_number", ""), row.get("section_title", ""), marked
         )
-        enc = encode_pair(self.tokenizer, text_a, self._context(row), self.max_length)
+        # Unpadded: the collate function pads each batch to its own longest
+        # sequence. Padding everything to max_length made every batch as slow
+        # as the worst example in the dataset.
+        enc = encode_pair(
+            self.tokenizer, text_a, self._context(row), self.max_length,
+            padding=False, return_tensors=None,
+        )
 
         return {
-            "input_ids": enc["input_ids"].squeeze(0),
-            "attention_mask": enc["attention_mask"].squeeze(0),
+            "input_ids": enc["input_ids"],
+            "attention_mask": enc["attention_mask"],
             "verdict_labels": torch.tensor(
                 config.VERDICT_TO_ID[row["verdict"]], dtype=torch.long
             ),
@@ -113,6 +119,41 @@ class RevisionDataset(Dataset):
                 bool(row.get("issues_labeled", True)), dtype=torch.bool
             ),
         }
+
+
+def make_collate_fn(tokenizer):
+    """Pad each batch to its own longest sequence, not to max_length."""
+
+    def collate(batch: list) -> dict:
+        encoded = tokenizer.pad(
+            [{"input_ids": b["input_ids"], "attention_mask": b["attention_mask"]}
+             for b in batch],
+            padding=True,
+            return_tensors="pt",
+        )
+        return {
+            "input_ids": encoded["input_ids"],
+            "attention_mask": encoded["attention_mask"],
+            "verdict_labels": torch.stack([b["verdict_labels"] for b in batch]),
+            "issue_labels": torch.stack([b["issue_labels"] for b in batch]),
+            "issues_labeled": torch.stack([b["issues_labeled"] for b in batch]),
+        }
+
+    return collate
+
+
+def token_lengths(rows: list, tokenizer, context_lookup=None,
+                  max_length: int = None) -> list:
+    """Untruncated token length of every example, for sizing max_length."""
+    from .diffing import marked_text as _marked
+
+    lengths = []
+    for row in rows:
+        marked = row.get("marked") or _marked(row.get("old_text", ""), row.get("new_text", ""))
+        text_a = build_text_a(row.get("section_number", ""), row.get("section_title", ""), marked)
+        context = row.get("context") or (context_lookup(row) if context_lookup else "") or ""
+        lengths.append(len(tokenizer(text_a, context)["input_ids"]))
+    return lengths
 
 
 def verdict_ids(rows: list) -> list:

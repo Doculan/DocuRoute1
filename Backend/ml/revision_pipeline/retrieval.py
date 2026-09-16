@@ -35,6 +35,38 @@ def is_forms_section(subtitle: str) -> bool:
     return bool(_FORMS_TITLE_RE.match(subtitle or ""))
 
 
+_NUMBER_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)")
+
+
+def section_number(subtitle: str):
+    """Leading number of a subtitle as a tuple: "4.5 Foo" -> (4, 5)."""
+    match = _NUMBER_RE.match(subtitle or "")
+    if not match:
+        return ()
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def _strip_trailing_zero(number: tuple) -> tuple:
+    """(4, 0) -> (4,). In this corpus "4.0" is the parent of every "4.x"."""
+    return number[:-1] if len(number) > 1 and number[-1] == 0 else number
+
+
+def is_related_by_hierarchy(a: str, b: str) -> bool:
+    """True when one section is the other's parent or descendant.
+
+    Retrieving 4.5 as "context" for 4.0 tells the model nothing it does not
+    already have - 4.5 is part of what is being revised. Siblings (4.2 next to
+    4.5) are deliberately still allowed: those are exactly where a repeated
+    figure or role turns up, which is what the cross-reference check needs.
+    """
+    left = _strip_trailing_zero(section_number(a))
+    right = _strip_trailing_zero(section_number(b))
+    if not left or not right:
+        return False
+    shorter, longer = (left, right) if len(left) <= len(right) else (right, left)
+    return longer[: len(shorter)] == shorter
+
+
 @dataclass
 class Section:
     section_id: int
@@ -84,17 +116,26 @@ class DocumentIndex:
             return self._embedder.encode([text], show_progress_bar=False)
         return self._vectorizer.transform([text])
 
-    def top_k(self, query_text: str, exclude_section_id=None, k: int = 3) -> list:
-        """The k most similar *other* sections, most similar first."""
+    def top_k(self, query_text: str, exclude_section_id=None, k: int = 3,
+              exclude_subtitle: str = "") -> list:
+        """The k most similar *other* sections, most similar first.
+
+        ``exclude_subtitle`` drops the query's own parent and descendants: they
+        are part of what is being revised, not context for it.
+        """
         if not self.sections or self._matrix is None:
             return []
         scores = cosine_similarity(self._vector(_clean(query_text)), self._matrix)[0]
+
+        def keep(section) -> bool:
+            if section.section_id == exclude_section_id:
+                return False
+            if exclude_subtitle and is_related_by_hierarchy(exclude_subtitle, section.label):
+                return False
+            return True
+
         ranked = sorted(
-            (
-                (score, section)
-                for score, section in zip(scores, self.sections)
-                if section.section_id != exclude_section_id
-            ),
+            ((score, section) for score, section in zip(scores, self.sections) if keep(section)),
             key=lambda pair: (-pair[0], pair[1].order),
         )
         return [section for score, section in ranked[:k] if score > 0]
@@ -162,23 +203,26 @@ def format_context(parent_title: str, sections: list, max_chars: int = 1200) -> 
 
 def get_context(document_id, section_id, query_text: str, sections: list,
                 parent_title: str = "", k: int = 3, backend: str = "tfidf",
-                use_disk: bool = True) -> str:
+                use_disk: bool = True, section_subtitle: str = "") -> str:
     """Retrieve and format context for one revision.
 
     ``sections`` is every section of the document, so callers that already hold
     them (the dataset builder, the training loop) do not hit the database again.
     """
     index = build_index(document_id, sections, backend=backend, use_disk=use_disk)
-    related = index.top_k(query_text, exclude_section_id=section_id, k=k)
+    related = index.top_k(query_text, exclude_section_id=section_id, k=k,
+                          exclude_subtitle=section_subtitle)
     return format_context(parent_title, related)
 
 
 def related_texts(document_id, section_id, query_text: str, sections: list,
-                  k: int = 3, backend: str = "tfidf", use_disk: bool = True) -> list:
+                  k: int = 3, backend: str = "tfidf", use_disk: bool = True,
+                  section_subtitle: str = "") -> list:
     """Raw texts of the related sections - what Layer 1's cross-reference
     check consumes, as opposed to the formatted string Layer 2 reads."""
     index = build_index(document_id, sections, backend=backend, use_disk=use_disk)
-    return [s.content for s in index.top_k(query_text, exclude_section_id=section_id, k=k)]
+    return [s.content for s in index.top_k(query_text, exclude_section_id=section_id,
+                                           k=k, exclude_subtitle=section_subtitle)]
 
 
 # -- Django-backed convenience ---------------------------------

@@ -110,8 +110,45 @@ alone is 254 MB).
 
 | Bug | Fix |
 |---|---|
+| `_window_around_change` sliced by **words** while the budget was in **tokens**, so an oversized change stayed over the limit and `only_second` had nothing left to truncate — the tokenizer raised *"Sequence to truncate too short"* | Window on token ids |
+| A long deletion put the window's midpoint inside the deleted span, so **neither** `[DEL]` nor `[INS]` survived and the model could not see what changed | Keep head **and** tail with a marked gap between |
+| Retrieval returned the query's own subsection (`4.0` retrieved `4.5`) | Parent/descendant exclusion; siblings still allowed |
 | Threshold tuning collapsed to 0.05 for **every** label, so all ten issues fired on every example. Labels with no validation positives score F1 = 0 at every cut-off, so the search kept whichever value it tried first | Labels with no positives keep the 0.5 default; the search runs high-to-low so ties keep the more conservative cut |
 | `float(out.loss)` on a tensor that still required grad | `.detach().item()` |
+
+---
+
+## Training budget and the fold decision
+
+Measured on this machine (8 cores, no GPU), DistilBERT at batch size 8:
+
+| Setting | ms/example | min/fold (2,180 ex × 3 epochs) |
+|---|---|---|
+| threads 6 (torch default), max_length 384 | 1547 | 169 |
+| threads 8, max_length 384 | 1412 | 154 |
+| **threads 8, max_length 256** | **830** | **90** |
+| threads 8, max_length 256, short context | 791 | 86 |
+
+**`max_length` is the lever, not padding.** Dynamic padding was measured at
+**0.88× — slightly slower**, because `truncation="only_second"` expands the
+retrieved context to fill whatever budget is left, so every batch already hits
+the cap. It is kept anyway: once Phase 4 produces short units (linearised table
+rows), sequences will vary and it will start to pay. Using all 8 cores rather
+than torch's default 6 is worth ~9%.
+
+**Token lengths** across 109 real section-sized examples: the full pair is
+p50 381 / p95 1321 tokens, so **`max_length=256` covers only 3.7%** of whole
+pairs — nowhere near 95%. The more useful figure is the change alone
+(`text_a`, which must not be truncated): p50 131, p75 266, p90 569. At
+`max_length=256` the change survives whole for **73.4%** of examples; at 384,
+82.6%. These are measured on *whole sections*; real revision units will be
+smaller, so re-measure after Phase 4 before lowering the default.
+
+**Fold decision: Colab.** The best local figure, 86 min/fold, is over the
+~1 hour bar, so `scripts/train_on_colab.ipynb` clones the repo, trains each
+fold on a T4, saves after every fold (a disconnect costs one fold, not the
+run), and zips the weights for download into `ml/saved_models/`.
+`MAX_LENGTH` stays **384** — the CPU compromise is unnecessary on a GPU.
 
 ---
 
