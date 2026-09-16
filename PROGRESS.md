@@ -22,7 +22,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 |---|---|
 | 0 — Explore and report | **Done** (CHECKPOINT 0 approved) |
 | 1 — Prereq fixes + Layer 1 rules | **Done** (awaiting CHECKPOINT 1) |
-| 2 — Layer 2 context model | Not started |
+| 2 — Layer 2 context model | **Done** (awaiting CHECKPOINT 2) |
 | 3 — Layer 3 fusion + Layer 4 explanation | Not started |
 | 4 — Dataset creation | Not started |
 | 5 — Train and evaluate | Not started |
@@ -77,6 +77,61 @@ spec's 10 labels.
 | 6 | Add `pytest` and `sentence-transformers` to `requirements.txt`. |
 | 7 | Clause **7.5.2 is covered by the system, not the model** — document no., revision no. and effectivity date are entered manually and handled by the audit/document-control features. The ISO map for this build is 6.3, 7.5.3, 5.3. |
 | 8 | Dataset size (final form of decision 1): widen units with the A3 table rows, keep the 25/unit cap, accept ~2,000–2,400 examples, document the shortfall against 3,000 in the dataset card. |
+| 9 | **"List of Forms" (5.0) sections are not revision units.** No dataset examples are generated from them, and the AI assessment returns *"not assessed — manual admin review"* instead of a verdict. Form **names** are still mined from them for `entities.json`, because Layer 1 uses them to detect deletions inside procedures. The A6 "delete a form from 5.0" contradiction generator is dropped. Cost: 1 usable unit (110 → 109). |
+
+---
+
+## Phase 2 — what was built
+
+- `retrieval.py` — per-document TF-IDF index (optional MiniLM backend), disk +
+  memory cache, `get_context()` and `related_texts()`. Knows about decision 9:
+  a List of Forms section is retrievable **as context** but is never a query.
+- `layer2_model.py` — one DistilBERT encoder, two heads. Verdict head uses
+  weighted cross-entropy; issue head uses BCE with per-label `pos_weight`
+  capped at 20. Rows with `issues_labeled=false` are masked out of the issue
+  loss. `save()`/`load()` write an encoder folder, `heads.pt`,
+  `label_config.json` (with the pipeline fingerprint) and `thresholds.json`.
+- `data.py` — JSONL loader (accepts `.gz`), multi-hot conversion, and a
+  `RevisionDataset` that rebuilds context via `retrieval.py` rather than
+  reading it from the dataset file.
+- `scripts/train_layer2.py` — all the required args, early stopping on
+  *verdict macro-F1 + issues micro-F1*, per-label threshold tuning on the
+  validation split, per-epoch CSV log, and `--estimate-first` for a 20-step
+  timing run.
+
+### Smoke test (60 synthetic examples, CPU, 2 epochs)
+
+Trains: loss 1.69 → 0.76, verdict macro-F1 1.0. ~55 s/epoch on 45 examples at
+batch size 4. Save/load round-trips, the fingerprint matches, and a held-out
+role swap predicts `reject` at 0.94. Artifacts deleted afterwards (the encoder
+alone is 254 MB).
+
+### Bugs the smoke test caught
+
+| Bug | Fix |
+|---|---|
+| Threshold tuning collapsed to 0.05 for **every** label, so all ten issues fired on every example. Labels with no validation positives score F1 = 0 at every cut-off, so the search kept whichever value it tried first | Labels with no positives keep the 0.5 default; the search runs high-to-low so ties keep the more conservative cut |
+| `float(out.loss)` on a tensor that still required grad | `.detach().item()` |
+
+---
+
+## Queued — to do after Phase 2, before Phase 4
+
+1. **Re-extract the manuals with the new A3 table format.** Back up
+   `db.sqlite3` first, and **report beforehand what happens to existing
+   revisions** linked to sections that get replaced (`on_delete=CASCADE` takes
+   `ManualRevision` and `SectionHistory` with the section). Then re-run entity
+   mining and recompute usable units and `--per-section`.
+2. **Extend `clean_section_content` to clean subtitles too.** It currently
+   cleans `content` only, which is why `FAM 8.02` still stores
+   `'5.0 LIST OF FORMS <!-- End of picture text -->'`. Decision 9 matches on
+   that title, so the artifact has to go.
+3. **`role_swap` must handle combined roles.** Reducing `"X/Y"` or `"X or Y"`
+   to a single party is `responsibility_changed` — never an approve example.
+   30 such entries exist in `entities.json` (e.g. `BAC Chairperson/ University
+   President`, `Accounting Staff-1 or 6`).
+4. **`DATASET_CARD.md` must report example counts per section type**
+   (Objectives / Scope / Policies / Procedures).
 
 ---
 
@@ -92,6 +147,30 @@ spec's 10 labels.
   column: `['1', 'Appropriate', 'Needs Revision']`. Pre-existing, owned by a
   teammate, not touched by this overhaul.
 - ISO clause map for this build is **6.3, 7.5.3, 5.3** (7.5.2 dropped, see #4).
+
+---
+
+## Corpus section structure (all 19 documents)
+
+Every document has exactly the same five top-level sections. There are **no
+References, Definitions or Annexes sections anywhere in the corpus** — the only
+reference-only section is List of Forms.
+
+| Top-level title | Documents |
+|---|---|
+| `N.0 OBJECTIVES` (2 as `OBJECTIVE`) | 19 |
+| `N.0 SCOPE` | 19 |
+| `N.0 POLICIES` | 19 |
+| `N.0 PROCEDURES` (2 as `PROCEDURE`) | 19 |
+| `5.0 LIST OF FORMS` | 19 |
+
+The forms section is titled `5.0 LIST OF FORMS` in all 19, so decision 9 can
+match on that string plus the singular/plural variants above.
+
+**One extraction artifact found:** `FAM 8.02` stores its section as
+`'5.0 LIST OF FORMS <!-- End of picture text -->'`. The `clean_section_content`
+command cleans `content` but never `subtitle`, so HTML comments in headings
+survived. One row affected; worth extending that command.
 
 ---
 
@@ -133,10 +212,12 @@ spec's 10 labels.
 
 ### Open items for Phase 1
 
-- `entities_draft.json` is mined but **not yet human-reviewed** (188 roles,
-  41 offices, 67 systems, 56 forms). It contains noise (e.g. "LIST OF FORMS"
-  as a form) and misses some real systems (e.g. SIAS). Review and save as
-  `entities.json` before the dataset build in Phase 4.
+- `entities.json` has been produced by `scripts/clean_entities.py` from the
+  mined draft: **171 roles, 34 offices, 73 systems, 54 forms**. Headings, bare
+  category words and near-duplicates removed; SIAS and eNGAS added by hand.
+  Still worth a human read before the Phase 4 dataset build. Role quality is
+  limited by the legacy flattened tables and should improve once the manuals
+  are re-extracted with the new table format.
 - `scripts/build_glossary_draft.py` (TF-IDF term mining) is **not yet written**;
   `glossary.txt` is seeded by hand and sufficient for the pipeline to run.
 
