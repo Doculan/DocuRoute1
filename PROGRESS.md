@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Ready** — see PHASE5_TRAINING.md; needs the push, then Colab |
+| 5 — Train and evaluate | **Running** — pushed 2026-09-17 (`607469a`); Colab training started, awaiting results |
 | 6 — Wire into the app | Not started |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -867,11 +867,27 @@ Already on `origin/main`:
 - **`Backend/db.sqlite3`**, which holds the extracted section text - including
   the bank account numbers the dataset now redacts.
 
-Redacting the dataset does nothing about any of this. It is the owner's call;
-nothing has been changed. The options are to make the repository private, to
-remove the files from history and force-push, or to decide the manuals are
-public documents. Note that making it private does not retract copies already
-taken, and a force-push invalidates every existing clone.
+Redacting the dataset does nothing about any of this. The options are to make
+the repository private, to remove the files from history and force-push, or to
+decide the manuals are public documents. Note that making it private does not
+retract copies already taken, and a force-push invalidates every existing
+clone.
+
+**Decided 2026-09-17: the repository stays public for now.** Eugene does not
+have admin access and the repository owner is unavailable, so neither making it
+private nor rewriting history is possible at the moment. This is a deferral,
+not a resolution - it should be revisited when the owner is reachable.
+
+What follows from that, for now:
+
+- Colab clones the repository **without a token** (the prompt in cell 2 is left
+  blank), which is what a public repository allows.
+- `Backend/db.sqlite3` is no longer tracked as of commit `0f377fd`, so it will
+  not appear in future commits - but **it is still reachable in the history**
+  and served by `raw.githubusercontent.com` at earlier commits. Verified: the
+  blob at `291744e` still returns 200 to an anonymous request. Untracking
+  stops the bleeding; it does not undo it.
+- Nothing further should be pushed while training runs.
 
 
 
