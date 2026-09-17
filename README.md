@@ -179,12 +179,59 @@ Open **http://localhost:5173** and sign in.
 | API | http://127.0.0.1:8000/api/ |
 | Django admin | http://127.0.0.1:8000/admin/ |
 
+### On a LAN — several devices at once
+
+For a demonstration with staff and admin on separate machines. The frontend
+calls the API by **relative** path, so the browser sends every request to
+whichever host served the page and Vite's proxy (`vite.config.js`) forwards it
+to Django. That is what makes a second device work, and it keeps everything on
+one origin, so no CORS or `ALLOWED_HOSTS` change is needed.
+
+```bash
+# Backend/ — listen on every interface, not just loopback
+py manage.py runserver 0.0.0.0:8000
+
+# frontend/ — Vite prints the LAN address; host is already set in the config
+npm run dev
+```
+
+Other devices open the **Network** URL Vite prints, e.g.
+`http://192.168.1.14:5173`. Do not give them port 8000; everything goes
+through 5173.
+
+**Windows Firewall.** The first run prompts — allow on **Private networks**.
+If the prompt is missed, from an elevated PowerShell:
+
+```powershell
+New-NetFirewallRule -DisplayName "DocuRoute demo" -Direction Inbound `
+  -Protocol TCP -LocalPort 5173,8000 -Action Allow -Profile Private
+```
+
+Also confirm the Wi-Fi profile is **Private**. On a Public profile Windows
+blocks inbound connections whatever the rule says.
+
+**Pre-warm the model before anyone connects.** The first assessment in a fresh
+server process spends about 14 seconds loading the encoder from disk; every
+one after that takes around 0.3 s. Once the backend is up, open the review
+screen yourself and assess one revision. That pays the cost before the
+audience is watching. Restarting the backend resets it, so warm it again.
+
+The model is loaded once per process and shared, so concurrent assessments do
+not multiply memory — three at once peak at about 740 MB in total. On a
+machine with little free RAM, close other applications first: paging is what
+turns a 14-second load into a minute.
+
+**Two roles, two browsers.** Tokens live in `localStorage`, which is per
+browser profile — sign in as staff and admin in different browsers, or on
+different devices.
+
+**Campus and guest Wi-Fi often isolate clients** from each other, which blocks
+this entirely and is invisible until you try it. Test on the actual network
+beforehand; a phone hotspot is the usual fallback.
+
 ---
 
 ## 7. Things worth knowing
-
-**`db.sqlite3` is committed.** Pulling overwrites your local database, including
-any accounts or test data you created.
 
 **`Backend/db.sqlite3` is no longer tracked** (it holds the extracted manual
 text and the repository is public, and a binary file can never merge). If you
@@ -202,6 +249,20 @@ section 5 for how to back it up.
 **`SECRET_KEY` is hardcoded in `Backend/backend/settings.py` and `DEBUG = True`.**
 Fine for coursework, but this must move to an environment variable before the
 project is ever deployed anywhere public.
+
+---
+
+## 7b. Deploying it
+
+`runserver` is for development and the demonstration. `DEPLOYMENT.md` covers
+the production stack (WSGI server behind a reverse proxy), the environment
+variables for secrets, hosts and the database, how the model weights are
+delivered outside git, the measured memory and timing requirements, and why
+SQLite was kept for development.
+
+Configuration lives in the environment — see `Backend/.env.example`. Every
+default matches how the project already runs, so an absent `.env` changes
+nothing.
 
 ---
 

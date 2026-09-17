@@ -14,20 +14,85 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+# ── Configuration from the environment ────────────────────────
+# Deployment differs from development in configuration, not in code. Every
+# default below is the value this project has always used, so a checkout with
+# no environment set behaves exactly as before - and a server can point at
+# MySQL or PostgreSQL without editing this file.
+#
+# Deliberately written against the standard library: adding python-dotenv or
+# dj-database-url would make an unconfigured checkout fail on a missing
+# import, which is precisely the failure this is meant to prevent. See
+# DEPLOYMENT.md.
+
+
+def _load_env_file(path):
+    """Read KEY=value lines from a .env file, if there is one.
+
+    Real environment variables always win, so exporting a value in the shell
+    overrides the file rather than the other way round.
+    """
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except (OSError, UnicodeDecodeError):
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, _, value = line.partition('=')
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_env_file(BASE_DIR / '.env')
+
+
+def _env(name, default=None):
+    value = os.environ.get(name)
+    return default if value is None or value == '' else value
+
+
+def _env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None or value == '':
+        return default
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _env_list(name, default):
+    value = os.environ.get(name)
+    if value is None or value == '':
+        return default
+    return [item.strip() for item in value.split(',') if item.strip()]
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-59qjmo+gjp*ud35!n_ckqg)qdqaok+p8_e$y4e+$7=r%gj%q9-'
+# The default is the development key that has always been in this file, and it
+# is in version control - so it is a development key only. Production must set
+# DJANGO_SECRET_KEY. DEPLOYMENT.md says how to generate one.
+SECRET_KEY = _env(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-59qjmo+gjp*ud35!n_ckqg)qdqaok+p8_e$y4e+$7=r%gj%q9-',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool('DJANGO_DEBUG', True)
 
-ALLOWED_HOSTS = ["*"]
+# "*" suits the LAN demo, where the host is whatever IP the laptop happens to
+# have. A deployment should name its hostnames: DJANGO_ALLOWED_HOSTS=a.b,c.d
+ALLOWED_HOSTS = _env_list('DJANGO_ALLOWED_HOSTS', ['*'])
 
 
 # Application definition
@@ -93,12 +158,103 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+# ── Database ──────────────────────────────────────────────────
+# Order of precedence: DATABASE_URL, then discrete DB_* variables, then the
+# SQLite file this project has always used. Switching to MySQL or PostgreSQL
+# is therefore a deployment setting, not a code change.
+#
+# Why SQLite is still the default: measured on the target laptop, three
+# simultaneous assessments complete in 0.61 s wall and every write in this
+# application is a single row held for milliseconds, because the slow work -
+# inference, OCR - finishes before the write begins. DEPLOYMENT.md has the
+# numbers.
+
+_ENGINES = {
+    'sqlite': 'django.db.backends.sqlite3',
+    'sqlite3': 'django.db.backends.sqlite3',
+    'mysql': 'django.db.backends.mysql',
+    'postgres': 'django.db.backends.postgresql',
+    'postgresql': 'django.db.backends.postgresql',
+    'postgis': 'django.contrib.gis.db.backends.postgis',
 }
+
+# WAL lets readers carry on while a write is in flight, and the busy timeout
+# makes a concurrent writer wait its turn instead of raising "database is
+# locked". Both are no-ops on any other engine.
+SQLITE_OPTIONS = {
+    'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
+    'timeout': 20,
+}
+
+
+def _database_from_url(url):
+    """Parse postgres://user:pw@host:port/name or sqlite:///path/to.db."""
+    from urllib.parse import unquote, urlparse
+
+    parsed = urlparse(url)
+    engine = _ENGINES.get(parsed.scheme.split('+')[0].lower())
+    if engine is None:
+        raise ImproperlyConfigured(
+            'DATABASE_URL has an unsupported scheme: {!r}. '
+            'Expected one of: {}.'.format(parsed.scheme, ', '.join(sorted(_ENGINES)))
+        )
+
+    if engine.endswith('sqlite3'):
+        name = unquote(parsed.path or '')
+        # sqlite:///relative.db and sqlite:////absolute/path both occur
+        name = name[1:] if name.startswith('/') and name[2:3] == ':' else name
+        return {
+            'ENGINE': engine,
+            'NAME': name or str(BASE_DIR / 'db.sqlite3'),
+            'OPTIONS': dict(SQLITE_OPTIONS),
+        }
+
+    config = {
+        'ENGINE': engine,
+        'NAME': unquote((parsed.path or '').lstrip('/')),
+        'USER': unquote(parsed.username or ''),
+        'PASSWORD': unquote(parsed.password or ''),
+        'HOST': parsed.hostname or '',
+        'PORT': str(parsed.port or ''),
+        'CONN_MAX_AGE': int(_env('DJANGO_CONN_MAX_AGE', 60)),
+    }
+    if 'mysql' in engine:
+        # utf8mb4 is the only encoding that stores the full range of
+        # characters the manuals actually contain.
+        config['OPTIONS'] = {'charset': 'utf8mb4'}
+    return config
+
+
+_database_url = _env('DATABASE_URL')
+_db_engine = _env('DB_ENGINE')
+
+if _database_url:
+    DATABASES = {'default': _database_from_url(_database_url)}
+elif _db_engine:
+    _engine = _ENGINES.get(_db_engine.lower(), _db_engine)
+    DATABASES = {
+        'default': {
+            'ENGINE': _engine,
+            'NAME': _env('DB_NAME', 'docuroute'),
+            'USER': _env('DB_USER', ''),
+            'PASSWORD': _env('DB_PASSWORD', ''),
+            'HOST': _env('DB_HOST', '127.0.0.1'),
+            'PORT': _env('DB_PORT', ''),
+            'CONN_MAX_AGE': int(_env('DJANGO_CONN_MAX_AGE', 60)),
+        }
+    }
+    if 'mysql' in _engine:
+        DATABASES['default']['OPTIONS'] = {'charset': 'utf8mb4'}
+    elif 'sqlite' in _engine:
+        DATABASES['default']['OPTIONS'] = dict(SQLITE_OPTIONS)
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _env('SQLITE_PATH', BASE_DIR / 'db.sqlite3'),
+            'OPTIONS': dict(SQLITE_OPTIONS),
+        }
+    }
 
 
 # Password validation
@@ -174,4 +330,4 @@ X_FRAME_OPTIONS = 'ALLOWALL'
 # Both are kept so the two can be compared. If v2 is selected and its weights
 # are not present, the view says so rather than pretending; the rule layer
 # still answers on its own.
-REVISION_AI_PIPELINE = "v2"
+REVISION_AI_PIPELINE = _env("REVISION_AI_PIPELINE", "v2")

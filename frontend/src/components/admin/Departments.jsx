@@ -35,7 +35,7 @@ export default function Departments() {
     if (!newDeptName.trim()) return;
     try {
       await axios.post(
-        "http://127.0.0.1:8000/api/departments/create/",
+        "/api/departments/create/",
         { name: newDeptName }, authHeaders
       );
       setNewDeptName("");
@@ -50,7 +50,7 @@ export default function Departments() {
     if (!confirm(`Delete "${name}"? This will also delete all its manuals.`)) return;
     try {
       await axios.delete(
-        `http://127.0.0.1:8000/api/departments/${id}/delete/`,
+        `/api/departments/${id}/delete/`,
         authHeaders
       );
       showMessage(`🗑️ "${name}" deleted.`);

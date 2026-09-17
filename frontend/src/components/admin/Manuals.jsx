@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
-const BACKEND_BASE_URL = "http://127.0.0.1:8000";
+// Empty on purpose: every request goes out as a relative path, so the
+// browser sends it to whatever host served the page and Vite's proxy
+// (vite.config.js) forwards it to Django. That is what lets a second
+// device on the LAN work - "127.0.0.1" would mean *that* device - and it
+// keeps the browser on one origin, so CORS never enters into it.
+const BACKEND_BASE_URL = "";
 
 export default function Manuals({ initialSearch = "" }) {
   const [manuals, setManuals] = useState([]);

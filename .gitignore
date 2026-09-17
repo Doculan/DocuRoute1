@@ -33,3 +33,12 @@ Backend/ml/datasets/**/_final/
 # The working database. It holds the extracted manual text; it is rebuilt by
 # migrating and uploading, and it is not something two people can merge.
 Backend/db.sqlite3
+# WAL mode keeps a write-ahead log and a shared-memory index beside the
+# database. Both are transient and rebuilt on connect.
+Backend/db.sqlite3-wal
+Backend/db.sqlite3-shm
+
+# Real configuration: secret key, database credentials. Only .env.example,
+# which holds no real values, belongs in version control.
+.env
+Backend/.env
