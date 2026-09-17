@@ -256,11 +256,8 @@ spot mechanical edits, which is not the task.
 
 ## Queued — to do after Phase 2, before Phase 4
 
-1. **Re-extract the manuals with the new A3 table format.** Back up
-   `db.sqlite3` first, and **report beforehand what happens to existing
-   revisions** linked to sections that get replaced (`on_delete=CASCADE` takes
-   `ManualRevision` and `SectionHistory` with the section). Then re-run entity
-   mining and recompute usable units and `--per-section`.
+1. ~~Re-extract the manuals with the new A3 table format.~~ **Done** — see
+   "Re-extraction" below.
 2. **Extend `clean_section_content` to clean subtitles too.** It currently
    cleans `content` only, which is why `FAM 8.02` still stores
    `'5.0 LIST OF FORMS <!-- End of picture text -->'`. Decision 9 matches on
@@ -281,6 +278,84 @@ spot mechanical edits, which is not the task.
 
 ---
 
+## Re-extraction (done, 2026-09-17)
+
+Ran **in place**, matching stored sections to fresh ones by document + section
+number. All **197 stored sections matched**, zero orphans, so no row was ever
+deleted and `on_delete=CASCADE` never fired. One section was created
+(`SDM 3.06 :: 5.1 Certificate of Good Moral Character`, 0 words, and a forms
+subsection so not a revision unit under decision 9).
+
+Verified afterwards: **198 sections** in the 19 documents, **2 revisions** and
+**3 history rows** still attached to their original section ids, and sections
+carrying a `| --- |` separator row went **1 → 46**.
+
+Safety copy taken first:
+`Backend/ml/exports/revisions_and_history_20260917-083912.json`, plus
+`db.sqlite3.bak-prereextract-20260917-085407`.
+
+**On the "1 → 46" figure.** 46 sections contained pipe characters before, but
+only **one** had a real separator row (`| --- | --- |`, the line that declares
+the column count and marks the header) — SDM 3.03, which had been updated by
+hand during testing. The other 45 had pipes only as cell delimiters in
+flattened rows. The two numbers matching at 46 is a coincidence.
+
+**COE** is a `Manual` row pointing at `HRM_4_MoGMsSE.02.pdf`, MD5-identical to
+`HRM_4.02.pdf` — the same document uploaded twice, into the COE department.
+It is excluded from entity mining and from the dataset via
+`_corpus.EXCLUDED_DOCUMENTS`; `load_documents()` returns 19 documents with COE
+absent.
+
+### Extraction artefacts — cleaning pass added
+
+These are damage from the PDF text layer, **not mistakes anyone wrote**.
+
+| Artefact | Before | After |
+|---|---:|---:|
+| Glued words (`theBookkeeper`) | 18 | **0** |
+| Digit glue (`3.Undergraduate`) | 30 | **0** |
+| Colon glue (`Undergraduate:If`) | 4 | **0** |
+| Merged steps in one cell (`1. … 2. …`) | 17 | **0** |
+| Stray backtick (`Responsibility\``) | 1 | **0** |
+| Stray punctuation lines | 0 | **0** |
+
+`ocr_engine.repair_artefacts()` handles the glue; merged steps are split into
+one row per step with the role inherited from the row above (Appendix A3).
+Two ordering bugs were found doing this: the repair originally ran *before*
+Markdown stripping, so `3.**Undergraduate:**If` showed an asterisk where the
+patterns expected a letter; and the step splitter required a full stop, so a
+step ending `…(VPSDAS) 2. Checks…` was missed.
+
+**A7 correction:** these artefacts must **never** be used as `real_typo_fix`
+examples. They are extraction damage, not human error, so "correcting" one is
+not a revision a person would ever submit. `real_typo_fix` may only use
+genuine spelling and grammar errors present in the source document.
+
+**Revision 12's `diff_text` is deliberately left unchanged.** Its baseline
+section content changed, so the stored diff no longer reproduces against the
+current text. Rewriting a historical record to match a later extraction is
+worse than a stale diff; the original is in the export either way.
+
+### Recomputed after cleaning
+
+- **Entities:** 129 roles, 27 offices, 67 systems, 53 forms (was 168/31/73/53).
+  The drop is the cleaning working — glued and merged variants no longer mined
+  as separate entities.
+- **Usable units: 562** (75 prose + 487 table rows), counting each table row as
+  a unit per A3. Previously 109 prose-only.
+- **`--per-section`:** 3.6 reaches 2,000; **5.3 reaches the 3,000 target**,
+  far below the 25/unit cap (ceiling 14,050). **This supersedes decision 8** —
+  the 3,000 target is now comfortably reachable and the shortfall note is no
+  longer needed.
+- **Retrieval re-verified:** `4.0` no longer returns its own `4.5`; `4.5` gets
+  sibling `4.4` but not parent `4.0`.
+- **Token lengths** (whole sections, 109 measured): text_a p50 140, p95 727.
+  `max_length=384` keeps the change whole for 83.5%. Phase 4 units are mostly
+  single table rows and will be much shorter — **re-measure on the dataset
+  itself before settling `max_length`.**
+
+---
+
 ## Known issues / deviations
 
 - **PyPI unreachable from the agent sandbox** (GitHub 200, PyPI times out).
@@ -289,6 +364,17 @@ spot mechanical edits, which is not the task.
   sentence-transformers; the global interpreter does not. Eugene's `py` resolves
   to the venv because it is activated in his shell; an agent shell must call
   `venv/Scripts/python.exe` explicitly. **The venv is the environment of record.**
+- **The 2 revisions and 3 history rows are test entries, not real-world data.**
+  They must not be treated as an admin-decided evaluation set.
+  **Revision 13 is kept as a Phase 6 smoke test:** pending, on
+  `FAM 6.02 :: 1.0 OBJECTIVES`, with no `change_reason`. Expected assessment —
+  a hard fail for the missing reason (clause 6.3), plus a flag for
+  `"accounts"` → `"payments"`.
+- **Known gap (clause 7.5.3): admins can edit sections directly**, through the
+  Sections screen, bypassing the revision flow entirely. Such an edit gets no
+  AI assessment, no `change_reason` and no approval step - only a
+  `SectionHistory` row. The controlled-change path is therefore only as strong
+  as the convention that admins use it.
 - `ml/datasets/train_manual_augmented.csv` has mixed label encodings in one
   column: `['1', 'Appropriate', 'Needs Revision']`. Pre-existing, owned by a
   teammate, not touched by this overhaul.

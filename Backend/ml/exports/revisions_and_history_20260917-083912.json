@@ -1,0 +1,84 @@
+{
+  "exported_at": "20260917-083912",
+  "why": "Safety copy taken before any re-extraction. Admin-decided revisions are the real-world test set and cannot be regenerated.",
+  "revisions": [
+    {
+      "id": 12,
+      "status": "rejected",
+      "manual": "FAM 6.02",
+      "manual_id": 205,
+      "section_id": 8988,
+      "section_subtitle": "4.0 PROCEDURES",
+      "section_content_at_export": "4.1 Accounts Receivable from the Undergraduate and Masters/Doctoral Students\nResponsibility` | Activity\nStudent | 1. Submits Application for Student Records, Enrolment and Assessment Form (EAF) or Clearance to Accounting Staff-4\nAccounting Staff-4 | 2. Checks the ledger/account of the student using the Student Information and Accounting System (SIAS).\n3.Undergraduate:If the student has accountabilities prior to the implementation of the Free Higher Education, advises the student to settle them first.\nMasters/Doctoral:If the student has accountabilities, advises the student to settle them first.\nStudent | 4. Settles accountabilities at the Cash Management Office. Informs Accounting Staff-4 and submits proof.\nAccounting Staff-4 | 5. If there are no more accountabilities, signs the Application forStudentRecords,EAF, orClearance ofthe student.\n4.2 Accounts Receivable from the Integrated Laboratory School (ILS) and Preparatory Learning School (PLC) Students\nResponsibility | Activity\nAccounting Staff-4 | 1. Receives the Clearances of the students from the Adviser. 2. Checks the ledger of the students for their accountabilities.\n3. If the student has no accountabilities already, countersigns the Clearance and forwards them to the Accountant.\nAccountant | 4. If there are accountabilities, returns the Clearance to the Adviser so as to advise and inform the parents to settle them first.\nAdviser | 5. Informs and advises parents/students of their accountabilities to be settled.\nStudent/parent | 6. Settles accountabilities with the Cash Management Office. Returns the Clearance to the Accountant together with the Official Receipt as proof of payment.\nAccountant | 7. Ifthere arenomore accountabilities, signs the Clearance.\n4.3 Accounts Receivable from Commission on Higher Education (CHED) relative to Free Higher Education\nResponsibility | Activity\nAccountant | 1. Thirty (30) days after the submission of the Free Higher Education Billing to the Commission on Higher Education (CHED), monitors if the payment has been downloaded already to the account of the University\n. 2. If there is still no payment after 30 days from the submission of the billing, communicates weekly to CHED through e-mail to their official e-mail address ra10931freehe.unifast@ched.gov.ph so as to keep us abreast with the status and comply any deficiencies if there are. Carbon Copies (CC) of the e-mail will also be sent to the University President, VP for Administration and Finance, CAO-Finance, Scholarship Coordinator, and other concerned officials/ offices.\n3.Complies any deficiencies.",
+      "submitted_by": "eugene_l",
+      "submitted_at": "2026-09-13T14:58:54.086Z",
+      "reviewed_at": "2026-09-13T15:01:00.876Z",
+      "reviewed_by": null,
+      "reviewer_notes": "",
+      "change_reason": "",
+      "proposed_content": "4.1 Accounts Receivable from the Undergraduate and Masters/Doctoral Students\nResponsibility` | Activity\nStudent | 1. Must drop out of school now\nAccounting Staff-4 | 2. Checks the ledger/account of the student using the Student Information and Accounting System (SIAS).\n3.Undergraduate:If the student has accountabilities prior to the implementation of the Free Higher Education, advises the student to settle them first.\nMasters/Doctoral:If the student has accountabilities, advises the student to settle them first.\nStudent | 4. Settles accountabilities at the Cash Management Office. Informs Accounting Staff-4 and submits proof.\nAccounting Staff-4 | 5. If there are no more accountabilities, signs the Application forStudentRecords,EAF, orClearance ofthe student.\n4.2 Accounts Receivable from the Integrated Laboratory School (ILS) and Preparatory Learning School (PLC) Students\nResponsibility | Activity\nAccounting Staff-4 | 1. Receives the Clearances of the students from the Adviser. 2. Checks the ledger of the students for their accountabilities.\n3. If the student has no accountabilities already, countersigns the Clearance and forwards them to the Accountant.\nAccountant | 4. If there are accountabilities, returns the Clearance to the Adviser so as to advise and inform the parents to settle them first.\nAdviser | 5. Informs and advises parents/students of their accountabilities to be settled.\nStudent/parent | 6. Settles accountabilities with the Cash Management Office. Returns the Clearance to the Accountant together with the Official Receipt as proof of payment.\nAccountant | 7. Ifthere arenomore accountabilities, signs the Clearance.\n4.3 Accounts Receivable from Commission on Higher Education (CHED) relative to Free Higher Education\nResponsibility | Activity\nAccountant | 1. Thirty (30) days after the submission of the Free Higher Education Billing to the Commission on Higher Education (CHED), monitors if the payment has been downloaded already to the account of the University\n. 2. If there is still no payment after 30 days from the submission of the billing, communicates weekly to CHED through e-mail to their official e-mail address ra10931freehe.unifast@ched.gov.ph so as to keep us abreast with the status and comply any deficiencies if there are. Carbon Copies (CC) of the e-mail will also be sent to the University President, VP for Administration and Finance, CAO-Finance, Scholarship Coordinator, and other concerned officials/ offices.\n3.Complies any deficiencies.",
+      "diff_text": "--- \n+++ \n@@ -1,6 +1,6 @@\n 4.1 Accounts Receivable from the Undergraduate and Masters/Doctoral Students\n Responsibility` | Activity\n-Student | 1. Submits Application for Student Records, Enrolment and Assessment Form (EAF) or Clearance to Accounting Staff-4\n+Student | 1. Must drop out of school now\n Accounting Staff-4 | 2. Checks the ledger/account of the student using the Student Information and Accounting System (SIAS).\n 3.Undergraduate:If the student has accountabilities prior to the implementation of the Free Higher Education, advises the student to settle them first.\n Masters/Doctoral:If the student has accountabilities, advises the student to settle them first.",
+      "merge_section_ids": null,
+      "merge_type": "",
+      "uploaded_file": null
+    },
+    {
+      "id": 13,
+      "status": "pending",
+      "manual": "FAM 6.02",
+      "manual_id": 205,
+      "section_id": 8985,
+      "section_subtitle": "1.0 OBJECTIVES",
+      "section_content_at_export": "1.1 To effectively control and monitor accounts receivable in order to maintain the healthy cash flow of the University.\n1.2 To recognize timely potential collection problems of accounts receivable.\n1.3 To immediately take action on past due accounts.",
+      "submitted_by": "eugene_l",
+      "submitted_at": "2026-09-14T09:04:05.970Z",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "reviewer_notes": "",
+      "change_reason": "",
+      "proposed_content": "1.1 To effectively control and monitor accounts receivable in order to maintain the healthy cash flow of the University.\n1.2 To recognize timely potential collection problems of accounts receivable.\n1.3 To immediately take action on past due payments",
+      "diff_text": "--- \n+++ \n@@ -1,3 +1,3 @@\n 1.1 To effectively control and monitor accounts receivable in order to maintain the healthy cash flow of the University.\n 1.2 To recognize timely potential collection problems of accounts receivable.\n-1.3 To immediately take action on past due accounts.\n+1.3 To immediately take action on past due payments",
+      "merge_section_ids": null,
+      "merge_type": "",
+      "uploaded_file": null
+    }
+  ],
+  "section_history": [
+    {
+      "id": 56,
+      "section_id": 9126,
+      "section_subtitle": "4.1 Onsite Application and Release of CGMC",
+      "manual": "SDM 3.06",
+      "version": 1,
+      "subtitle": "4.1 Onsite Application and Release of CGMC",
+      "content": "Responsibility | Activity\nStudent | 1.Pay appropriatefee at the Cashier’s window.\n2.Secure CGMC templatefromthe OVPSD.\nOSDStaff | 3. Prints the CGMC.\nStudent | 4.Secure the signature from his/her former professor and organization adviser as witnessesin theCGMC.\nStudent | 5.Proceed to the OSD to secure the signature of the VPSD.\nStudent | 6.When CGMC is released from the OSD, student proceeds to the Office oftheRegistrar forthenecessary schoolseal.\nVPSD | 7.Signs CGMC\nOSDStaff | 8. Releases CGMC\nStudent | 9. Fillout the CGMCreleasinglogbook\nStudent | 10. Proceeds to the Office of the Registrar for the necessary schoolseal.",
+      "tag": "RESPONSIBILITY",
+      "edited_by": "Admin",
+      "edited_at": "2026-09-13T14:57:37.418Z"
+    },
+    {
+      "id": 58,
+      "section_id": 9128,
+      "section_subtitle": "5.0 LIST OF FORMS",
+      "manual": "SDM 3.06",
+      "version": 1,
+      "subtitle": "5.0 LIST OF FORMS",
+      "content": "",
+      "tag": "UNTAGGED",
+      "edited_by": "Admin",
+      "edited_at": "2026-09-14T08:48:09.470Z"
+    },
+    {
+      "id": 57,
+      "section_id": 9126,
+      "section_subtitle": "4.1 Onsite Application and Release of CGMC",
+      "manual": "SDM 3.06",
+      "version": 2,
+      "subtitle": "4.1 Onsite Application and Release of CGMC",
+      "content": "Responsibility | Activity\nStudent | 1.Pay appropriatefee at the Cashier’s window.\n2.Secure CGMC templatefromthe OVPSD.\nOSDStaff | 3. Prints the CGMC.\nStudent | 4.Secure the signature from his/her former professor and organization adviser as witnessesin theCGMC.\nStudent | 5.Proceed to the OSD to secure the signature of the VPSD.\nStudent | 6.When CGMC is released from the OSD, student proceeds to the Office oftheRegistrar forthenecessary schoolseal.\nVPSD | 7. Resigns from office\nOSDStaff | 8. Releases CGMC\nStudent | 9. Fillout the CGMCreleasinglogbook\nStudent | 10. Proceeds to the Office of the Registrar for the necessary schoolseal.",
+      "tag": "RESPONSIBILITY",
+      "edited_by": "Admin",
+      "edited_at": "2026-09-13T15:01:28.364Z"
+    }
+  ]
+}

@@ -83,6 +83,27 @@ _MD_BULLET_RE = re.compile(r'^\s*[-*+]\s+')
 _MD_EMPHASIS_RE = re.compile(r'\*{1,3}|(?<!_)__(?!_)')
 
 # Header labels that identify a repeated page-header band.
+# ── Extraction artefacts ─────────────────────────────────────
+# These are damage from the PDF text layer, not mistakes anyone wrote. They
+# must never be presented as real typos or used as typo-fix training examples.
+
+# "theBookkeeper", "forStudent" - a word boundary the text layer lost. Two
+# lowercase letters either side keeps genuine casing such as "eNGAS" and
+# "PhilGEPS" intact.
+_GLUED_WORD_RE = re.compile(r'(?<=[a-z]{2})(?=[A-Z][a-z]{2})')
+# "3.Undergraduate" - a step number glued to its text.
+_GLUED_NUMBER_RE = re.compile(r'(?<=\d\.)(?=[A-Za-z])')
+# "Undergraduate:If" - a colon glued to the next word.
+_GLUED_COLON_RE = re.compile(r'(?<=[a-z]):(?=[A-Z])')
+# A line that is only a stray mark left by the extractor.
+_STRAY_LINE_RE = re.compile(r'^\s*[^\w\s]{1,3}\s*$')
+# A backtick the text layer invented: "Responsibility`".
+_STRAY_BACKTICK_RE = re.compile(r'`')
+
+# Two or more numbered steps crammed into one table cell:
+# "1. Receives the Clearances. 2. Checks the ledger."
+_STEP_SPLIT_RE = re.compile(r'(?<=[.;)])\s+(?=\d{1,2}\.\s*[A-Z])')
+
 _HEADER_LABEL_RE = re.compile(
     r'(VERSION\s*NO|DOCUMENT\s*NO|DOCUMENT\s*NAME|MANUAL\s*TITLE|REVISION\s*NO'
     r'|EFFECTIVITY\s*DATE|PAGE\s*NO|APPROVAL\s*DATE)',
@@ -98,6 +119,20 @@ _SPACE_FIXES = (
 )
 
 
+def repair_artefacts(s):
+    """Undo damage the PDF text layer did to a fragment.
+
+    Separate from Markdown stripping because these are not syntax - they are
+    lost spaces and stray marks, and the same repairs are needed inside table
+    cells as in running prose.
+    """
+    s = _STRAY_BACKTICK_RE.sub('', s or '')
+    s = _GLUED_COLON_RE.sub(': ', s)
+    s = _GLUED_NUMBER_RE.sub(' ', s)
+    s = _GLUED_WORD_RE.sub(' ', s)
+    return s
+
+
 def _strip_inline(s):
     """Remove inline Markdown/HTML from a fragment, preserving its text.
 
@@ -111,6 +146,11 @@ def _strip_inline(s):
     s = _MD_HEADING_RE.sub('', s)
     s = _MD_EMPHASIS_RE.sub('', s)
     s = _MD_BULLET_RE.sub('', s)
+
+    # After the Markdown is gone, not before: the source writes
+    # "3.**Undergraduate:**If", so with the bold markers still in place the
+    # repair patterns saw an asterisk where they expected a letter.
+    s = repair_artefacts(s)
 
     for pattern, repl in _SPACE_FIXES:
         s = pattern.sub(repl, s)
@@ -184,6 +224,22 @@ def _consume_table(lines, i):
     rows = [r for r in rows if any(c for c in r)]
     if not rows:
         return [], i
+
+    # A cell holding several numbered steps becomes one row per step, with the
+    # role inherited from the row it came from (Appendix A3). Without this a
+    # whole procedure sits in a single cell and no individual step can be
+    # revised, retrieved or reasoned about.
+    if width >= 2:
+        expanded = []
+        for row in rows:
+            parts = _STEP_SPLIT_RE.split(row[-1]) if row[-1] else [row[-1]]
+            if len(parts) > 1:
+                for idx, part in enumerate(parts):
+                    lead = list(row[:-1]) if idx == 0 else [''] * (width - 1)
+                    expanded.append(lead + [part.strip()])
+            else:
+                expanded.append(row)
+        rows = expanded
 
     # The page-header band is itself a table in the source PDF.
     if _is_page_header_line(' '.join(c for r in rows for c in r if c)):
