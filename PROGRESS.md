@@ -761,10 +761,14 @@ model-only scored on the same rows. Averaged over the five folds:
 |---|---:|---:|---:|
 | rules only | 0.791 | 0.788 | 0.667 |
 | model only | 0.951 | 0.946 | **0.853** |
-| fusion | **0.975** | **0.974** | 0.695 |
+| fusion | 0.975 *(as Colab reported it)* | 0.974 | 0.695 |
+
+**The official figure is 0.978**, not the 0.975 in this table - see "The
+official figures" below. The two numbers come from the same predictions; the
+difference was the fusion estimator selection, which has since been removed.
 
 **The verdict result is what Phase 2 was for.** The rules alone get 79% of
-verdicts right; Layer 2 takes that to 95%, and fusion to 97.5%. The 28%
+verdicts right; Layer 2 takes that to 95%, and fusion to 97.8%. The 28%
 verdict-disagreement measured on the dataset was a fair prediction of how much
 work was left for the model, and the model did it.
 
@@ -775,8 +779,8 @@ so every rule false positive was added to a set the model had right. The union
 was chosen before there was anything to measure it against.
 
 **Fixed: `ISSUE_POLICY = "rules_precise"`, and fusion now scores 0.854.**
-Verdict accuracy is untouched at 0.979 - the verdict is fusion's under every
-policy, only the issue set changes.
+Verdict accuracy is untouched at **0.978** - the verdict is fusion's under
+every policy, only the issue set changes.
 
 | Policy | Issue micro-F1 | Labels it never reports |
 |---|---:|---|
@@ -808,7 +812,7 @@ Per-label F1 under the chosen policy against the old union, worst first:
 `requirement_removed` 0.637 -> 0.783, `key_term_deleted` 0.694 -> 0.782,
 `negation_changed` 0.765 -> 0.951.
 
-### The official figures, and why Colab said 0.975
+### The official figures: 0.978 verdict, 0.854 issues
 
 **The official numbers are the ones in `Backend/ml/reports/fold_evaluation.md`:
 verdict accuracy 0.978, issue micro-F1 0.854.** They come from the committed

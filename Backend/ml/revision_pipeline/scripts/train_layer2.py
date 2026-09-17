@@ -409,7 +409,15 @@ def train(args) -> dict:
     predictions = []
     if val_loader:
         predictions += dump_predictions(model, val_rows, val_loader, device, "val", args.fold)
-    test_rows = load_jsonl(data_dir / "test.jsonl", args.max_examples)
+    # The final model trains on everything and keeps only a slice for early
+    # stopping, so its data directory has no test split. Opening it anyway
+    # raised FileNotFoundError *after* the whole GPU run had finished.
+    test_path = data_dir / "test.jsonl"
+    test_rows = (load_jsonl(test_path, args.max_examples)
+                 if test_path.exists() else [])
+    if not test_rows:
+        print(f"no test split in {data_dir} - skipping test predictions",
+              flush=True)
     if test_rows:
         test_loader = DataLoader(
             RevisionDataset(test_rows, tokenizer, max_length=args.max_length),

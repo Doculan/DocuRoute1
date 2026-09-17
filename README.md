@@ -94,26 +94,61 @@ for anything to load. No frontend `.env` is required.
 
 ---
 
-## 5. Train the ML models
+## 5. The revision assessment model
 
-The AI revision assessment needs two fine-tuned DistilBERT models. **They are not
-in the repo** — each weights file is ~257 MB and GitHub rejects anything over
-100 MB. You generate them locally; everything required to do so *is* committed
-(`ml/datasets/`, both training scripts).
-
-From the `Backend` directory:
+Check what you have first, from the `Backend` directory:
 
 ```bash
-py ml/train_distilbert_assessment.py
-py ml/train_distilbert_issues.py
+py ml/revision_pipeline/scripts/check_setup.py
 ```
 
-Each run downloads `distilbert-base-uncased` from Hugging Face, fine-tunes it on
-`ml/datasets/train.csv`, and writes to `ml/saved_models/`. Expect **~20 minutes
-per model on CPU**; much faster with CUDA.
+It names anything missing and what to do about it. "Ready." means the pipeline
+will run.
 
-Until you do this, the app runs fine — only the *AI revision assessment* button
-fails, with a config-file error.
+### Getting the model
+
+`ml/saved_models/` is gitignored — the encoder alone is ~257 MB and GitHub
+rejects anything over 100 MB. **You cannot retrain Layer 2 on a laptop**: it
+needs a GPU, and the folds took about four minutes each on a Colab T4 against
+hours on CPU. So the weights arrive one of two ways:
+
+1. **Copy the folder** from whoever has it. That is the normal path.
+2. **Train it** on Kaggle with `notebooks/train_final_kaggle.ipynb`. See
+   `PHASE5_TRAINING.md` for the steps.
+
+The finished directory looks like this:
+
+```
+Backend/ml/saved_models/context_v2/
+├── encoder/            ← fine-tuned DistilBERT (Layer 2)
+├── tokenizer/
+├── heads.pt            ← verdict and issue heads
+├── label_config.json   ← thresholds, label order, fingerprint
+├── thresholds.json
+├── fusion.pkl          ← Layer 3, trained separately
+└── fusion_config.json
+```
+
+### Back it up
+
+**This folder is not in git and cannot be rebuilt locally. If you lose it, you
+are waiting on a GPU to get it back.** Copy it somewhere that is not this
+checkout — an external drive, Google Drive, anywhere:
+
+```bash
+# from the repo root
+cp -r Backend/ml/saved_models/context_v2 ~/docuroute-model-backup
+```
+
+Worth doing before: reinstalling, `git clean`, switching branches that touch
+`.gitignore`, or letting anyone else near the folder. `fusion.pkl` is the part
+people forget — it is trained from the fold predictions, not by the Kaggle
+notebook, so unzipping a fresh Layer 2 over the folder does not replace it and
+nothing will tell you it is gone.
+
+Until the model is in place the app runs fine; assessment falls back to the
+rule layer alone, which gets about 79% of verdicts right against 97.8% for the
+full pipeline.
 
 The SVM section classifier (`ml/svm_model.pkl`, `ml/vectorizer.pkl`) **is**
 committed, so section tagging works immediately.
@@ -149,15 +184,20 @@ Open **http://localhost:5173** and sign in.
 ## 7. Things worth knowing
 
 **`db.sqlite3` is committed.** Pulling overwrites your local database, including
-any accounts or test data you created. Back it up before pulling if that matters:
-`cp Backend/db.sqlite3 Backend/db.sqlite3.mine`.
+any accounts or test data you created.
+
+**`Backend/db.sqlite3` is no longer tracked** (it holds the extracted manual
+text and the repository is public, and a binary file can never merge). If you
+are pulling a change from before that, git will delete your copy — back it up
+first: `cp Backend/db.sqlite3 Backend/db.sqlite3.mine`.
 
 **Uploaded files are committed too**, under `Backend/media/mastercopies/`, so
 everyone works from the same master copies.
 
 **`ml/saved_models/` and `ml/training_checkpoints/` are gitignored** — too large
-for git. Checkpoints in particular run to several GB and are only intermediate
-training state; you never need them.
+for git. Checkpoints run to several GB and are only intermediate training
+state; you never need them. `saved_models/context_v2/` you very much do — see
+section 5 for how to back it up.
 
 **`SECRET_KEY` is hardcoded in `Backend/backend/settings.py` and `DEBUG = True`.**
 Fine for coursework, but this must move to an environment variable before the
