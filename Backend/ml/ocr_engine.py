@@ -126,6 +126,40 @@ _LOWER_GLUE = {
     "Afterdeadline": "After deadline", "1-2days": "1-2 days",
     "Weekofthe": "Week of the", "Administrationand": "Administration and",
     "Enrolment": "Enrolment",
+    # Runs of three or more words fused together. The two-word entries above
+    # were found first; these turned up on a second sweep of the re-extracted
+    # sections. Each is written out in full rather than segmented, so the fix
+    # is reviewable and cannot invent a split that was never in the source.
+    "placesinthe": "places in the", "caseinthe": "case in the",
+    "discoveredinthe": "discovered in the", "decisionofthe": "decision of the",
+    "templatefromthe": "template from the", "appropriatefee": "appropriate fee",
+    "willbe": "will be", "shallbe": "shall be",
+    "oftheIGO": "of the IGO", "oftheVPSD": "of the VPSD",
+    "itempurchasesintherecords": "item purchases in the records",
+    "andrendersfinaljudgment": "and renders final judgment",
+    "organizationadviseraswitnessesinthe":
+        "organization adviser as witnesses in the",
+    "approvaloftheBACResolutiononbidderbest":
+        "approval of the BAC Resolution on bidder best",
+    "University\u2019srecords": "University\u2019s records",
+    "JE Vusing": "JEV using",
+    "OS Dandfurthersecure": "OSD and further secure",
+    "BUR Sinthe\u2018Utilization\u2019columnoftheRBUD":
+        "BURS in the \u2018Utilization\u2019 column of the RBUD",
+    # Third sweep. Found by segmenting every rare token against the corpus's
+    # own vocabulary, then written out by hand - segmentation finds them, it
+    # never fixes them, so a wrong split cannot reach the text.
+    "itreceives": "it receives", "overthe": "over the",
+    "purchaseditems": "purchased items", "renderthe": "render the",
+    "Providersif": "Providers if", "asnecessary": "as necessary",
+    "bidsfromprospective": "bids from prospective",
+    "otherSDs": "other SDs", "supportingdocuments": "supporting documents",
+    "theCGMC": "the CGMC", "theVPSDto": "the VPSD to", "Fillout": "Fill out",
+    # The acronym rule used to split this one as "CGM Creleasinglogbook";
+    # both spellings are repaired so stored text can be re-cleaned in place.
+    "CGMCreleasinglogbook": "CGMC releasing logbook",
+    "CGM Creleasinglogbook": "CGMC releasing logbook",
+    "backto": "back to", "LNUIGO": "LNU IGO",
 }
 _LOWER_GLUE_RE = re.compile(
     r"\b(" + "|".join(sorted(map(re.escape, _LOWER_GLUE), key=len, reverse=True)) + r")\b"
@@ -136,7 +170,10 @@ _LOWER_GLUE_RE = re.compile(
 _ACRONYM_EXCEPTIONS = {
     "eNGAS", "PhilGEPS", "eBudget", "iSchool", "eSPMS", "RCDisb",
 }
-_ACRONYM_GLUE_RE = re.compile(r"\b([A-Z]{2,6})([A-Z][a-z]{2,})\b")
+# The second half is length-bounded: without it the rule split
+# "CGMCreleasinglogbook" into "CGM Creleasinglogbook", inventing a word
+# boundary in the middle of a run that needed three splits, not one.
+_ACRONYM_GLUE_RE = re.compile(r"\b([A-Z]{2,6})([A-Z][a-z]{2,12})\b")
 
 # Two or more numbered steps crammed into one table cell:
 # "1. Receives the Clearances. 2. Checks the ledger."
@@ -157,6 +194,12 @@ _SPACE_FIXES = (
 )
 
 
+# "Accounting Staff -3" and "Accounting Staff-3" are the same person. The
+# spaced form appears once in the corpus and made a spacing difference read as
+# a change of responsibility.
+_ROLE_SUFFIX_SPACING_RE = re.compile(r"\b([A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,3})\s+-\s*(\d+)\b")
+
+
 def repair_artefacts(s):
     """Undo damage the PDF text layer did to a fragment.
 
@@ -169,6 +212,7 @@ def repair_artefacts(s):
     s = _GLUED_NUMBER_RE.sub(' ', s)
     s = _GLUED_WORD_RE.sub(' ', s)
     s = _LOWER_GLUE_RE.sub(lambda m: _LOWER_GLUE[m.group(1)], s)
+    s = _ROLE_SUFFIX_SPACING_RE.sub(r"\1-\2", s)
     s = _ACRONYM_GLUE_RE.sub(
         lambda m: m.group(0) if m.group(0) in _ACRONYM_EXCEPTIONS
         else f"{m.group(1)} {m.group(2)}",
@@ -232,8 +276,148 @@ def _render_table(rows, header_rows=1):
     """
     width = max(len(r) for r in rows)
     padded = [r + [''] * (width - len(r)) for r in rows]
-    out = ['| ' + ' | '.join(r) + ' |' for r in padded]
+    # Runs of spaces are collapsed here rather than only when the section is
+    # stored, so re-cleaning already-stored content is a no-op. An empty first
+    # cell rendered as "|  |" against a stored "| |", and every section with
+    # one came back as changed.
+    out = [re.sub(r'\s{2,}', ' ', '| ' + ' | '.join(r) + ' |') for r in padded]
     out.insert(header_rows, '| ' + ' | '.join(['---'] * width) + ' |')
+    return out
+
+
+# A step number opening an Activity cell: "1." but not the "9.02" of a
+# document reference.
+_STEP_NO_RE = re.compile(r"^\s*\d{1,2}\.(?!\d)")
+# The same number stranded at the end of a Responsibility cell, which is how a
+# "Student<br>1." cell arrives from the PDF.
+_TRAILING_STEP_RE = re.compile(r"^(.*?)\s*\b(\d{1,2}\.)$")
+
+
+def _move_stranded_step_numbers(rows, width):
+    """Put a step number back at the front of the step it belongs to.
+
+    The source writes the Responsibility and the step number in one cell
+    separated by a line break ("Student<br>1."), so the number arrives glued to
+    the role. Left alone, every role in the table reads as a different person
+    ("Student 1.", "Student 3.") and the step text starts mid-sentence.
+    """
+    if width < 2:
+        return rows
+    for row in rows:
+        match = _TRAILING_STEP_RE.match(row[0].strip())
+        if not match or _STEP_NO_RE.match(row[-1]):
+            continue
+        role, number = match.group(1).strip(), match.group(2)
+        row[0] = role
+        row[-1] = f"{number} {row[-1].strip()}".strip()
+    return rows
+
+
+def _join_wrapped_rows(rows, width):
+    """Merge rows that are one step wrapped across two lines of the PDF table.
+
+    A wide cell wraps, and each visual line becomes its own row:
+
+        |Supply and Property|1. Receives the items from supplier. (see FAM|
+        |Management Staff   |9.02 Receiving of Deliveries)                |
+
+    which reads as two steps, one of them a fragment. A row is a continuation
+    when it does not open a new numbered step while the row above it does and
+    ends mid-sentence. Tables with no step numbers at all - the bank account
+    and calendar tables - are left alone, since there the test would merge
+    genuinely separate entries.
+    """
+    if width < 2 or not any(_STEP_NO_RE.match(r[-1]) for r in rows):
+        return rows
+
+    merged = []
+    for row in rows:
+        previous = merged[-1] if merged else None
+        opens_step = bool(_STEP_NO_RE.match(row[-1]))
+        if previous is not None and not opens_step and _STEP_NO_RE.match(previous[-1]):
+            tail = previous[-1].rstrip()
+            unbalanced = tail.count("(") > tail.count(")")
+            if unbalanced or not tail.endswith(('.', '!', '?', ':')):
+                for column in range(width):
+                    part = row[column].strip()
+                    if not part:
+                        continue
+                    existing = previous[column].rstrip()
+                    if not existing:
+                        previous[column] = part
+                    elif existing.endswith(('/', '-')):
+                        previous[column] = existing + part
+                    else:
+                        previous[column] = existing + ' ' + part
+                continue
+        merged.append(list(row))
+    return merged
+
+
+def _raw_cells(line):
+    """Cells of a raw table row, with one delimiting pipe stripped per side."""
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return s.split("|")
+
+
+def _first_column_is_split(raw_lines):
+    """True when the PDF cut the first column through the middle of a word.
+
+    The giveaway is the header: "| R | esponsibility |". A one-to-three letter
+    cell followed by a cell that starts in lower case is not two columns.
+    """
+    for line in raw_lines:
+        if _MD_TABLE_SEP_RE.match(line.strip()):
+            continue
+        cells = [_MD_EMPHASIS_RE.sub("", c).strip() for c in _raw_cells(line)]
+        if len(cells) < 3:
+            return False
+        return (
+            1 <= len(cells[0]) <= 3
+            and cells[0].isalpha()
+            and bool(cells[1])
+            and cells[1][0].islower()
+        )
+    return False
+
+
+def _join_split_cells(left, right):
+    """Join two halves of one column, line by line."""
+    # Emphasis markers go first, or the header "**R**" / "**esponsibility**"
+    # is joined with a space because the right half starts with an asterisk.
+    left_lines = [_MD_EMPHASIS_RE.sub("", part) for part in _MD_BR_RE.split(left)]
+    right_lines = [_MD_EMPHASIS_RE.sub("", part) for part in _MD_BR_RE.split(right)]
+    joined = []
+    for index in range(max(len(left_lines), len(right_lines))):
+        a = left_lines[index].strip() if index < len(left_lines) else ""
+        b = right_lines[index].strip() if index < len(right_lines) else ""
+        if a and b:
+            # No space when the right half continues the word it was cut from.
+            joined.append(a + b if b[0].islower() else f"{a} {b}")
+        else:
+            joined.append(a or b)
+    return "<br>".join(part for part in joined if part)
+
+
+def _merge_split_first_column(raw_lines):
+    """Rewrite a block whose first column was cut in two."""
+    out = []
+    for line in raw_lines:
+        stripped = line.strip()
+        if _MD_TABLE_SEP_RE.match(stripped):
+            cells = _raw_cells(stripped)
+            out.append("|" + "|".join(cells[1:]) + "|")
+            continue
+        cells = _raw_cells(stripped)
+        if len(cells) < 3:
+            out.append(line)
+            continue
+        merged = _join_split_cells(cells[0], cells[1])
+        out.append("|" + "|".join([merged] + cells[2:]) + "|")
     return out
 
 
@@ -243,6 +427,15 @@ def _consume_table(lines, i):
     Returns (rendered_lines_or_None, next_index). None means the block was the
     repeated page-header band and should be dropped.
     """
+    block = []
+    scan = i
+    while scan < len(lines) and lines[scan].strip().startswith('|'):
+        block.append(lines[scan])
+        scan += 1
+    if _first_column_is_split(block):
+        block = _merge_split_first_column(block)
+        lines = lines[:i] + block + lines[scan:]
+
     rows, sep_at = [], None
     while i < len(lines) and lines[i].strip().startswith('|'):
         raw = lines[i].strip()
@@ -268,6 +461,9 @@ def _consume_table(lines, i):
     rows = [r for r in rows if any(c for c in r)]
     if not rows:
         return [], i
+
+    rows = _move_stranded_step_numbers(rows, width)
+    rows = _join_wrapped_rows(rows, width)
 
     # A cell holding several numbered steps becomes one row per step, with the
     # role inherited from the row it came from (Appendix A3). Without this a
@@ -701,6 +897,13 @@ def _clean(text):
 
     # Collapse excessive blank lines (4+ → 2-3)
     result = '\n'.join(out)
+
+    # One more glue pass over the assembled text. The per-fragment repair runs
+    # before a cell's <br> line breaks are joined, so a run fused across two of
+    # them - "BUR Sinthe'Utilization'columnoftheRBUD" - only becomes visible
+    # once the cell is whole. The substitution is idempotent, so running it
+    # twice costs nothing and catches those.
+    result = _LOWER_GLUE_RE.sub(lambda m: _LOWER_GLUE[m.group(1)], result)
     result = re.sub(r'\n{4,}', '\n\n\n', result)
     return result.strip()
 
