@@ -486,6 +486,25 @@ export default function RevisionReview() {
                 )}
               </div>
 
+              {/* Clause 6.3 asks for a reason, the pipeline hard-fails without one,
+                  and the admin approving the change is the person who needs to
+                  read it. It was in the payload but never on the screen. */}
+              <div style={{ marginBottom: "1rem" }}>
+                <p className="label" style={{ marginBottom: "0.35rem" }}>
+                  Reason for change · clause 6.3
+                </p>
+                {(r.change_reason || "").trim() ? (
+                  <div className="content-box">{r.change_reason}</div>
+                ) : (
+                  <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "center" }}>
+                    <span className="badge badge-danger">not provided</span>
+                    <span className="text-sm" style={{ color: "var(--n-700)" }}>
+                      No reason was recorded with this submission.
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="row-wrap" style={{ gap: "0.5rem", marginBottom: "1rem" }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => handleViewManual(r.manual_id)}>
                   📖 Full manual context
