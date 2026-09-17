@@ -197,6 +197,32 @@ function AiPanelV2({ result }) {
         </div>
       )}
 
+      {/* Soft findings: real enough to mention, never enough to block. */}
+      {(result.advisories || []).length > 0 && (
+        <div style={{ marginBottom: "0.9rem" }}>
+          <div className="label" style={{ marginBottom: "0.4rem" }}>
+            Worth checking — not blocking
+          </div>
+          <div className="col" style={{ gap: "0.4rem" }}>
+            {result.advisories.map((note) => (
+              <div key={note.label} className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+                <span className="badge badge-warning">
+                  {(note.label || "").replaceAll("_", " ")}
+                </span>
+                {note.clause && (
+                  <span className="badge badge-info">clause {note.clause}</span>
+                )}
+                {note.evidence && (
+                  <span className="text-xs" style={{ color: "var(--n-700)" }}>
+                    {note.evidence}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {result.explanation && (
         <p className="text-sm" style={{ color: "var(--n-700)", marginBottom: "0.9rem" }}>
           {result.explanation}

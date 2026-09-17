@@ -8,7 +8,7 @@ from revision_pipeline.layer3_fusion import (
     build_feature_vector, feature_names, merge_issues, rules_only_verdict, run_layer3,
 )
 
-REASON = {"change_reason": "policy update"}
+REASON = {"change_reason": "Updated after the August 2026 management review."}
 
 
 def probs_for(*labels, value=0.9):

@@ -1031,6 +1031,100 @@ Kaggle's actual path depends on how the dataset was added. It searches
 
 ---
 
+## Clause 6.3 — the change reason, in two tiers
+
+The reviewer could not see the reason at all. `list_revisions` had always
+returned `change_reason`, the model stored it, all three submission endpoints
+saved it — and the admin review card simply never rendered it. So the panel
+could say "no reason was recorded" with nothing on screen to check it against,
+and a reason that *was* given was equally invisible. It now sits above the
+action buttons, with the clause named, and a submission carrying no reason
+shows a red **not provided** badge rather than a blank space.
+
+Behind that, the reason was only enforced in the browser: the three endpoints
+did `(request.data.get('change_reason') or '').strip()` and accepted whatever
+came back, including nothing. The merge form did not check at all. That is how
+revision 13 exists.
+
+### The two tiers
+
+`ml/revision_pipeline/change_reason.py` grades a reason, and **both the API and
+Layer 1 call the same function**, so a revision cannot be accepted by one and
+hard-failed by the other.
+
+| tier | test | API | pipeline |
+|---|---|---|---|
+| `missing` | empty | **400** | hard fail, clause 6.3 |
+| `invalid` | under 15 characters, under 3 words, no letters, fewer than 3 distinct characters, or identical to the section title | **400** | hard fail, clause 6.3 |
+| `weak` | passes the above but carries under 2 content words once filler and boilerplate are removed | accepted | **advisory**, low severity |
+| `ok` | everything else | accepted | nothing |
+
+Tier 1 blocks. Tier 2 never does: the edit itself may be perfectly good, and
+refusing it would punish a submitter for prose rather than for the change. It
+becomes an advisory that the reviewer sees and that pushes an otherwise-clean
+`approve` to `needs_revision`.
+
+Demonstrated on one edit, changing only the reason:
+
+```
+"The Cashier shall prepare the report and submit it to the Dean."
+"The Cashier shall prepare the report, and submit it to the Dean."
+
+reason "Reworded after the June 2026 training."  -> approve
+reason "Minor changes as discussed"              -> needs_revision
+                                                    advisory vague_change_reason
+                                                    override "advisory"
+```
+
+### Why the advisory is not an issue label
+
+`vague_change_reason` is deliberately **not** in `ISSUE_LABELS`. That list is
+the trained label space: adding to it would change the issues head's output
+dimension and the fusion feature vector, invalidating the shipped Layer 2
+weights and the 0.978 figure. Advisories travel in their own field on
+`Layer1Result` and `FusionResult`, surface at the top level of the result
+beside `hard_fails`, and never touch Layer 2 or the fusion features. The
+override can only tighten a verdict — it turns `approve` into
+`needs_revision` and nothing else.
+
+### The reason is never an input to Layer 2
+
+Worth stating plainly, because the two tiers above could suggest otherwise.
+The change reason is **traceability under clause 6.3** — it is required so the
+change is planned and recorded, and it is shown to the reviewer so they can
+judge it themselves. It is **not** a feature of the model. Layer 2 sees the
+old text, the new text and the surrounding document context; it does not see
+the reason. So the verdict depends only on the textual change and its context,
+and cannot be talked into approving a bad edit by a well-written justification.
+
+The one thing nothing checks is whether the reason actually *describes* the
+edit — a submitter can write "updated the retention period" and change a bank
+account instead. Checking reason-against-edit consistency is **future work**;
+it needs a labelled corpus of reason/edit pairs that does not exist yet, and
+the generators would have to produce mismatched pairs as a new negative class.
+
+### Tests
+
+`ml/revision_pipeline/tests/test_change_reason.py` (39) covers both tiers, the
+title check, the advisory staying out of the label space, and the override in
+both directions. `api/tests.py` (7, Django's runner) covers all three
+endpoints returning 400 with a usable message, nothing being stored when they
+do, and a weak reason being accepted and reaching the reviewer.
+
+Fixtures in four existing test modules used placeholder reasons — `"policy
+update"`, `"document review"`, `"x"` — which the new rule correctly refuses.
+Replaced with reasons a submitter would actually write.
+
+**Revision 13 was left exactly as it is**, so the "not provided" path stays
+testable end to end.
+
+```
+pipeline   227 passed
+api          7 passed
+```
+
+---
+
 ## Queued — to do after Phase 2, before Phase 4
 
 1. ~~Re-extract the manuals with the new A3 table format.~~ **Done** — see

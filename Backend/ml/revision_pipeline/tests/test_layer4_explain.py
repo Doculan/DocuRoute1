@@ -16,7 +16,7 @@ from revision_pipeline.layer4_explain import (
     _PHRASINGS, MAX_SENTENCES, explain, not_assessed_message,
 )
 
-REASON = {"change_reason": "policy update"}
+REASON = {"change_reason": "Updated after the August 2026 management review."}
 
 
 def make_issue(label, confidence=0.9, evidence="the evidence", severity=None):

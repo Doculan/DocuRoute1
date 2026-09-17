@@ -192,7 +192,7 @@ export default function StaffSections({ manualId, onBack }) {
     e.preventDefault();
     if (!revFile) { setRevMsg("Please select a file."); setRevMsgType("error"); return; }
     if (!changeReason.trim()) {
-      setRevMsg("Please give a reason for this change."); setRevMsgType("error"); return;
+      setRevMsg("Please give a reason for this change - a short sentence saying what changed and why."); setRevMsgType("error"); return;
     }
     setRevLoading(true);
     setRevMsg("");
@@ -228,7 +228,7 @@ export default function StaffSections({ manualId, onBack }) {
       return;
     }
     if (!changeReason.trim()) {
-      setRevMsg("Please give a reason for this change.");
+      setRevMsg("Please give a reason for this change - a short sentence saying what changed and why.");
       setRevMsgType("error");
       return;
     }
@@ -262,6 +262,11 @@ export default function StaffSections({ manualId, onBack }) {
     }
     if (mergeSource.id === mergeTarget.id) {
       setMergeMsg("Source and target cannot be the same section.");
+      return;
+    }
+    if (!changeReason.trim()) {
+      setMergeMsg("Please give a reason for this change - a short sentence saying what changed and why.");
+      setMergeMsgType("error");
       return;
     }
 
@@ -535,7 +540,7 @@ export default function StaffSections({ manualId, onBack }) {
                         required
                       />
                       <span className="subtle text-xs">
-                        Required. Recorded against the revision for document control.
+                        Required. A sentence or more: what changed and why. At least 15 characters and 3 words. Recorded against the revision for document control.
                       </span>
                     </div>
                     <button type="submit" className="btn btn-success" disabled={revLoading}>
@@ -581,7 +586,7 @@ export default function StaffSections({ manualId, onBack }) {
                         required
                       />
                       <span className="subtle text-xs">
-                        Required. Recorded against the revision for document control.
+                        Required. A sentence or more: what changed and why. At least 15 characters and 3 words. Recorded against the revision for document control.
                       </span>
                     </div>
                     <div className="row-wrap" style={{ gap: "0.5rem" }}>

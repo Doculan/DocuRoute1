@@ -151,6 +151,9 @@ class FusionResult:
     verdict: str
     confidence: float
     issues: list = field(default_factory=list)
+    # Soft rule findings outside the trained label space, passed through from
+    # Layer 1 so the reviewer sees them beside the issues.
+    advisories: list = field(default_factory=list)
     overrides: list = field(default_factory=list)
     probabilities: dict = field(default_factory=dict)
     # "fusion", "layer2" or "rules" - so the trace says where the number came
@@ -162,6 +165,7 @@ class FusionResult:
             "verdict": self.verdict,
             "confidence": round(self.confidence, 4),
             "issues": self.issues,
+            "advisories": self.advisories,
             "overrides": self.overrides,
             "probabilities": self.probabilities,
             "confidence_source": self.confidence_source,
@@ -328,6 +332,7 @@ def run_layer3(layer1_result, layer2_output: dict = None,
     confidence_source = "fusion" if fusion_model is not None else "layer2"
 
     issues = merge_issues(layer1_result.flags, issue_probs, thresholds)
+    advisories = list(getattr(layer1_result, "advisories", []) or [])
     overrides = []
 
     # -- hard fail: procedural, and not the model's call ----------
@@ -337,6 +342,7 @@ def run_layer3(layer1_result, layer2_output: dict = None,
             verdict="reject",
             confidence=1.0,
             issues=issues,
+            advisories=advisories,
             overrides=[{"rule": "hard_fail", "detail": reasons}],
             probabilities={},
             confidence_source="rules",
@@ -375,10 +381,22 @@ def run_layer3(layer1_result, layer2_output: dict = None,
             "detail": ", ".join(i["label"] for i in agreed_high),
         })
 
+    # -- soft clause 6.3 tier -------------------------------------
+    # A vague reason never blocks a revision - the edit itself may be
+    # perfectly good - but it does mean the reviewer cannot confirm the change
+    # was planned, so it is not something to wave through on the model's word.
+    if advisories and verdict == "approve":
+        verdict = "needs_revision"
+        overrides.append({
+            "rule": "advisory",
+            "detail": ", ".join(a["label"] for a in advisories),
+        })
+
     return FusionResult(
         verdict=verdict,
         confidence=float(confidence),
         issues=issues,
+        advisories=advisories,
         overrides=overrides,
         probabilities={k: round(float(v), 4) for k, v in probabilities.items()},
         confidence_source=confidence_source,

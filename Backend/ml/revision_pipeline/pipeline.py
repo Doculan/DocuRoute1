@@ -127,6 +127,7 @@ def assess_texts(
             "change_type": None,
             "hard_fails": [],
             "issues": [],
+            "advisories": [],
             "explanation": not_assessed_message(section_label),
             "trace": {"skipped": "forms_section"},
         }
@@ -135,7 +136,8 @@ def assess_texts(
 
     layer1 = run_layer1(
         old_text, new_text,
-        revision_meta={"change_reason": change_reason},
+        revision_meta={"change_reason": change_reason,
+                       "section_title": section_title},
         manual_key_terms=manual_key_terms,
         related_sections=related or [],
     )
@@ -188,6 +190,7 @@ def assess_texts(
             for fail in layer1.hard_fails
         ],
         "issues": layer3.issues,
+        "advisories": layer3.advisories,
         "explanation": explanation,
         "trace": trace,
     }

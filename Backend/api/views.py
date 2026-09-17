@@ -9,6 +9,10 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import CustomUser, Department, Manual, ManualSection, ManualRevision, SectionHistory
 from ml.ocr_engine import extract_text
+from ml.revision_pipeline.change_reason import (
+    blocks_submission,
+    classify_reason,
+)
 from ml.svm_model import predict, predict_section
 import difflib
 import re
@@ -1340,7 +1344,9 @@ def upload_revision(request, section_id):
     text_new = extract_text(file_bytes, uploaded_file.name)
 
     diff = build_diff(section.content, text_new)
-    change_reason = (request.data.get('change_reason') or '').strip()
+    change_reason, error = _validated_change_reason(request, section)
+    if error:
+        return error
 
     revision = ManualRevision.objects.create(
         section=section,
@@ -1374,7 +1380,9 @@ def propose_text_revision(request, section_id):
         return Response({'error': 'Proposed content is required'}, status=400)
 
     diff = build_diff(section.content, proposed_content)
-    change_reason = (request.data.get('change_reason') or '').strip()
+    change_reason, error = _validated_change_reason(request, section)
+    if error:
+        return error
 
     revision = ManualRevision.objects.create(
         section=section,
@@ -1418,7 +1426,9 @@ def propose_merge(request):
 
     merged_content = f"{target.content}\n\n{source.content}".strip()
     diff = build_diff(target.content, merged_content)
-    change_reason = (request.data.get('change_reason') or '').strip()
+    change_reason, error = _validated_change_reason(request, target)
+    if error:
+        return error
 
     revision = ManualRevision.objects.create(
         section=target,
@@ -1472,6 +1482,26 @@ def list_revisions(request):
         'diff_text': r.diff_text,
     } for r in revisions]
     return Response(data)
+
+
+def _validated_change_reason(request, section):
+    """The reason a submitter gave, or a 400 response explaining the problem.
+
+    Returns ``(reason, None)`` when the submission may proceed and
+    ``(None, response)`` when it may not. Clause 6.3 is only met if the reason
+    says something, so a blank or throwaway string is refused here rather than
+    stored and hard-failed later by Layer 1. A vague-but-real reason is
+    accepted: the pipeline flags it for the reviewer instead of blocking a
+    submission that may be perfectly sound.
+    """
+    reason = (request.data.get('change_reason') or '').strip()
+    tier, message = classify_reason(reason, getattr(section, 'subtitle', '') or '')
+    if blocks_submission(tier):
+        return None, Response(
+            {'error': message, 'field': 'change_reason', 'reason_tier': tier},
+            status=400,
+        )
+    return reason, None
 
 
 @api_view(['PATCH'])
@@ -1628,6 +1658,7 @@ def ai_assessment_view(request, revision_id):
             'confidence': result.get('confidence'),
             'change_type': result.get('change_type'),
             'hard_fails': result.get('hard_fails') or [],
+            'advisories': result.get('advisories') or [],
             'explanation': result.get('explanation'),
             'issues': result.get('issues') or [],
             'trace': result.get('trace') or {},

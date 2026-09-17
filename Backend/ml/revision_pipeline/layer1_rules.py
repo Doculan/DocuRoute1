@@ -19,6 +19,7 @@ import re
 from dataclasses import dataclass, field
 
 from . import config
+from .change_reason import blocks_submission, classify_reason
 from .diffing import (
     aligned_units,
     change_ratios,
@@ -92,6 +93,10 @@ class Layer1Result:
     hard_fails: list = field(default_factory=list)
     features: dict = field(default_factory=dict)
     flags: list = field(default_factory=list)
+    # Soft findings that are not issue labels: they never enter the trained
+    # label space, so they cannot disturb Layer 2 or the fusion features, but
+    # they do reach the reviewer and can nudge the verdict.
+    advisories: list = field(default_factory=list)
     change_type: str = "substantive"
     marked: str = ""
     # The actual term pairs, so the explanation can name them rather than
@@ -446,11 +451,28 @@ def run_layer1(
     # There is deliberately no department check: FAM documents live in the
     # CAS/CME test departments, so it would reject valid revisions.
     # PROGRESS.md, decision 3.
-    if not (meta.get("change_reason") or "").strip():
+    # Clause 6.3 in two tiers, graded by the same function the API uses when
+    # it accepts the submission, so a revision cannot pass one and fail the
+    # other. Rows predating that validation still land here as hard fails.
+    reason_tier, reason_message = classify_reason(
+        meta.get("change_reason"), meta.get("section_title"),
+    )
+    if blocks_submission(reason_tier):
         result.hard_fails.append({
             "reason": "no_change_reason",
             "clause": "6.3",
-            "detail": "No reason for the change was recorded.",
+            "detail": (
+                "No reason for the change was recorded."
+                if reason_tier == "missing"
+                else "The recorded reason does not describe the change."
+            ),
+        })
+    elif reason_tier == "weak":
+        result.advisories.append({
+            "label": "vague_change_reason",
+            "clause": "6.3",
+            "severity": "low",
+            "evidence": reason_message,
         })
     if not (new_text or "").strip():
         result.hard_fails.append({

@@ -12,6 +12,7 @@ from revision_pipeline import config
 from revision_pipeline.layer1_rules import run_layer1
 
 REASON = {"change_reason": "policy update approved by the QMR"}
+GOOD_REASON = REASON["change_reason"]
 
 
 def feats(old, new, **kw):
@@ -47,7 +48,7 @@ def test_department_mismatch_is_not_a_hard_fail():
     # department check would reject valid revisions.
     result = run_layer1(
         "old wording", "new wording",
-        {"change_reason": "x", "submitter_department": "CAS",
+        {"change_reason": GOOD_REASON, "submitter_department": "CAS",
          "manual_department": "FAM"},
     )
     assert not result.failed

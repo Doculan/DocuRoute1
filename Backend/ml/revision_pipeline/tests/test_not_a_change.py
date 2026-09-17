@@ -9,7 +9,7 @@ import pytest
 
 from revision_pipeline.layer1_rules import run_layer1
 
-REASON = {"change_reason": "document review"}
+REASON = {"change_reason": "Updated after the August 2026 management review."}
 
 
 def labels(old, new):

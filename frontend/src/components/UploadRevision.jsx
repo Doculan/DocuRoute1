@@ -26,7 +26,7 @@ export default function UploadRevision({ sectionId, onSubmitted }) {
     e.preventDefault();
     setError("");
     if (!file) return setError("Select a file first.");
-    if (!changeReason.trim()) return setError("Please give a reason for this change.");
+    if (!changeReason.trim()) return setError("Please give a reason for this change - a short sentence saying what changed and why.");
 
     const formData = new FormData();
     formData.append("file", file);
@@ -81,6 +81,7 @@ export default function UploadRevision({ sectionId, onSubmitted }) {
           onChange={(e) => setChangeReason(e.target.value)}
           required
         />
+        <span className="subtle text-xs">A sentence or more: what changed and why. At least 15 characters and 3 words.</span>
       </div>
 
       <button className="btn btn-primary" type="submit" disabled={loading} style={{ marginTop: "0.9rem" }}>
