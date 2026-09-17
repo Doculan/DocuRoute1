@@ -180,7 +180,8 @@ def score_fold(train_rows: list, test_rows: list, seed: int) -> dict:
         ("model_only", [r["model_verdict"] for r in test_rows],
          [r["model_issues"] for r in test_rows]),
         ("fusion", fusion_verdicts,
-         [select_issue_labels(r["rules_issues"], r["model_issues"], "union")
+         [select_issue_labels(r["rules_issues"], r["model_issues"],
+                              config.ISSUE_POLICY, precise)
           for r in test_rows]),
     ):
         scores = verdict_scores(truth, verdicts)
@@ -189,13 +190,22 @@ def score_fold(train_rows: list, test_rows: list, seed: int) -> dict:
 
     # The verdict is fusion's either way; only the issue set changes, so the
     # policies are compared on that alone.
-    result["issue_policies"] = {
-        policy: issue_micro_f1(issues_true, [
+    result["issue_policies"] = {}
+    result["silenced_labels"] = {}
+    present = {label for row in test_rows for label in row["issues_true"]}
+    for policy in ISSUE_POLICIES:
+        predicted = [
             select_issue_labels(r["rules_issues"], r["model_issues"], policy, precise)
             for r in test_rows
-        ])
-        for policy in ISSUE_POLICIES
-    }
+        ]
+        result["issue_policies"][policy] = issue_micro_f1(issues_true, predicted)
+        # A label that appears in the truth and is never once reported. Micro-F1
+        # hides this: a policy can score well on the frequent labels while
+        # never reporting a whole category. "agree" cannot report anything the
+        # rules do not also raise, which is every contradicts_manual and
+        # out_of_scope_content there is.
+        reported = {label for labels in predicted for label in labels}
+        result["silenced_labels"][policy] = sorted(present - reported)
     return result
 
 
@@ -254,13 +264,27 @@ def main() -> int:
         ), 4)
         for policy in ISSUE_POLICIES
     }
-    best_policy = max(policy_means, key=policy_means.get)
+    silenced = {
+        policy: sorted({
+            label for fold in per_fold.values()
+            for label in fold["silenced_labels"][policy]
+        })
+        for policy in ISSUE_POLICIES
+    }
+    # A policy that never reports a label is not a candidate, whatever its
+    # average. Choosing on micro-F1 alone picked "agree", which scores 0.000 on
+    # contradicts_manual and out_of_scope_content - the two the rules are blind
+    # to, and the reason there is a model at all.
+    usable = [p for p in ISSUE_POLICIES if not silenced[p]]
+    best_policy = max(usable or list(ISSUE_POLICIES), key=policy_means.get)
 
     report = {
         "folds": per_fold,
         "averaged": averaged,
         "issue_policies": policy_means,
+        "silenced_labels": silenced,
         "best_issue_policy": best_policy,
+        "best_chosen_among": usable,
         "configured_issue_policy": config.ISSUE_POLICY,
         "issue_threshold": ISSUE_THRESHOLD,
         "note": (
@@ -305,10 +329,16 @@ def main() -> int:
     lines += ["", "## How Layer 3 should combine the two issue sets", "",
               "The verdict is fusion's under every one of these; only the issue",
               "set changes. Scored per fold, then averaged.", "",
-              "| policy | issue micro-F1 |", "|---|---:|"]
+              "| policy | issue micro-F1 | labels it never reports |",
+              "|---|---:|---|"]
     for policy in ISSUE_POLICIES:
-        mark = "  **<- best**" if policy == best_policy else ""
-        lines.append(f"| {policy} | {policy_means[policy]:.3f}{mark} |")
+        mark = "  **<- chosen**" if policy == best_policy else ""
+        never = ", ".join(silenced[policy]) or "-"
+        lines.append(
+            f"| {policy} | {policy_means[policy]:.3f}{mark} | {never} |"
+        )
+    lines += ["", "A policy that never reports a label is not a candidate, "
+                  "whatever its average.", ""]
     lines += ["", f"Configured: `{config.ISSUE_POLICY}`. "
                   f"Best measured: `{best_policy}`.",
               "", "Labels the rules were precise enough to add, per fold:"]
@@ -326,8 +356,11 @@ def main() -> int:
               f"issue micro-F1 {scores['issue_micro_f1']:.3f}")
     print("\nissue policies (verdict is fusion's under each):")
     for policy in ISSUE_POLICIES:
-        mark = "   <-- best" if policy == best_policy else ""
-        print(f"   {policy:<14} issue micro-F1 {policy_means[policy]:.3f}{mark}")
+        mark = "   <-- chosen" if policy == best_policy else ""
+        never = silenced[policy]
+        note = f"   never reports: {', '.join(never)}" if never else ""
+        print(f"   {policy:<14} issue micro-F1 "
+              f"{policy_means[policy]:.3f}{mark}{note}")
     if best_policy != config.ISSUE_POLICY:
         print(f"\nconfig.ISSUE_POLICY is '{config.ISSUE_POLICY}'; "
               f"'{best_policy}' scores better here.")

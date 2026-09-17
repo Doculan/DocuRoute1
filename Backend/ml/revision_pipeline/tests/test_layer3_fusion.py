@@ -41,7 +41,8 @@ def test_feature_vector_handles_missing_layer2():
 def test_rule_only_issue_is_marked_rule():
     flags = [{"label": "numeric_changed", "severity": "medium",
               "clause": "7.5.3", "evidence": "30 days"}]
-    merged = merge_issues(flags, [0.0] * len(config.ISSUE_LABELS))
+    merged = merge_issues(flags, [0.0] * len(config.ISSUE_LABELS),
+                          policy="union")
     assert merged[0]["source"] == "rule"
 
 
@@ -69,7 +70,8 @@ def test_issues_are_sorted_by_severity_then_confidence():
         {"label": "numeric_changed", "severity": "medium", "clause": "", "evidence": "x"},
         {"label": "requirement_removed", "severity": "high", "clause": "", "evidence": "y"},
     ]
-    merged = merge_issues(flags, [0.0] * len(config.ISSUE_LABELS))
+    merged = merge_issues(flags, [0.0] * len(config.ISSUE_LABELS),
+                          policy="union")
     assert merged[0]["label"] == "requirement_removed"
 
 
@@ -82,7 +84,9 @@ def test_extra_flag_fields_survive_the_merge():
         {"label": "excessive_deletion", "severity": "high", "clause": "7.5.3",
          "evidence": "60% of the wording was removed", "ratio": 0.6},
     ]
-    merged = {i["label"]: i for i in merge_issues(flags, [0.0] * len(config.ISSUE_LABELS))}
+    merged = {i["label"]: i for i in
+              merge_issues(flags, [0.0] * len(config.ISSUE_LABELS),
+                           policy="union")}
     assert merged["negation_changed"]["action"] == "added"
     assert merged["excessive_deletion"]["ratio"] == 0.6
 

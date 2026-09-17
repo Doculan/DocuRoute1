@@ -59,6 +59,10 @@ def select_issue_labels(rule_labels, model_labels, policy: str = None,
     predictions without building the explanation payload for each one.
     """
     policy = policy or config.ISSUE_POLICY
+    # None means "use the measured list"; an explicit empty set means "none",
+    # which is what evaluate_folds.py passes when it is measuring a fold.
+    if precise_labels is None:
+        precise_labels = config.PRECISE_RULE_LABELS
     rule_labels = set(rule_labels or ())
     model_labels = set(model_labels or ())
 

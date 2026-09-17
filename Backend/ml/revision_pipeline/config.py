@@ -131,11 +131,31 @@ PERMISSIVE_MODALS = [
 #   "rules_precise"  - model issues, plus rule flags only for labels the rules
 #                      get right often enough to be worth adding
 #   "agree"          - only where both sides say the same thing
-ISSUE_POLICY = "union"
+#
+# Measured on the five folds: model 0.853, union 0.695, rules_precise 0.854,
+# agree 0.858. "agree" has the best average and is not usable: it can only
+# report a label the rules also raised, so contradicts_manual and
+# out_of_scope_content score 0.000 under it - the rules never raise either, and
+# those two are the reason Layer 2 exists. Its average is bought by silencing
+# a fifth of the labels, which micro-F1 does not show.
+ISSUE_POLICY = "rules_precise"
 
 # A rule label has to be at least this precise, measured on held-out
 # predictions, before "rules_precise" will add it.
 RULE_PRECISION_FLOOR = 0.90
+
+# The labels that cleared that floor. Measured by evaluate_folds.py on each
+# fold's validation predictions, and the same three came out of all five folds,
+# so this is a property of the rules rather than of one split.
+#
+# Without this list, "rules_precise" at inference time would have no labels to
+# add and would quietly behave as "model" - the policy would be set and do
+# nothing. Re-measure and update it whenever Layer 1 changes.
+PRECISE_RULE_LABELS = [
+    "excessive_deletion",
+    "modal_weakened",
+    "non_equivalent_term",
+]
 
 # ── Sense reversals ───────────────────────────────────────────
 # Pairs that reverse a requirement without using a negation word. Swapping one

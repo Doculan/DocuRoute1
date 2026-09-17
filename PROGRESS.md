@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Folds done** — verdicts 0.975 fused; `MAX_LENGTH` settled at 384; issue merging awaiting the fold predictions |
+| 5 — Train and evaluate | **Folds done and settled** — verdicts 0.979 fused, issues 0.854; `MAX_LENGTH` 384, `ISSUE_POLICY` rules_precise. Final model still to train |
 | 6 — Wire into the app | Not started |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -768,16 +768,45 @@ verdicts right; Layer 2 takes that to 95%, and fusion to 97.5%. The 28%
 verdict-disagreement measured on the dataset was a fair prediction of how much
 work was left for the model, and the model did it.
 
-**The issue result is a regression, and it comes from Layer 3.** Layer 2 alone
-scores 0.853 on issue micro-F1; fusion drops it to 0.695 - below even the
-rules. Fusion reports the **union** of the rule flags and the model's issues,
-so every rule false positive is added to a set the model had right. The union
+**The issue result was a regression, and it came from Layer 3.** Layer 2 alone
+scored 0.853 on issue micro-F1; fusion dropped it to 0.695 - below even the
+rules. Fusion reported the **union** of the rule flags and the model's issues,
+so every rule false positive was added to a set the model had right. The union
 was chosen before there was anything to measure it against.
 
-Being compared on the saved fold predictions, no retraining: model issues only,
-union, rules only for the labels where the rules are precise, and
-both-must-agree. Chosen on per-fold issue micro-F1, provided verdict accuracy
-does not suffer.
+**Fixed: `ISSUE_POLICY = "rules_precise"`, and fusion now scores 0.854.**
+Verdict accuracy is untouched at 0.979 - the verdict is fusion's under every
+policy, only the issue set changes.
+
+| Policy | Issue micro-F1 | Labels it never reports |
+|---|---:|---|
+| model | 0.853 | - |
+| union (was) | 0.695 | - |
+| **rules_precise** | **0.854** | - |
+| agree | 0.858 | `contradicts_manual`, `out_of_scope_content` |
+
+**`agree` has the best average and is not usable.** It can only report a label
+the rules also raised, and the rules raise neither of those two - a reordered
+step sequence and inserted foreign content are exactly what Layer 1 is blind to
+and Layer 2 exists to catch. Per label it scores 0.000 on both. Micro-F1 does
+not show this: it is dominated by the frequent labels, so a policy can silence
+a fifth of the categories and still come top. Its lead also rests on one fold -
+`agree` wins folds 1 and 4 and loses 0, 2 and 3.
+
+`evaluate_folds.py` now refuses to recommend a policy that never reports a
+label that appears in the truth, so this cannot be re-derived by accident.
+
+`rules_precise` adds a rule flag only for labels the rules are precise about,
+measured per fold on the validation predictions. The same three cleared the
+0.90 floor in all five folds - `excessive_deletion`, `modal_weakened`,
+`non_equivalent_term` - so they are pinned in `config.PRECISE_RULE_LABELS`.
+Without that list the policy would have no labels to add at inference time and
+would silently behave as `model`.
+
+Per-label F1 under the chosen policy against the old union, worst first:
+`numeric_changed` 0.460 -> 0.966, `responsibility_changed` 0.596 -> 0.966,
+`requirement_removed` 0.637 -> 0.783, `key_term_deleted` 0.694 -> 0.782,
+`negation_changed` 0.765 -> 0.951.
 
 ### Two faults in the Colab run
 
