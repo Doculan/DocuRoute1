@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Done** — verdicts 0.978 fused, issues 0.854; final model trained on Kaggle and in place |
+| 5 — Train and evaluate | **Done** — verdicts 0.978 fused, issues 0.854 (both means of five folds); final model trained on Kaggle and in place; CPU training measured at ~2 h for the full split |
 | 6 — Wire into the app | **Done** (CHECKPOINT 6 approved) |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -812,7 +812,7 @@ Per-label F1 under the chosen policy against the old union, worst first:
 `requirement_removed` 0.637 -> 0.783, `key_term_deleted` 0.694 -> 0.782,
 `negation_changed` 0.765 -> 0.951.
 
-### The official figures: 0.978 verdict, 0.854 issues
+### The official figures: 0.978 verdict, 0.854 issues (means of five folds)
 
 **The official numbers are the ones in `Backend/ml/reports/fold_evaluation.md`:
 verdict accuracy 0.978, issue micro-F1 0.854.** They come from the committed
@@ -1228,6 +1228,74 @@ worse than a stale diff; the original is in the export either way.
 ---
 
 ## Known issues / deviations
+
+### Definition of done — Layer 2 on CPU, measured
+
+The spec asks that Layer 2 "trains on CPU within a reasonable time using
+`--max-examples`". It had never been run. It has now, on the i3-1215U, writing
+to a scratch directory (the shipped `heads.pt` hashed `ca9f62ff9dc2974f`
+before and after - unchanged):
+
+```
+--max-examples 200 --device cpu    batch 4 (CPU default; the T4 used 16)
+
+epoch 1/3  loss 2.3953  191.3 s  peak 1150 MB  val_acc 0.335
+epoch 2/3  loss 1.9695  232.5 s  peak 1347 MB  val_acc 0.565
+epoch 3/3  loss 1.3531  227.9 s  peak 1222 MB  val_acc 0.705
+total 943 s (15.7 min)
+```
+
+Loss falls monotonically and accuracy is still climbing at epoch 3, so the CPU
+path genuinely trains. Scaled to the full 1,561-row training split (7.8x):
+**~28 min/epoch, ~1.4 h for three epochs**, nearer two hours with the full
+validation pass, peaking at **1.35 GB**.
+
+**Answer to "can it be retrained without a GPU?": yes, in about two hours,
+needing roughly 1.4 GB.** Practical once, impractical to iterate with. Memory
+is the real obstacle, not time - 1.35 GB on a machine that often has ~1 GB
+free would page unless other applications are closed.
+
+Caveat recorded in `EVALUATION.md` 8: this measures throughput, not
+attainable accuracy. 0.705 on 200 examples says nothing about whether a
+CPU-trained model would reach the shipped 0.951.
+
+---
+
+### Future work — PRECISE_RULE_LABELS serves two purposes
+
+`PRECISE_RULE_LABELS` does two unrelated jobs, and that is the underlying
+problem:
+
+1. **With Layer 2 present**, it filters which rule flags are worth adding to
+   the model's labels. Here a label earns inclusion only if the model's recall
+   for it is below 1.000 — otherwise the rule contributes false positives and
+   nothing else.
+2. **With Layer 2 absent**, it *is* the issue output. `keep = rule_labels &
+   precise`, so a label missing from the list is not merely unfiltered, it is
+   unreportable.
+
+The two jobs pull in opposite directions: job 1 wants the list short, job 2
+wants it to cover everything the rules can reliably say. **A configuration
+choice here therefore cannot be judged on micro-F1**, because micro-F1 is
+measured with the model present and is blind to job 2 entirely. That is not a
+hypothetical — it is why `excessive_deletion` stays in the list despite
+scoring +0.0006 against it.
+
+The fix is to separate them: a filter list used when Layer 2's labels are
+available, and the full set of rule flags when they are not. Rules-only mode
+would then report everything the rules found, which is what a degraded mode
+should do, and the filter list could be tuned on micro-F1 honestly. It needs a
+second config entry, a branch in `merge_issues` on whether issue
+probabilities arrived, and tests for both paths — small, but a design change
+rather than a setting, so it is recorded here rather than made.
+
+Measured while deciding whether to drop `excessive_deletion` from the list
+(`EVALUATION.md` 4). Dropping it raises pooled issue micro-F1 from 0.8436 to
+0.8442 and removes the only issue a reviewer sees in rules-only mode - on a
+69% deletion, `"69% of the wording was removed"` becomes an empty issue list.
+Kept, and the shipped configuration is unchanged.
+
+---
 
 ### Deviation from spec 7a — train/val/test.jsonl stay committed
 

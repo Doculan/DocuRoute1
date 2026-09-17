@@ -16,6 +16,11 @@ __pycache__/
 # Local database backups
 Backend/db.sqlite3.bak-*
 
+# Layer 1 output cached to make repeated scoring runs cheap. Derived from
+# all.jsonl and NOT checked for staleness, so committing it risks someone
+# scoring a new dataset against old rule labels. Delete it to rebuild.
+Backend/ml/reports/.rules_cache.json
+
 # Regenerable drafts — the reviewed glossary.txt / entities.json are committed
 Backend/ml/revision_pipeline/*_draft.*
 
