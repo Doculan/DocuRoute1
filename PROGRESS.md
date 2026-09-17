@@ -24,10 +24,10 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 1 — Prereq fixes + Layer 1 rules | **Done** (CHECKPOINT 1 approved) |
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
-| 4 — Dataset creation | **Rebuilt** after CHECKPOINT 4 was rejected (awaiting re-review) |
-| 5 — Train and evaluate | Not started |
+| 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
+| 5 — Train and evaluate | **Ready** — see PHASE5_TRAINING.md; needs the push, then Colab |
 | 6 — Wire into the app | Not started |
-| 7 — Repo hygiene, setup, README | Not started |
+| 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
 ---
 
