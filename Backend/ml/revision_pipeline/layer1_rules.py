@@ -79,6 +79,9 @@ class Layer1Result:
     flags: list = field(default_factory=list)
     change_type: str = "substantive"
     marked: str = ""
+    # The actual term pairs, so the explanation can name them rather than
+    # referring vaguely to "the glossary".
+    equivalent_swaps: list = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -135,7 +138,16 @@ def _numeric_tokens(text: str) -> set[str]:
         lw = w.lower()
         if lw in _NUMBER_WORDS or lw in _FREQUENCY_WORDS:
             tokens.add(lw)
-    return tokens
+
+    # "30 days" already contains "30". Keeping both double-counted the change
+    # and produced evidence reading "30, 30 days, 60, 60 days".
+    phrases = {t for t in tokens if " " in t}
+    return {
+        token for token in tokens
+        if " " in token or not any(
+            re.search(rf"\b{re.escape(token)}\b", phrase) for phrase in phrases
+        )
+    }
 
 
 def _modal_counts(text: str) -> dict:
@@ -177,6 +189,32 @@ def _typo_distance(a: str, b: str) -> int:
             cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
         prev = cur
     return prev[-1]
+
+
+def _drop_contained(phrases) -> set:
+    """Keep only the longest form of each matched phrase.
+
+    The entity list holds both "Accounting Staff" and "Accounting Staff-4", so
+    a single mention matched both and the evidence read
+    "accounting staff, accounting staff-4" as if two roles had changed.
+    """
+    kept = {p for p in phrases if p}
+    return {
+        phrase for phrase in kept
+        if not any(other != phrase and phrase in other for other in kept)
+    }
+
+
+def _quote_list(values) -> str:
+    return ", ".join(f'"{v}"' for v in list(values)[:5])
+
+
+def _is_modal_pair(a: str, b: str) -> bool:
+    """True when a swap is an obligation becoming a permission."""
+    left, right = a.lower(), b.lower()
+    return (left in config.OBLIGATION_MODALS and right in config.PERMISSIVE_MODALS) or (
+        right in config.OBLIGATION_MODALS and left in config.PERMISSIVE_MODALS
+    )
 
 
 def _strip_punct(s: str) -> str:
@@ -274,10 +312,19 @@ def run_layer1(
     negation_delta = abs(len(old_neg) - len(new_neg))
     feats["negation_changed"] = negation_delta
 
+    # Which way the negation went. "A negation changed" leaves the reader to
+    # work out whether the requirement was switched on or off.
+    from collections import Counter
+
+    added_neg = sorted((Counter(new_neg) - Counter(old_neg)).elements())
+    removed_neg = sorted((Counter(old_neg) - Counter(new_neg)).elements())
+
     # -- Numbers ---------------------------------------------------
     old_nums = _numeric_tokens(old_text)
     new_nums = _numeric_tokens(new_text)
-    nums_changed = sorted((old_nums - new_nums) | (new_nums - old_nums))
+    nums_gone = sorted(old_nums - new_nums)
+    nums_new = sorted(new_nums - old_nums)
+    nums_changed = nums_gone + nums_new
     feats["numeric_changed_count"] = len(nums_changed)
 
     # -- Roles -----------------------------------------------------
@@ -286,14 +333,22 @@ def run_layer1(
     # Suffixed roles tracked separately so "Staff-4" -> "Staff-7" counts.
     old_roles |= {m.group(0) for m in _SUFFIX_ROLE_RE.finditer(old_text or "")}
     new_roles |= {m.group(0) for m in _SUFFIX_ROLE_RE.finditer(new_text or "")}
-    old_role_keys = {normalise(r) for r in old_roles}
-    new_role_keys = {normalise(r) for r in new_roles}
+    # A frequency or duration word is not a role, however it was mined.
+    # "Quarterly" reached the role list from a table column header and was
+    # being reported as a change of responsibility.
+    old_role_keys = _drop_contained(
+        normalise(r) for r in old_roles if normalise(r) not in old_nums
+    )
+    new_role_keys = _drop_contained(
+        normalise(r) for r in new_roles if normalise(r) not in new_nums
+    )
     roles_changed = sorted(old_role_keys ^ new_role_keys)
     feats["role_terms_changed_count"] = len(roles_changed)
 
     # -- Glossary swaps --------------------------------------------
+    swaps_all = _swap_pairs(old_text, new_text)
     equivalent_swaps, non_equivalent_swaps, unknown_swaps = [], [], []
-    for a, b in _swap_pairs(old_text, new_text):
+    for a, b in swaps_all:
         rel = glossary.relation(a, b)
         if rel == EQUIVALENT:
             equivalent_swaps.append((a, b))
@@ -320,6 +375,7 @@ def run_layer1(
     feats["cross_ref_conflict_count"] = len(conflicts)
 
     result.features = feats
+    result.equivalent_swaps = equivalent_swaps
 
     # -- Change type -----------------------------------------------
     result.change_type = _classify_change(
@@ -340,26 +396,61 @@ def run_layer1(
         flags.append(_flag("key_term_deleted", ", ".join(terms_lost[:5]),
                            {"terms": terms_lost}))
     if weakened:
-        flags.append(_flag("modal_weakened",
-                           "an obligation was changed to a permission"))
+        # Name the pair. "An obligation was changed to a permission" leaves
+        # the reviewer to hunt for which word moved.
+        modal_pairs = [(a, b) for a, b in swaps_all if _is_modal_pair(a, b)]
+        if modal_pairs:
+            evidence = ", ".join(f'"{a}" became "{b}"' for a, b in modal_pairs[:3])
+        else:
+            evidence = "an obligation became a permission"
+        flags.append(_flag("modal_weakened", evidence, {"pairs": modal_pairs}))
     if negation_delta:
-        changed_neg = sorted(set(old_neg) ^ set(new_neg))
-        flags.append(_flag("negation_changed",
-                           ", ".join(changed_neg[:5]) or "a negation changed"))
+        if added_neg and not removed_neg:
+            action, words_used = "added", added_neg
+        elif removed_neg and not added_neg:
+            action, words_used = "removed", removed_neg
+        else:
+            action, words_used = "changed", added_neg + removed_neg
+        flags.append(_flag(
+            "negation_changed",
+            _quote_list(words_used) or "a negation",
+            {"action": action, "added": added_neg, "removed": removed_neg},
+        ))
     if nums_changed:
-        flags.append(_flag("numeric_changed", ", ".join(nums_changed[:5]),
-                           {"values": nums_changed}))
+        # Direction, not just "a figure changed": one pair reads as
+        # "30 days" -> "60 days"; several are listed on each side.
+        from_text, to_text = _quote_list(nums_gone), _quote_list(nums_new)
+        if nums_gone and nums_new:
+            evidence, direction = f"{from_text} to {to_text}", "changed"
+        elif nums_new:
+            evidence, direction = to_text, "added"
+        else:
+            evidence, direction = from_text, "removed"
+        flags.append(_flag(
+            "numeric_changed", evidence,
+            {"values": nums_changed, "from_values": nums_gone,
+             "to_values": nums_new, "direction": direction,
+             "from_text": from_text, "to_text": to_text},
+        ))
     if roles_changed:
         flags.append(_flag("responsibility_changed", ", ".join(roles_changed[:5]),
                            {"roles": roles_changed}))
     if removed_sentences:
         flags.append(_flag("requirement_removed", removed_sentences[0][:160],
                            {"count": len(removed_sentences)}))
-    if non_equivalent_swaps:
+    # A shall -> may swap is already reported as modal_weakened, which says
+    # more. Reporting it again as a non-equivalent term describes the same
+    # change twice in the same paragraph.
+    reportable_swaps = non_equivalent_swaps
+    if weakened:
+        reportable_swaps = [
+            (a, b) for a, b in non_equivalent_swaps if not _is_modal_pair(a, b)
+        ]
+    if reportable_swaps:
         flags.append(_flag(
             "non_equivalent_term",
-            ", ".join(a + " -> " + b for a, b in non_equivalent_swaps[:5]),
-            {"swaps": non_equivalent_swaps},
+            ", ".join(f'"{a}" became "{b}"' for a, b in reportable_swaps[:5]),
+            {"swaps": reportable_swaps},
         ))
     if conflicts:
         flags.append(_flag(

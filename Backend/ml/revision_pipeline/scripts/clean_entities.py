@@ -33,6 +33,15 @@ _HEADINGS = {
 
 # Bare category words. They match almost any sentence, so keeping them makes
 # responsibility_changed fire on unrelated edits.
+# Frequency, timing and status words. They appear as table column headers and
+# got mined as roles, so a changed schedule was reported as a changed
+# responsibility.
+_NON_ENTITY_WORDS = {
+    "daily", "weekly", "monthly", "quarterly", "annually", "yearly", "hourly",
+    "semestral", "immediately", "timely", "ongoing", "as needed", "none",
+    "yes", "no", "n/a", "na", "total", "subtotal", "approved", "pending",
+}
+
 _BARE_CATEGORIES = {
     "office", "unit", "department", "committee", "board", "council",
     "staff", "student", "employee", "personnel", "faculty", "director",
@@ -62,6 +71,10 @@ _EMBEDDED_NUMBER_RE = re.compile(r"\s+\d+\.\d+\.?\s+")
 # "Accounting Staff-4 8" / "Accounting Staff-4 4" - a step number that came
 # along with the role cell.
 _TRAILING_NUMBER_RE = re.compile(r"(-\d+)\s+\d+$")
+# A leading article picked up with the phrase: "the Accounting Staff-4".
+# Left in, the evidence reads "the accounting staff-4" and the same role
+# matches twice.
+_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
 # A dangling conjunction left by a split: "Accounting Staff-1 or".
 _DANGLING_RE = re.compile(r"\s+(?:or|and|to|of|the|by|for)$", re.IGNORECASE)
 
@@ -72,6 +85,7 @@ def _clean_phrase(value: str) -> str:
     text = re.sub(r"<!--.*?-->", "", text).strip()
     text = re.sub(r"^\d+(\.\d+)*\.?\s*", "", text)          # leading numbering
     text = _HEADER_PREFIX_RE.sub("", text)
+    text = _ARTICLE_RE.sub("", text)
     # Strip trailing punctuation before the regexes below, not after: a
     # trailing full stop in "Accounting Staff-4 4." stopped the step-number
     # pattern from anchoring.
@@ -99,6 +113,8 @@ def _is_noise(value: str, *, bare_ok: bool = False) -> bool:
     if low in _HEADINGS:
         return True
     if not bare_ok and low in _BARE_CATEGORIES:
+        return True
+    if low in _NON_ENTITY_WORDS:
         return True
     if re.fullmatch(r"[\d\W]+", value):                      # digits/punctuation only
         return True

@@ -100,7 +100,6 @@
     "Management Staff",
     "MANCOM / Secretary of the University President",
     "Monitoring ofaccomplishment",
-    "Monthly",
     "NEW",
     "Offices concerned",
     "OSD Staff",
@@ -124,7 +123,6 @@
     "Purchaser/Supply and Property Officer",
     "QMSASO Director",
     "QMSASO Staff",
-    "Quarterly",
     "Records Management Staff",
     "Records Officer",
     "Regional QCE Team",
@@ -171,7 +169,6 @@
     "VPS/Deans/ /Directors",
     "VPSD",
     "WinningBidder/Supplier",
-    "Yearly",
     "Zonal Computer Center"
   ],
   "offices": [
@@ -205,9 +202,6 @@
     "Search Committee",
     "Student Disciplinary Committee",
     "Supreme Student Council",
-    "The Board",
-    "The Preliminary Hearing Committee",
-    "The Student Disciplinary Committee",
     "University Curriculum Committee"
   ],
   "systems": [
@@ -316,7 +310,6 @@
     "Journal Entry Voucher (JEV)",
     "LDDAP-ADA",
     "Liquidation Report (LR)",
-    "None",
     "Notice of Award",
     "Notice of Award to Winning Bidder",
     "Notice to Proceed",

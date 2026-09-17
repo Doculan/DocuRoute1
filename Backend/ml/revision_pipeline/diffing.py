@@ -150,34 +150,105 @@ def change_ratios(old: str, new: str) -> dict:
     }
 
 
-def sentences_removed(old: str, new: str, similarity: float = 0.7) -> list:
+def _content_words(sentence: str) -> set:
+    """Words long enough to carry meaning - articles and prepositions inflate
+    any overlap measure otherwise."""
+    return {w for w in words(normalise(sentence)) if len(w) >= 4}
+
+
+def _pair_score(old_norm: str, new_norm: str, old_sent: str, new_sent: str):
+    """How strongly two sentences look like versions of each other.
+
+    Character similarity alone misses a heavy rewrite that keeps the subject
+    and object; content-word overlap alone matches any two sentences about
+    "staff". Either signal can carry a match, but the overlap route also needs
+    at least two shared content words so one common noun cannot do it.
+    """
+    ratio = difflib.SequenceMatcher(a=old_norm, b=new_norm).ratio()
+    old_words_set, new_words_set = _content_words(old_sent), _content_words(new_sent)
+    shared = old_words_set & new_words_set
+    smaller = min(len(old_words_set), len(new_words_set)) or 1
+    overlap = len(shared) / smaller
+    if ratio >= 0.6:
+        return ratio
+    if overlap >= 0.6 and len(shared) >= 2:
+        return overlap
+    return 0.0
+
+
+def sentences_removed(old: str, new: str, similarity: float = 0.6) -> list:
     """Sentences dropped from the original, not merely reworded.
 
-    Two refinements over a plain exact-match test, both of which mattered:
+    A sentence counts as surviving only when some sentence in the revision is
+    recognisably a version of it. Matching is one-to-one and **content-based**:
 
-    * A reworded sentence is not a removed one, so a near match counts as
-      surviving. Without this, a typo fix reported a removed requirement.
-    * Matching is **one-to-one**. Sentences in these manuals share a skeleton
-      ("Staff check the form", "Staff sign the log"), so a per-sentence best
-      match let one survivor vouch for every deleted sibling.
+    * Counting removals only up to how much the text shrank was gameable -
+      deleting a requirement while adding an unrelated sentence kept the count
+      level and reported nothing removed.
+    * A per-sentence best match let one survivor vouch for its deleted
+      siblings, which all share a skeleton ("Staff check the form", "Staff
+      sign the log").
+
+    Pairs are therefore scored first and assigned best-first, so an exact match
+    claims its partner before a weaker candidate can.
     """
-    new_sents = [normalise(s) for s in sentences(new)]
-    claimed = [False] * len(new_sents)
-    removed = []
+    old_sents = [s for s in sentences(old) if normalise(s)]
+    new_sents = [s for s in sentences(new) if normalise(s)]
+    old_norms = [normalise(s) for s in old_sents]
+    new_norms = [normalise(s) for s in new_sents]
 
-    for sent in sentences(old):
-        norm = normalise(sent)
-        if not norm:
+    scored = []
+    for i, (old_sent, old_norm) in enumerate(zip(old_sents, old_norms)):
+        for j, (new_sent, new_norm) in enumerate(zip(new_sents, new_norms)):
+            score = _pair_score(old_norm, new_norm, old_sent, new_sent)
+            if score >= similarity:
+                scored.append((score, i, j))
+
+    scored.sort(key=lambda item: -item[0])
+    matched_old, matched_new = set(), set()
+    for score, i, j in scored:
+        if i in matched_old or j in matched_new:
             continue
-        best_idx, best_score = -1, 0.0
-        for idx, cand in enumerate(new_sents):
-            if claimed[idx]:
-                continue
-            score = difflib.SequenceMatcher(a=norm, b=cand).ratio()
-            if score > best_score:
-                best_idx, best_score = idx, score
-        if best_score >= similarity and best_idx >= 0:
-            claimed[best_idx] = True
-        else:
-            removed.append(sent)
-    return removed
+        matched_old.add(i)
+        matched_new.add(j)
+
+    return [sent for i, sent in enumerate(old_sents) if i not in matched_old]
+
+
+def sentence_match_report(old: str, new: str, similarity: float = 0.6,
+                          band: float = 0.1) -> dict:
+    """Matching decisions with their scores, for dataset quality checking.
+
+    The 0.6 cut-off decides whether an edit counts as a rewrite or a removal,
+    which in turn decides whether an example carries ``requirement_removed``.
+    A pair scoring 0.58 and one scoring 0.62 are labelled oppositely on a
+    hair's breadth, so Phase 4 reports how many land in that band.
+    """
+    old_sents = [s for s in sentences(old) if normalise(s)]
+    new_sents = [s for s in sentences(new) if normalise(s)]
+    old_norms = [normalise(s) for s in old_sents]
+    new_norms = [normalise(s) for s in new_sents]
+
+    best_for_old = {i: (0.0, None) for i in range(len(old_sents))}
+    for i, (old_sent, old_norm) in enumerate(zip(old_sents, old_norms)):
+        for new_sent, new_norm in zip(new_sents, new_norms):
+            score = _pair_score(old_norm, new_norm, old_sent, new_sent)
+            if score > best_for_old[i][0]:
+                best_for_old[i] = (score, new_sent)
+
+    borderline = []
+    for i, (score, partner) in best_for_old.items():
+        if similarity - band <= score <= similarity + band:
+            borderline.append({
+                "score": round(score, 3),
+                "old": old_sents[i],
+                "closest_new": partner,
+                "counted_as": "edited" if score >= similarity else "removed",
+            })
+
+    return {
+        "removed": sentences_removed(old, new, similarity),
+        "borderline": borderline,
+        "old_sentences": len(old_sents),
+        "new_sentences": len(new_sents),
+    }

@@ -184,6 +184,39 @@ def tune_thresholds(issue_true, issue_prob) -> dict:
     return thresholds
 
 
+def median_fold_thresholds(folds_dir) -> dict:
+    """Median per-label threshold across the cross-validation folds.
+
+    The final model trains on everything and keeps only an 8% slice for early
+    stopping. That slice is far too small to tune a threshold for a rare label
+    like contradicts_manual - a couple of examples either way would move the
+    cut-off wildly. The folds each tuned on a proper validation split, so their
+    median is the more honest estimate.
+    """
+    folds_dir = Path(folds_dir)
+    collected = {label: [] for label in config.ISSUE_LABELS}
+    found = 0
+
+    for path in sorted(folds_dir.glob("fold_*/thresholds.json")) or             sorted(folds_dir.glob("*/thresholds.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        found += 1
+        for label, value in data.items():
+            if label in collected:
+                collected[label].append(float(value))
+
+    if not found:
+        return {}
+
+    thresholds = {}
+    for label, values in collected.items():
+        thresholds[label] = round(float(np.median(values)), 2) if values else 0.5
+    print(f"thresholds: median across {found} folds in {folds_dir}")
+    return thresholds
+
+
 # -- training --------------------------------------------------
 
 def train(args) -> dict:
@@ -318,7 +351,9 @@ def train(args) -> dict:
         model.to(device)
 
     thresholds = {label: 0.5 for label in config.ISSUE_LABELS}
-    if val_loader:
+    if args.thresholds_from:
+        thresholds = median_fold_thresholds(args.thresholds_from) or thresholds
+    elif val_loader:
         final = evaluate(model, val_loader, device)
         thresholds = tune_thresholds(final["_issue_true"], final["_issue_prob"])
 
@@ -401,6 +436,11 @@ def main() -> int:
                     help="token budget per example; the main speed lever on CPU")
     ap.add_argument("--issue-loss-weight", type=float, default=1.0)
     ap.add_argument("--fold", default=None, help="fold id, recorded in label_config")
+    ap.add_argument("--thresholds-from", default=None, metavar="DIR",
+                    help="take per-label thresholds as the median across the "
+                         "fold results in DIR instead of tuning on validation; "
+                         "used for the final model, whose held-out slice is too "
+                         "small to tune rare labels on")
     ap.add_argument("--estimate-first", action="store_true",
                     help="time 20 steps and print an estimate before training")
     args = ap.parse_args()

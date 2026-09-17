@@ -23,7 +23,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 0 — Explore and report | **Done** (CHECKPOINT 0 approved) |
 | 1 — Prereq fixes + Layer 1 rules | **Done** (awaiting CHECKPOINT 1) |
 | 2 — Layer 2 context model | **Done** (awaiting CHECKPOINT 2) |
-| 3 — Layer 3 fusion + Layer 4 explanation | Not started |
+| 3 — Layer 3 fusion + Layer 4 explanation | **Done** (awaiting CHECKPOINT 3) |
 | 4 — Dataset creation | Not started |
 | 5 — Train and evaluate | Not started |
 | 6 — Wire into the app | Not started |
@@ -118,6 +118,40 @@ alone is 254 MB).
 
 ---
 
+## Phase 3 — what was built
+
+- `layer3_fusion.py` — feature assembly, issue merging with a `source` of
+  `rule` / `model` / `both`, a fusion model that fits both LogisticRegression
+  and HistGradientBoosting and keeps whichever cross-validates better (recorded
+  in `fusion_config.json`), coefficients exposed for `ai_trace`, and a
+  rules-only fallback.
+- `layer4_explain.py` — deterministic template writer seeded by revision id.
+  Three or more phrasings per label, hedging by confidence
+  (>0.85 "clearly", >0.65 "likely", else "may"), varied connectors with
+  high-severity variants, a six-sentence cap that summarises the remainder,
+  and the decision-9 "not assessed" message.
+- `pipeline.py` — `assess_revision(revision)` and `assess_texts(...)`, models
+  cached per process, torch imported lazily so a Django worker that never
+  assesses anything does not pay for it. Missing Layer 2 weights degrade to
+  rules-only with `trace.layer2 = "unavailable"` rather than failing.
+- `scripts/train_fusion.py` — trains from the saved fold predictions, on the
+  **validation** split only.
+
+**Two overrides are deliberately not learned:** a Layer 1 hard fail forces
+`reject` (the objection is procedural, not the model's call), and a
+high-severity issue that *both* sources flag forces at least `needs_revision`.
+
+34 new tests, 112 total, all passing.
+
+### Bugs found while wiring the layers together
+
+| Bug | Fix |
+|---|---|
+| Numeric evidence read `30, 30 days, 60, 60 days` — the bare number and the duration containing it were both counted, inflating `numeric_changed_count` | Drop a token contained in a longer matched phrase |
+| Role evidence listed `accounting staff` and `accounting staff-4` for one mention, because the entity list holds both forms | Keep only the longest matching phrase |
+
+---
+
 ## Training budget and the fold decision
 
 **Hardware of record: i3-1215U (2 performance + 4 efficiency cores), 8 GB RAM
@@ -163,9 +197,14 @@ on a GPU.
 - **Fusion trains from the saved prediction files**, so it runs in Colab or
   locally after downloading `folds/` — it never needs a fold model.
 - **One final model** is trained afterwards on every document, holding out 8%
-  purely so early stopping and threshold tuning have something to watch. Only
-  that model — encoder, tokenizer, `heads.pt`, `thresholds.json`,
-  `label_config.json` — is zipped to Drive.
+  purely so **early stopping** has something to watch. Only that model —
+  encoder, tokenizer, `heads.pt`, `thresholds.json`, `label_config.json` — is
+  zipped to Drive.
+- **The final model's per-issue thresholds are the median across the five
+  folds** (`--thresholds-from`), not tuned on the 8% slice. That slice is far
+  too small for a rare label such as `contradicts_manual`: a couple of examples
+  either way would swing the cut-off. Each fold tuned on a proper validation
+  split, so their median is the more honest estimate.
 - Colab clones from **GitHub**, so whatever is being trained must be pushed
   first. The Phase 7 size check runs before that push.
 
@@ -177,6 +216,41 @@ and `--estimate-first` prints peak RSS with a warning past 3 GB. Measured
 1,410 MB at batch 2 × 128 tokens, so batch 4 × 384 needs watching on a machine
 with 1 GB free. TF-IDF stays the default retrieval backend — no model
 download, no extra memory.
+
+---
+
+## Phase 4 — dataset quality bar (agreed before building)
+
+**Treat every generated example as if a real staff member submitted it and a
+real admin will judge it.** A dataset of mechanical edits teaches the model to
+spot mechanical edits, which is not the task.
+
+- **Readability.** Every example must read like something staff would actually
+  write: grammatical, in the manual's style, no broken sentences, no leftover
+  markers, no obviously mechanical edits (random words, doubled spaces,
+  nonsense substitutions).
+- **Label correctness.** Every label must be right as a real admin would judge
+  it. Where a generator produces an edit whose correct verdict is unclear,
+  **discard it rather than guess**.
+- **Realistic edit patterns.** Mix them: several small edits in one revision,
+  a good change combined with a bad one, a whole sentence reworded rather than
+  one word swapped, and legitimate edits that look suspicious.
+- **Change reasons.** Every revision carries a realistic `change_reason` in
+  staff language ("Updated to reflect the new collection schedule"), including
+  some vague or misleading ones on bad revisions. A few have none, to exercise
+  the clause 6.3 hard fail.
+- **Quality gate in `build_dataset.py`.** Validate each example - markers,
+  grammar sanity, label consistency against the Layer 1 flags where applicable
+  - and report rejection counts per generator.
+- **Report borderline sentence matches.** The 0.6 similarity cut-off in
+  `sentences_removed` decides whether an edit is a rewrite or a removal, and so
+  whether the example carries `requirement_removed`. Report how many pairs
+  scored **0.5-0.7**, with a few examples, using
+  `diffing.sentence_match_report()`. A count creeping up means the threshold is
+  carrying more weight than it should.
+- **At CHECKPOINT 4:** show 5 random examples per generator, plus the 10 the
+  quality check scored most borderline, for review as a real admin before any
+  training.
 
 ---
 
