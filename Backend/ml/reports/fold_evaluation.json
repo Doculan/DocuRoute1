@@ -81,7 +81,7 @@
       }
     },
     "fold_2": {
-      "kind": "logistic",
+      "kind": "boosting",
       "train_n": 481,
       "test_n": 650,
       "precise_rule_labels": [
@@ -100,8 +100,8 @@
         "issue_micro_f1": 0.8887
       },
       "fusion": {
-        "verdict_accuracy": 0.9708,
-        "verdict_macro_f1": 0.9698,
+        "verdict_accuracy": 0.9646,
+        "verdict_macro_f1": 0.9634,
         "issue_micro_f1": 0.8927
       },
       "issue_policies": {
@@ -213,8 +213,8 @@
       "issue_micro_f1": 0.8526
     },
     "fusion": {
-      "verdict_accuracy": 0.9794,
-      "verdict_macro_f1": 0.9784,
+      "verdict_accuracy": 0.9782,
+      "verdict_macro_f1": 0.9771,
       "issue_micro_f1": 0.8535
     }
   },

@@ -169,9 +169,11 @@ class FusionResult:
 
 
 class FusionModel:
-    """Logistic regression or gradient boosting over the combined features."""
+    """Gradient boosting over the rule features and the model's probabilities."""
 
-    def __init__(self, estimator=None, kind: str = "logistic"):
+    KIND = "boosting"
+
+    def __init__(self, estimator=None, kind: str = KIND):
         self.estimator = estimator
         self.kind = kind
 
@@ -179,45 +181,28 @@ class FusionModel:
 
     @classmethod
     def train(cls, X, y, seed: int = None):
-        """Fit both candidates and keep whichever validates better.
+        """Fit gradient boosting. One estimator, no selection.
 
-        Which one won is recorded, because "we tried two and took the better"
-        is only meaningful if the reader can see which it was.
+        This used to fit logistic regression as well and keep whichever
+        cross-validated better. The two are close enough that the choice
+        flipped between scikit-learn versions: the same fold predictions gave
+        0.975 on Colab and 0.979 here, and fold 1 alone swung four points on
+        which estimator won. A result that depends on where it was fitted is
+        not a result.
+
+        Boosting is the one kept because it was better on four of the five
+        folds and on the average (0.9782 against 0.9715 with logistic forced).
         """
         from sklearn.ensemble import HistGradientBoostingClassifier
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import f1_score
-        from sklearn.model_selection import cross_val_predict
 
         seed = config.SEED if seed is None else seed
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
 
-        candidates = {
-            "logistic": LogisticRegression(
-                max_iter=2000, class_weight="balanced", random_state=seed
-            ),
-            "boosting": HistGradientBoostingClassifier(random_state=seed),
-        }
-
-        # Enough of every class to cross-validate? With a tiny or degenerate
-        # label set, fall back to plain fitting rather than crashing.
-        counts = {label: int((y == label).sum()) for label in set(y.tolist())}
-        folds = min(3, min(counts.values())) if counts else 0
-
-        scores = {}
-        for name, estimator in candidates.items():
-            if folds >= 2:
-                predicted = cross_val_predict(estimator, X, y, cv=folds)
-                scores[name] = f1_score(y, predicted, average="macro", zero_division=0)
-            else:
-                scores[name] = 0.0
-
-        best = max(scores, key=scores.get) if scores else "logistic"
-        estimator = candidates[best]
+        estimator = HistGradientBoostingClassifier(random_state=seed)
         estimator.fit(X, y)
-        model = cls(estimator=estimator, kind=best)
-        model.selection_scores = {k: round(float(v), 4) for k, v in scores.items()}
+        model = cls(estimator=estimator, kind=cls.KIND)
+        model.selection_scores = {}
         return model
 
     # -- prediction -------------------------------------------

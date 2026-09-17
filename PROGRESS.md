@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Folds done and settled** — verdicts 0.979 fused, issues 0.854; `MAX_LENGTH` 384, `ISSUE_POLICY` rules_precise. Final model still to train |
+| 5 — Train and evaluate | **Folds done and settled** — verdicts 0.978 fused, issues 0.854; fusion pinned to boosting and trained; Layer 2 final model still to train (Kaggle) |
 | 6 — Wire into the app | Not started |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -811,7 +811,7 @@ Per-label F1 under the chosen policy against the old union, worst first:
 ### The official figures, and why Colab said 0.975
 
 **The official numbers are the ones in `Backend/ml/reports/fold_evaluation.md`:
-verdict accuracy 0.979, issue micro-F1 0.854.** They come from the committed
+verdict accuracy 0.978, issue micro-F1 0.854.** They come from the committed
 code, the committed dataset and the pinned seed, over the same fold predictions
 Colab produced, and can be reproduced with one command. The Colab run reported
 0.975 for the verdict; that environment is not pinned anywhere.
@@ -828,17 +828,38 @@ Forcing one estimator across all five folds:
 |---|---|---:|
 | logistic only | 0.985, 0.946, 0.971, 0.977, 0.979 | 0.9715 |
 | boosting only | 0.981, 0.985, 0.965, 0.979, 0.981 | 0.9782 |
-| as selected (boost, boost, logistic, boost, boost) | | **0.9794** |
+| as selected (boost, boost, logistic, boost, boost) | | 0.9794 |
 
 Fold 1 alone swings 4 points on that choice - 0.946 with logistic, 0.985 with
 boosting. One fold selecting differently under Colab's scikit-learn accounts
 for the 0.4 points exactly.
 
-**Known issue, not yet acted on:** picking between two estimators by a hair
-makes the result environment-dependent, and the fusion model the app ships
-could be either kind depending on where it was fitted. Boosting is better on
-average and on four of five folds; pinning it would make this reproducible at
-the cost of the selection step. Local scikit-learn is 1.9.0.
+**Resolved 2026-09-18: fusion is pinned to gradient boosting.** The selection
+step is gone. `FusionModel.train` fits one estimator, so the same predictions
+give the same result wherever they are fitted, and the official verdict figure
+is now **0.978** - the "boosting only" row above, as expected. Boosting was
+kept because it was better on four of the five folds and on the average.
+A result that depends on which scikit-learn fitted it is not a result. Local
+scikit-learn is 1.9.0.
+
+### The shipped Layer 3 model
+
+Trained locally from `folds_from_drive`, on **all five folds' validation
+predictions** (2,762 rows), into `Backend/ml/saved_models/context_v2/` as
+`fusion.pkl` and `fusion_config.json`. That is a different object from the
+per-fold models `evaluate_folds.py` fits to measure: those see one fold's val
+predictions each and are thrown away.
+
+`Backend/ml/saved_models/` is gitignored, so this is a local artefact. It has
+to travel with the Layer 2 weights - a clone will not have it.
+
+**The Kaggle archive cannot overwrite it.** The archive is built from
+`context_v2/final/`, which holds Layer 2 only, so unzipping into `context_v2/`
+adds `encoder/`, `tokenizer/`, `heads.pt` and `label_config.json` beside
+`fusion.pkl` rather than over it. Verified by unzipping a mock archive over the
+real directory: `fusion.pkl` came out byte-identical (sha256 unchanged). The
+packaging cell now also refuses to write an archive containing `fusion.pkl` or
+`fusion_config.json`, so it cannot start happening later.
 
 ### The issue policy was chosen on the test folds, and holds on validation too
 

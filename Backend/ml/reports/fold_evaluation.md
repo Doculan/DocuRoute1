@@ -14,7 +14,7 @@ separately on all folds' val predictions.
 | fold_1 | fusion | 0.985 | 0.983 | 0.750 |
 | fold_2 | rules_only | 0.785 | 0.786 | 0.665 |
 | fold_2 | model_only | 0.963 | 0.962 | 0.889 |
-| fold_2 | fusion | 0.971 | 0.970 | 0.893 |
+| fold_2 | fusion | 0.965 | 0.963 | 0.893 |
 | fold_3 | rules_only | 0.819 | 0.816 | 0.691 |
 | fold_3 | model_only | 0.965 | 0.963 | 0.882 |
 | fold_3 | fusion | 0.979 | 0.978 | 0.882 |
@@ -28,7 +28,7 @@ separately on all folds' val predictions.
 |---|---:|---:|---:|
 | rules_only | 0.791 | 0.788 | 0.667 |
 | model_only | 0.951 | 0.946 | 0.853 |
-| fusion | 0.979 | 0.978 | 0.854 |
+| fusion | 0.978 | 0.977 | 0.854 |
 
 ## How Layer 3 should combine the two issue sets
 
