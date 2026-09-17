@@ -175,6 +175,9 @@ folder, not a commit.
 - **Per-label F1 for the two thin labels**, `key_term_deleted` (126 examples)
   and `non_equivalent_term` (89). Both are below the 150 floor and will be the
   weakest.
+- **`MAX_LENGTH` is 384**, matching the folds that were evaluated. The notebook
+  reads it from config, so do not set it in a cell. Raising it means retraining
+  the folds before their numbers mean anything again.
 - **Whether fusion beats Layer 1 alone**, from `final/fold_evaluation.md`. It
   scores rules-only, model-only and fusion on the same held-out test rows of
   each fold, so the three are directly comparable. Fusion is fitted on that

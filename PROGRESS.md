@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Folds done** — verdicts 0.975 fused; issue merging under review, final model to be retrained at 512 |
+| 5 — Train and evaluate | **Folds done** — verdicts 0.975 fused; `MAX_LENGTH` settled at 384; issue merging awaiting the fold predictions |
 | 6 — Wire into the app | Not started |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -630,7 +630,9 @@ rows still attached. Backups: `db.sqlite3.bak-2026-09-17-glue`,
   units, reported under `negation_changed` with the pair as evidence, and
   reported once - never also as a term swap. 32 tests in
   `tests/test_sense_and_numbers.py`.
-- **`MAX_LENGTH` is now 512.**
+- **`MAX_LENGTH` was set to 512** at Checkpoint 4, and **reverted to 384 on
+  2026-09-17** once it emerged that the notebook had been training at 384
+  all along. See "MAX_LENGTH settled at 384" below.
 
 ---
 
@@ -794,6 +796,25 @@ does not suffer.
 - Cell 2 could not be rerun: it deleted the directory it was standing in. It
   now steps out to `/content` first and stops with a clear message if the clone
   fails, rather than letting every later cell fail for an unrelated reason.
+
+### MAX_LENGTH settled at 384
+
+The five folds trained at 384 because the notebook pinned it there while
+`config.MAX_LENGTH` said 512. Rather than retrain, `config.MAX_LENGTH` is now
+**384**, so the final model and the app run at the length the reported numbers
+were measured at. The notebook reads the value from config, so the two can no
+longer disagree in either direction.
+
+What it costs: at 512 the marked change fits whole for 75% of examples, at 384
+for 68%. The other 32% are not lost - `_window_around_change` keeps a window
+around the markers with the head and tail of the section, so the change itself
+is always in the input. It is context that is trimmed, not the edit.
+
+The numbers in "Colab training results" above therefore describe the
+configuration that is now in force. Raising `MAX_LENGTH` again invalidates
+them and means retraining the folds.
+
+---
 
 ---
 

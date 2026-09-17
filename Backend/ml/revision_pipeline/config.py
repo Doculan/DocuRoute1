@@ -183,7 +183,12 @@ NEGATED_FORMS = [
 
 SPECIAL_TOKENS = ["[DEL]", "[/DEL]", "[INS]", "[/INS]", "[ROLE]", "[STEP]"]
 
-MAX_LENGTH = 512
+# 384, not 512, because that is what the five evaluated folds trained at:
+# the notebook had it pinned while this said 512. Matching the measured
+# result matters more than the extra coverage - at 512 the change fits
+# whole for 75% of examples, at 384 for 68%, and the windowing keeps the
+# marked change either way. Changing this invalidates those numbers.
+MAX_LENGTH = 384
 
 # ── Feature order for Layer 3 ─────────────────────────────────
 # The fusion model consumes a flat vector; this fixes its column order.
