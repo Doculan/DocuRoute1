@@ -18,3 +18,10 @@ Backend/db.sqlite3.bak-*
 
 # Regenerable drafts — the reviewed glossary.txt / entities.json are committed
 Backend/ml/revision_pipeline/*_draft.*
+
+# Throwaway dataset probes; context_v2 itself is committed
+Backend/ml/datasets/_probe/
+
+# Review pages contain manual excerpts; regenerate with build_review_page.py
+Backend/ml/datasets/**/CHECKPOINT4_REVIEW.html
+Backend/ml/datasets/**/*_REVIEW.html
