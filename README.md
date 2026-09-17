@@ -181,6 +181,10 @@ Open **http://localhost:5173** and sign in.
 
 ### On a LAN — several devices at once
 
+> For a live demonstration, follow **`DEMO_CHECKLIST.md`** instead — the
+> same steps in order, plus the pre-warm, what to check when a device
+> cannot connect, and the hotspot fallback.
+
 For a demonstration with staff and admin on separate machines. The frontend
 calls the API by **relative** path, so the browser sends every request to
 whichever host served the page and Vite's proxy (`vite.config.js`) forwards it
