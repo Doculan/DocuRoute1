@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Running** — pushed 2026-09-17 (`607469a`); Colab training started, awaiting results |
+| 5 — Train and evaluate | **Folds done** — verdicts 0.975 fused; issue merging under review, final model to be retrained at 512 |
 | 6 — Wire into the app | Not started |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -746,6 +746,54 @@ disputed.
 
 A second audit pair is exported as `label_audit_r2.csv` /
 `label_audit_r2_key.csv` (the first pair is left untouched).
+
+---
+
+## Phase 5 — Colab training results (2026-09-17)
+
+Five folds on a T4, about 4 minutes each. Fusion fitted on each fold's val
+predictions and scored on that fold's test predictions; rules-only and
+model-only scored on the same rows. Averaged over the five folds:
+
+| System | Verdict accuracy | Verdict macro-F1 | Issue micro-F1 |
+|---|---:|---:|---:|
+| rules only | 0.791 | 0.788 | 0.667 |
+| model only | 0.951 | 0.946 | **0.853** |
+| fusion | **0.975** | **0.974** | 0.695 |
+
+**The verdict result is what Phase 2 was for.** The rules alone get 79% of
+verdicts right; Layer 2 takes that to 95%, and fusion to 97.5%. The 28%
+verdict-disagreement measured on the dataset was a fair prediction of how much
+work was left for the model, and the model did it.
+
+**The issue result is a regression, and it comes from Layer 3.** Layer 2 alone
+scores 0.853 on issue micro-F1; fusion drops it to 0.695 - below even the
+rules. Fusion reports the **union** of the rule flags and the model's issues,
+so every rule false positive is added to a set the model had right. The union
+was chosen before there was anything to measure it against.
+
+Being compared on the saved fold predictions, no retraining: model issues only,
+union, rules only for the labels where the rules are precise, and
+both-must-agree. Chosen on per-fold issue micro-F1, provided verdict accuracy
+does not suffer.
+
+### Two faults in the Colab run
+
+- **The final-model cell trained on the CPU.** GPU memory sat at 0.0 GB for
+  thirty-plus minutes while the folds had taken four minutes each on the same
+  runtime. The cell already passed `--device cuda`, the same as the fold cell,
+  so the cause is not visible from the arguments. `pick_device` now refuses to
+  run at all when a CUDA device is available and the run would not use it, and
+  the reverse, so the next run reports the cause instead of being slow about
+  it. It also prints the GPU name and per-epoch progress, flushed, since
+  thirty minutes of silence reads as a hang.
+- **`MAX_LENGTH` was pinned at 384 in the notebook** while `config.MAX_LENGTH`
+  said 512. The folds were trained at the wrong length. The notebook now reads
+  it from config, so the two cannot drift again. **The reported results above
+  were produced at 384.**
+- Cell 2 could not be rerun: it deleted the directory it was standing in. It
+  now steps out to `/content` first and stops with a clear message if the clone
+  fails, rather than letting every later cell fail for an unrelated reason.
 
 ---
 

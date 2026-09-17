@@ -70,9 +70,30 @@ def configure_threads(threads: int = None) -> int:
 
 
 def pick_device(requested: str) -> torch.device:
-    if requested and requested != "auto":
-        return torch.device(requested)
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    """The device to train on, or a loud failure.
+
+    A run that quietly falls back to the CPU looks like a slow run, not a
+    broken one: the final model took thirty minutes with the GPU idle and said
+    nothing about it. Both mismatches now stop the run instead.
+    """
+    available = torch.cuda.is_available()
+    device = (torch.device(requested) if requested and requested != "auto"
+              else torch.device("cuda" if available else "cpu"))
+
+    if device.type == "cuda" and not available:
+        raise SystemExit(
+            "--device cuda was asked for, but torch reports no CUDA device.\n"
+            "In Colab: Runtime -> Change runtime type -> T4 GPU, then rerun "
+            "from the first cell."
+        )
+    if available and device.type != "cuda":
+        raise SystemExit(
+            f"a CUDA device is available ({torch.cuda.get_device_name(0)}) but "
+            f"this run would use {device}.\n"
+            "Training on the CPU here would take hours for no reason. Pass "
+            "--device cuda, or --device cpu if that is genuinely what you want."
+        )
+    return device
 
 
 # -- evaluation ------------------------------------------------
@@ -236,9 +257,15 @@ def train(args) -> dict:
     if not train_rows:
         raise SystemExit(f"no training rows found in {data_dir}")
 
-    print(f"device={device}  threads={threads}  max_length={args.max_length}  "
+    if device.type == "cuda":
+        total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        where = f"{device} ({torch.cuda.get_device_name(0)}, {total_gb:.1f} GB)"
+    else:
+        where = str(device)
+    print(f"device={where}  threads={threads}  max_length={args.max_length}  "
           f"batch={args.batch_size}x{args.grad_accum}={effective_batch}  "
-          f"train={len(train_rows)}  val={len(val_rows)}")
+          f"train={len(train_rows)}  val={len(val_rows)}  "
+          f"epochs={args.epochs}  patience={args.patience}", flush=True)
 
     tokenizer = build_tokenizer()
     model = RevisionAssessmentModel(
@@ -339,8 +366,14 @@ def train(args) -> dict:
             else:
                 patience_left -= 1
 
+        if device.type == "cuda":
+            row["gpu_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
         log_rows.append(row)
-        print("  " + "  ".join(f"{k}={v}" for k, v in row.items()))
+        # Flushed, because a subprocess that buffers its output looks like a
+        # subprocess that has hung.
+        print(f"  epoch {epoch}/{args.epochs}  "
+              + "  ".join(f"{k}={v}" for k, v in row.items() if k != "epoch"),
+              flush=True)
 
         if val_loader and patience_left <= 0:
             print(f"  early stop (best epoch {best_epoch})")
