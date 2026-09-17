@@ -232,6 +232,25 @@ class RevisionAssessmentModel(nn.Module):
         out = Path(out_dir)
         warnings = []
 
+        # Check the directory before handing a path to transformers. Given a
+        # path that does not exist, from_pretrained assumes it is a Hub repo
+        # id and fails complaining about the characters in it, which reads as
+        # a bug in the name rather than "the weights are not here".
+        required = ("encoder", "tokenizer", "heads.pt")
+        if not out.is_dir():
+            raise FileNotFoundError(
+                f"weights not found at {out}. Layer 2 is not in git; see "
+                f"PHASE5_TRAINING.md to train it, or restore the folder "
+                f"from a backup."
+            )
+        missing = [name for name in required if not (out / name).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"weights at {out} are incomplete - missing "
+                f"{', '.join(missing)}. Re-unpack the model archive, or see "
+                f"PHASE5_TRAINING.md."
+            )
+
         label_config = {}
         cfg_path = out / "label_config.json"
         if cfg_path.exists():
