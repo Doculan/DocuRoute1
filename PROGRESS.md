@@ -26,7 +26,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
 | 5 — Train and evaluate | **Done** — verdicts 0.978 fused, issues 0.854; final model trained on Kaggle and in place |
-| 6 — Wire into the app | **Done** (awaiting CHECKPOINT 6) |
+| 6 — Wire into the app | **Done** (CHECKPOINT 6 approved) |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
 ---
@@ -941,14 +941,60 @@ explanation "This revision cannot be accepted in its current form. No reason
 status      pending - unchanged
 ```
 
-Two observations from it, neither blocking:
+Two observations from it, both since addressed:
 
-- The hard fail is in `trace.layer1.hard_fails`, not at the top level of the
-  result. The explanation carries it, so the UI is fine, but anything reading
-  the result programmatically has to look in the trace.
+- The hard fail was only in `trace.layer1.hard_fails`. **Fixed:** the result now
+  carries `hard_fails: [{label, clause, evidence}]` beside `verdict` and
+  `issues`, the view passes it through, and the review panel shows it as the
+  blocking reason. The trace is unchanged.
 - The edit is `accounts` -> `payments`. With a change reason supplied the
-  pipeline rejects it and labels it `out_of_scope_content`; `non_equivalent_term`
-  would fit better. One example, and the verdict is right either way.
+  pipeline rejects it and labels it `out_of_scope_content`, where
+  `non_equivalent_term` fits better. **Recorded as a known limitation** here and
+  in `DATASET_CARD.md`: `non_equivalent_term` is 74 of its 89 examples
+  `all -> any/some`, so the model has seen little else under that label. The
+  verdict is the reliable part; the label points at where to look.
+
+### Second smoke test — with a change reason, so the model actually runs
+
+Revision 13 only exercised the Layer 1 hard fail: a missing reason short-circuits
+the pipeline before Layer 2. **Revision 14** was created for this - FAM 6.04 ::
+3.0 POLICIES, a real obligation weakened the way a staff member might, with a
+plausible reason.
+
+```
+edit         "...shall be handled in accordance with Republic Act 10173..."
+          -> "...may be handled in accordance with Republic Act 10173..."
+reason       "Updated to match how the office actually works."
+
+verdict      needs_revision    confidence 1.0
+change type  substantive
+hard fails   none
+issue        modal_weakened  [source: both]  clause 7.5.3  medium severity
+             evidence: "shall" became "may"
+layer 2      ran
+fusion       boosting, confidence_source "fusion"
+explanation  "Some points need addressing before this revision is approved. The
+              word "shall" became "may", so an obligation became a permission.
+              Please check these points before approving."
+```
+
+The `both` source is the interesting part: the rules and the model independently
+found the same thing, which is the case fusion is meant to be most confident
+about, and it was.
+
+**Timing on the laptop** (i3-1215U, 8 logical cores, CPU only - no GPU):
+
+| | |
+|---|---|
+| first assessment after the server starts | **7.6 s** |
+| every assessment after that | **0.3 - 0.5 s** |
+
+`load_models` caches the model per process, so only the first admin to press the
+button waits; the encoder is being read from disk in that 7.6 s. A cold start per
+request would make the feature unusable, which is why the cache exists.
+
+Revision 14 is kept as a test entry, like 12 and 13. It sits in the pending
+queue - delete it if that is in the way.
 
 ### What was wired
 

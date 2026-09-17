@@ -172,6 +172,31 @@ function AiPanelV2({ result }) {
         )}
       </div>
 
+      {(result.hard_fails || []).length > 0 && (
+        <div style={{ marginBottom: "0.9rem" }}>
+          <div className="label" style={{ marginBottom: "0.4rem" }}>
+            Blocking — a document-control rule was not met
+          </div>
+          <div className="col" style={{ gap: "0.4rem" }}>
+            {result.hard_fails.map((fail) => (
+              <div key={fail.label} className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+                <span className="badge badge-danger">
+                  {(fail.label || "").replaceAll("_", " ")}
+                </span>
+                {fail.clause && (
+                  <span className="badge badge-info">clause {fail.clause}</span>
+                )}
+                {fail.evidence && (
+                  <span className="text-xs" style={{ color: "var(--n-700)" }}>
+                    {fail.evidence}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {result.explanation && (
         <p className="text-sm" style={{ color: "var(--n-700)", marginBottom: "0.9rem" }}>
           {result.explanation}

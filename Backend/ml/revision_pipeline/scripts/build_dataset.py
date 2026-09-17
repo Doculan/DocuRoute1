@@ -732,6 +732,12 @@ corpus rather than of the generator.
 - **`non_equivalent_term` is concentrated on one word.** 74 of its 89 examples
   swap "all" for "any" or "some". The remaining glossary pairs occur only a
   handful of times each in the corpus.
+- **The issue label can be wrong even when the verdict is right.**
+  `non_equivalent_term` is 74 of its 89 examples `all -> any/some`, so the model
+  has seen little else under that label. Revision 13's `accounts -> payments`
+  edit is rejected correctly but labelled `out_of_scope_content`, where
+  `non_equivalent_term` fits better. Treat the verdict as the reliable part and
+  the label as a pointer to where to look.
 - **The blind audit agreed on 44 of 50 verdicts (88%) and 47 of 50 issue sets
   (94%).** Four of the six disagreements were fixed; `step_reorder_dependent`
   was relabelled from reject to needs_revision on the auditor's reasoning.

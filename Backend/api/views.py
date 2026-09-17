@@ -1627,6 +1627,7 @@ def ai_assessment_view(request, revision_id):
             'verdict': result.get('verdict'),
             'confidence': result.get('confidence'),
             'change_type': result.get('change_type'),
+            'hard_fails': result.get('hard_fails') or [],
             'explanation': result.get('explanation'),
             'issues': result.get('issues') or [],
             'trace': result.get('trace') or {},

@@ -125,6 +125,7 @@ def assess_texts(
             "assessed": False,
             "confidence": 0.0,
             "change_type": None,
+            "hard_fails": [],
             "issues": [],
             "explanation": not_assessed_message(section_label),
             "trace": {"skipped": "forms_section"},
@@ -174,6 +175,18 @@ def assess_texts(
         "assessed": True,
         "confidence": round(layer3.confidence, 4),
         "change_type": layer1.change_type,
+        # A hard fail is the reason for the verdict when there is one, so it
+        # belongs next to the verdict. It was only in trace.layer1, which meant
+        # anything reading the result had to know where to dig for the one
+        # thing it most needed.
+        "hard_fails": [
+            {
+                "label": fail.get("reason"),
+                "clause": fail.get("clause"),
+                "evidence": fail.get("detail"),
+            }
+            for fail in layer1.hard_fails
+        ],
         "issues": layer3.issues,
         "explanation": explanation,
         "trace": trace,
