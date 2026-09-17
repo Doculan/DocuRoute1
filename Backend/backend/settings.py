@@ -162,3 +162,16 @@ CSRF_TRUSTED_ORIGINS = [
 AUTH_USER_MODEL = 'api.CustomUser'
 # Allow embedding media (PDFs) in the React preview iframe during local development
 X_FRAME_OPTIONS = 'ALLOWALL'
+
+
+# Which revision-assessment pipeline the admin review screen uses.
+#
+#   "v2" - the four-layer pipeline in ml/revision_pipeline: rules, a
+#          fine-tuned DistilBERT that reads the change in context, a fusion
+#          model over both, and a written explanation.
+#   "v1" - the two older DistilBERT models in ml/distilbert_model.py.
+#
+# Both are kept so the two can be compared. If v2 is selected and its weights
+# are not present, the view says so rather than pretending; the rule layer
+# still answers on its own.
+REVISION_AI_PIPELINE = "v2"

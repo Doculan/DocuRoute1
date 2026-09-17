@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, B
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.db.models import Q
@@ -1466,6 +1467,7 @@ def list_revisions(request):
         'ai_verdict': r.ai_verdict,
         'ai_issues': r.ai_issues,
         'ai_explanation': r.ai_explanation,
+        'ai_trace': r.ai_trace,
         'diff_preview': preview_diff(r.diff_text),
         'diff_text': r.diff_text,
     } for r in revisions]
@@ -1551,6 +1553,12 @@ def review_revision(request, revision_id):
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def ai_assessment_view(request, revision_id):
+    """Assess one revision and keep the result on it.
+
+    Which pipeline runs is settings.REVISION_AI_PIPELINE. Either way the answer
+    is advice: the admin's decision is what counts, and nothing here changes a
+    revision's status.
+    """
     try:
         revision = ManualRevision.objects.select_related('section').get(
             id=revision_id
@@ -1589,6 +1597,43 @@ def ai_assessment_view(request, revision_id):
             status=400,
         )
 
+    pipeline_version = getattr(settings, 'REVISION_AI_PIPELINE', 'v2')
+
+    if pipeline_version == 'v2':
+        try:
+            from ml.revision_pipeline.pipeline import assess_revision as assess_v2
+
+            result = assess_v2(revision)
+        except Exception as error:
+            return Response(
+                {'detail': f'AI assessment failed: {error}'},
+                status=500,
+            )
+
+        # Kept on the revision so the review screen can show it again without
+        # re-running the model, and so a decision can be looked at afterwards
+        # beside the advice that was on screen at the time.
+        revision.ai_verdict = result.get('verdict') or ''
+        revision.ai_issues = result.get('issues') or []
+        revision.ai_explanation = result.get('explanation') or ''
+        revision.ai_trace = result.get('trace') or {}
+        revision.save(update_fields=[
+            'ai_verdict', 'ai_issues', 'ai_explanation', 'ai_trace',
+        ])
+
+        return Response({
+            'pipeline': 'v2',
+            'assessed': result.get('assessed', True),
+            'verdict': result.get('verdict'),
+            'confidence': result.get('confidence'),
+            'change_type': result.get('change_type'),
+            'explanation': result.get('explanation'),
+            'issues': result.get('issues') or [],
+            'trace': result.get('trace') or {},
+            # The admin decides. This is advice.
+            'advisory': True,
+        })
+
     try:
         from ml.distilbert_model import assess_revision
 
@@ -1603,7 +1648,8 @@ def ai_assessment_view(request, revision_id):
             status=500,
         )
 
-    return Response({'ai_assessment': assessment})
+    return Response({'pipeline': 'v1', 'advisory': True,
+                     'ai_assessment': assessment})
 
 
 # ─── SVM MODEL EVALUATION ─────────────────────────────────────

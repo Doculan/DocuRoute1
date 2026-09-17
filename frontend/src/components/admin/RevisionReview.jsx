@@ -119,6 +119,136 @@ function SideBySideDiff({ rev }) {
   );
 }
 
+const VERDICT_BADGE = {
+  approve: "badge-success",
+  needs_revision: "badge-warning",
+  reject: "badge-danger",
+};
+
+const VERDICT_LABEL = {
+  approve: "Approve",
+  needs_revision: "Needs revision",
+  reject: "Reject",
+};
+
+// The four-layer pipeline. `result` is the whole response, not just a verdict:
+// the issue list carries the clause it comes from and the evidence it was
+// raised on, because a reviewer who cannot see why will either trust it
+// blindly or ignore it.
+function AiPanelV2({ result }) {
+  const [showTrace, setShowTrace] = useState(false);
+  const issues = result.issues || [];
+  const confidence = Math.round((result.confidence || 0) * 100);
+
+  return (
+    <div className="ai-panel anim-fade-up">
+      <div className="ai-panel-head">
+        <span className="ai-chip">AI</span>
+        <h4 className="section-title">Preliminary assessment</h4>
+        <span className="badge badge-neutral" style={{ marginLeft: "auto" }}>
+          advisory only
+        </span>
+      </div>
+
+      <div className="row-wrap" style={{ gap: "1.5rem", marginBottom: "0.9rem" }}>
+        <div>
+          <div className="label">Suggested verdict</div>
+          <span className={`badge ${VERDICT_BADGE[result.verdict] || "badge-neutral"}`}>
+            {VERDICT_LABEL[result.verdict] || result.verdict}
+          </span>
+        </div>
+        <div style={{ minWidth: "160px", flex: 1 }}>
+          <div className="metric-head">
+            <span className="label">Confidence</span>
+            <span className="metric-value">{confidence}%</span>
+          </div>
+          <div className="meter"><span className="meter-fill" style={{ width: `${confidence}%` }} /></div>
+        </div>
+        {result.change_type && (
+          <div>
+            <div className="label">Change type</div>
+            <div className="strong">{result.change_type.replaceAll("_", " ")}</div>
+          </div>
+        )}
+      </div>
+
+      {result.explanation && (
+        <p className="text-sm" style={{ color: "var(--n-700)", marginBottom: "0.9rem" }}>
+          {result.explanation}
+        </p>
+      )}
+
+      {issues.length > 0 && (
+        <div style={{ marginBottom: "0.9rem" }}>
+          <div className="label" style={{ marginBottom: "0.4rem" }}>
+            {issues.length === 1 ? "1 concern" : `${issues.length} concerns`}
+          </div>
+          <div className="col" style={{ gap: "0.5rem" }}>
+            {issues.map((issue) => (
+              <div key={issue.label} className="card card-pad" style={{ padding: "0.6rem 0.75rem" }}>
+                <div className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+                  <span className="badge badge-warning">
+                    {issue.label.replaceAll("_", " ")}
+                  </span>
+                  {issue.clause && (
+                    <span className="badge badge-info">clause {issue.clause}</span>
+                  )}
+                  {issue.severity && (
+                    <span className="subtle text-xs">{issue.severity} severity</span>
+                  )}
+                  <span className="subtle text-xs" style={{ marginLeft: "auto" }}>
+                    {issue.source === "rule"
+                      ? "rule"
+                      : `model ${Math.round((issue.confidence || 0) * 100)}%`}
+                  </span>
+                </div>
+                {issue.evidence && (
+                  <div className="text-xs" style={{ marginTop: "0.35rem", color: "var(--n-700)" }}>
+                    {issue.evidence}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {result.trace && (
+        <div>
+          <button
+            type="button"
+            className="pill"
+            onClick={() => setShowTrace((open) => !open)}
+          >
+            {showTrace ? "Hide details" : "Details"}
+          </button>
+          {showTrace && (
+            <pre
+              className="text-xs anim-fade-up"
+              style={{
+                marginTop: "0.6rem",
+                maxHeight: "320px",
+                overflow: "auto",
+                background: "var(--paper-3)",
+                borderRadius: "var(--r-md)",
+                padding: "0.75rem",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              {JSON.stringify(result.trace, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+
+      <p className="subtle text-xs" style={{ marginTop: "0.75rem", fontStyle: "italic" }}>
+        This is a suggestion from an automated check. The decision is yours, and
+        nothing here changes the revision's status.
+      </p>
+    </div>
+  );
+}
+
 function AiPanel({ result }) {
   return (
     <div className="ai-panel anim-fade-up">
@@ -223,7 +353,9 @@ export default function RevisionReview() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "AI assessment could not be completed.");
 
-      setAiResults((prev) => ({ ...prev, [revisionId]: data.ai_assessment }));
+      // v2 returns the assessment at the top level; v1 nests it under
+      // ai_assessment. Keep whichever came back, tagged with its pipeline.
+      setAiResults((prev) => ({ ...prev, [revisionId]: data }));
     } catch (error) {
       console.error("AI revision assessment failed:", error);
       setAiErrors((prev) => ({ ...prev, [revisionId]: error.message }));
@@ -389,7 +521,12 @@ export default function RevisionReview() {
                 <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{aiErrors[r.id]}</div>
               )}
 
-              {aiResults[r.id] && <AiPanel result={aiResults[r.id]} />}
+              {aiResults[r.id] &&
+                (aiResults[r.id].pipeline === "v2" ? (
+                  <AiPanelV2 result={aiResults[r.id]} />
+                ) : (
+                  <AiPanel result={aiResults[r.id].ai_assessment || aiResults[r.id]} />
+                ))}
 
               {r.status === "pending" && (
                 <div style={{ marginTop: "1rem" }}>

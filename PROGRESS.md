@@ -25,8 +25,8 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Folds done and settled** — verdicts 0.978 fused, issues 0.854; fusion pinned to boosting and trained; Layer 2 final model still to train (Kaggle) |
-| 6 — Wire into the app | Not started |
+| 5 — Train and evaluate | **Done** — verdicts 0.978 fused, issues 0.854; final model trained on Kaggle and in place |
+| 6 — Wire into the app | **Done** (awaiting CHECKPOINT 6) |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
 ---
@@ -918,6 +918,70 @@ configuration that is now in force. Raising `MAX_LENGTH` again invalidates
 them and means retraining the folds.
 
 ---
+
+---
+
+## Phase 6 — wired into the app
+
+### The model is in place and verified
+
+`check_setup.py` reports Ready: packages, entity lists, dataset, all five model
+pieces, and the pipeline loads with no warnings. The fingerprint in
+`label_config.json` is `6a6a5c667a3c4d11`, which matches the code - so the
+weights were trained by this pipeline at this `max_length`. `fusion.pkl` came
+through the unzip byte-identical (`cb0fe399966fb5bb`), as designed.
+
+**Revision 13 smoke test** (FAM 6.02 :: 1.0 OBJECTIVES, no change reason):
+
+```
+verdict     reject   confidence 1.0
+hard fail   no_change_reason, clause 6.3
+explanation "This revision cannot be accepted in its current form. No reason
+             for the change was recorded, which clause 6.3 requires."
+status      pending - unchanged
+```
+
+Two observations from it, neither blocking:
+
+- The hard fail is in `trace.layer1.hard_fails`, not at the top level of the
+  result. The explanation carries it, so the UI is fine, but anything reading
+  the result programmatically has to look in the trace.
+- The edit is `accounts` -> `payments`. With a change reason supplied the
+  pipeline rejects it and labels it `out_of_scope_content`; `non_equivalent_term`
+  would fit better. One example, and the verdict is right either way.
+
+### What was wired
+
+- `REVISION_AI_PIPELINE` in `settings.py`, default `"v2"`. `"v1"` keeps the two
+  older DistilBERT models, which are untouched.
+- `ai_assessment_view` runs `pipeline.assess_revision()` on v2 and stores
+  `ai_verdict`, `ai_issues`, `ai_explanation` and `ai_trace` on the revision, so
+  the screen can show it again without re-running the model and a decision can
+  be reviewed later beside the advice that was on screen at the time. The
+  response is flat for v2 and says which pipeline produced it.
+- `list_revisions` returns `ai_trace` alongside the fields it already returned.
+- `AiPanelV2` on the admin review screen: verdict badge, confidence meter,
+  change type, the explanation, and each concern with its clause, severity,
+  source and evidence. A "Details" button opens the raw trace. Marked
+  **advisory only**, twice - a chip in the header and a line at the foot
+  saying the decision is the admin's and nothing here changes the status.
+- v1 still renders through the original panel; the screen picks by
+  `data.pipeline`.
+
+Verified: the endpoint returns 200 with the verdict, issues and trace; the
+fields are stored on the revision; the revision's status is untouched; and the
+frontend builds.
+
+### The crash at the end of the Kaggle run
+
+`train_layer2.py` opened `test.jsonl` without checking it exists. The final
+model trains on everything and keeps only a slice for early stopping, so its
+data directory has no test split - and the run died *after* the whole GPU
+training had finished. The call site checks now and says it is skipping.
+
+The Kaggle notebook also hard-coded one mount path for the fold dataset;
+Kaggle's actual path depends on how the dataset was added. It searches
+`/kaggle/input` for `fold_*/thresholds.json` instead.
 
 ---
 

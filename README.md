@@ -205,7 +205,71 @@ project is ever deployed anywhere public.
 
 ---
 
-## 8. Useful commands
+## 8. Switching assessment pipelines
+
+`Backend/backend/settings.py`:
+
+```python
+REVISION_AI_PIPELINE = "v2"   # the four-layer revision pipeline (default)
+REVISION_AI_PIPELINE = "v1"   # the two older DistilBERT models
+```
+
+Both are kept so the two can be compared. The review screen renders whichever
+came back — the response says which pipeline produced it. Either way the
+assessment is advisory: it is stored on the revision and shown to the admin,
+and it never changes a revision's status.
+
+v2 on the five cross-validation folds: **97.8% verdict accuracy** against 79.1%
+for the rule layer alone. `Backend/ml/reports/fold_evaluation.md` has the full
+table.
+
+## 9. Rebuilding the pipeline's data
+
+From `Backend`, in this order. None of it is needed to run the app — the
+dataset and entity lists are committed.
+
+```bash
+# entity lists, after the manuals change
+py ml/revision_pipeline/scripts/build_entities_draft.py
+py ml/revision_pipeline/scripts/clean_entities.py
+
+# the training dataset (~25 minutes)
+py ml/revision_pipeline/scripts/build_dataset.py
+
+# per-fold splits, for cross-validation
+py ml/revision_pipeline/scripts/make_splits.py
+
+# Layer 3, from fold predictions produced by training
+py ml/revision_pipeline/scripts/train_fusion.py \
+    --predictions-dir <folds> --split val \
+    --out-dir ml/saved_models/context_v2
+
+# how good is it
+py ml/revision_pipeline/scripts/evaluate_folds.py \
+    --predictions-dir <folds> --out-dir ml/reports
+```
+
+Layer 2 is trained on a GPU, not here — see section 5.
+
+## 10. Useful commands
+
+Is this checkout ready to assess anything:
+
+```bash
+py ml/revision_pipeline/scripts/check_setup.py
+```
+
+Tests, from `Backend`:
+
+```bash
+py -m pytest ml/revision_pipeline/tests -q
+```
+
+What a push would carry:
+
+```bash
+py ml/revision_pipeline/scripts/check_repo_size.py
+```
 
 Re-clean stored section text after an extraction change (dry run by default):
 
