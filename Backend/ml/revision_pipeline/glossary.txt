@@ -28,7 +28,6 @@ should | may | not_equivalent
 # --- Verification and approval ----------------------------------------
 verify | confirm | equivalent
 verify | validate | not_equivalent
-verify | check | not_equivalent
 approve | authorise | equivalent
 approve | authorize | equivalent
 approve | review | not_equivalent

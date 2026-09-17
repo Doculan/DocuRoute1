@@ -160,6 +160,12 @@ def _split_merged(values: list) -> list:
     return out
 
 
+_SHOUTED_PROSE = {
+    "provided", "holder", "stall", "whereas", "witnesseth", "further",
+    "however", "therefore", "hereby", "subject", "period", "parties",
+}
+
+
 def _is_noise(value: str, *, bare_ok: bool = False) -> bool:
     low = value.lower()
     if len(value) < 3:
@@ -173,6 +179,10 @@ def _is_noise(value: str, *, bare_ok: bool = False) -> bool:
     if re.fullmatch(r"[\d\W]+", value):                      # digits/punctuation only
         return True
     if value.isupper() and len(value) > 30:                  # a shouted heading
+        return True
+    # A single capitalised word from contract phrasing set in capitals, not the
+    # name of anything: "PROVIDED, that ...", "the STALL HOLDER shall ...".
+    if value.isupper() and low in _SHOUTED_PROSE:
         return True
     return False
 

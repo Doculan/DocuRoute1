@@ -32,14 +32,41 @@ def lines(text: str) -> list[str]:
     return [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
 
 
+# Abbreviations that end in a full stop and do not end a sentence. Without
+# these, "governed by E.O. No. 2, series of 2016" was three sentences, and an
+# edit anywhere near it looked like several sentences appearing and
+# disappearing at once.
+_ABBREVIATIONS = (
+    "e.o", "r.a", "p.d", "c.o.a", "i.e", "e.g", "no", "nos", "sec", "secs",
+    "art", "arts", "par", "rep", "inc", "corp", "ltd", "co", "dept", "div",
+    "fig", "vol", "atty", "engr", "dr", "mr", "mrs", "ms", "prof", "hon",
+    "jr", "sr", "approx", "etc", "vs", "a.m", "p.m", "univ", "govt",
+)
+_ENDS_ABBREV_RE = re.compile(
+    r"(?:\b|^)(?:" + "|".join(a.replace(".", r"\.") for a in _ABBREVIATIONS)
+    + r")\.$",
+    re.IGNORECASE,
+)
+
+
 def sentences(text: str) -> list[str]:
-    """Split into sentences, keeping numbered items like '4.2.1 Does a thing.'"""
+    """Split into sentences, keeping numbered items like '4.2.1 Does a thing.'
+
+    A fragment is joined back to the one before it when that one ends in an
+    abbreviation rather than a sentence.
+    """
     out = []
     for block in lines(text):
+        parts = []
         for part in _SENT_SPLIT_RE.split(block):
             part = part.strip()
-            if part:
-                out.append(part)
+            if not part:
+                continue
+            if parts and _ENDS_ABBREV_RE.search(parts[-1]):
+                parts[-1] = parts[-1] + " " + part
+            else:
+                parts.append(part)
+        out.extend(parts)
     return out
 
 
@@ -252,3 +279,72 @@ def sentence_match_report(old: str, new: str, similarity: float = 0.6,
         "old_sentences": len(old_sents),
         "new_sentences": len(new_sents),
     }
+
+
+# -- unit alignment ------------------------------------------------
+# A "unit" is one table row or one prose line: the thing a person edits.
+_ROW_LINE_RE = re.compile(r"^\|.*\|$")
+_SEP_LINE_RE = re.compile(r"^\|?\s*:?-{2,}")
+
+
+def _unit_key(line: str) -> str:
+    """What identifies a unit across a revision.
+
+    A table row is identified by its step text, not the whole row, so that a
+    changed Responsibility cell still matches the same step rather than
+    looking like one row deleted and another added.
+    """
+    stripped = line.strip()
+    if _ROW_LINE_RE.match(stripped):
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        return normalise(cells[-1]) if cells else normalise(stripped)
+    return normalise(stripped)
+
+
+def _units(text: str) -> list:
+    return [line.strip() for line in (text or "").splitlines()
+            if line.strip() and not _SEP_LINE_RE.match(line.strip())]
+
+
+def aligned_units(old: str, new: str, similarity: float = 0.6) -> list:
+    """Pair up the units that are the same step before and after the edit.
+
+    Identical keys are paired first and taken out of the running; only the
+    handful left over go through the O(n^2) fuzzy pass. A revision touches one
+    to three units out of twenty, so this keeps the common case linear - the
+    full pairwise scan was what made the dataset build crawl.
+    """
+    old_units, new_units = _units(old), _units(new)
+    old_keys = [_unit_key(u) for u in old_units]
+    new_keys = [_unit_key(u) for u in new_units]
+
+    pairs, matched_old, matched_new = [], set(), set()
+    by_key = {}
+    for j, key in enumerate(new_keys):
+        by_key.setdefault(key, []).append(j)
+    for i, key in enumerate(old_keys):
+        free = [j for j in by_key.get(key, []) if j not in matched_new]
+        if free:
+            j = free[0]
+            matched_old.add(i)
+            matched_new.add(j)
+            pairs.append((old_units[i], new_units[j]))
+
+    rest_old = [i for i in range(len(old_units)) if i not in matched_old]
+    rest_new = [j for j in range(len(new_units)) if j not in matched_new]
+
+    scored = []
+    for i in rest_old:
+        for j in rest_new:
+            score = _pair_score(old_keys[i], new_keys[j], old_units[i], new_units[j])
+            if score >= similarity:
+                scored.append((score, i, j))
+    scored.sort(key=lambda item: -item[0])
+    for _, i, j in scored:
+        if i in matched_old or j in matched_new:
+            continue
+        matched_old.add(i)
+        matched_new.add(j)
+        pairs.append((old_units[i], new_units[j]))
+
+    return pairs

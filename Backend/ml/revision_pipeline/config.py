@@ -119,13 +119,53 @@ PERMISSIVE_MODALS = [
     "is optional", "are optional",
 ]
 
+# ── Sense reversals ───────────────────────────────────────────
+# Pairs that reverse a requirement without using a negation word. Swapping one
+# for the other flips what the manual asks for just as surely as inserting
+# "not", and the count-of-negation-words test cannot see it.
+SENSE_REVERSALS = [
+    ("before", "after"),
+    ("with", "without"),
+    ("at least", "at most"),
+    ("not later than", "not earlier than"),
+    ("more than", "less than"),
+    ("maximum", "minimum"),
+    ("include", "exclude"),
+    ("includes", "excludes"),
+    ("including", "excluding"),
+    ("required", "optional"),
+    ("mandatory", "optional"),
+    ("allowed", "prohibited"),
+    ("permitted", "prohibited"),
+    ("approved", "disapproved"),
+    ("approves", "disapproves"),
+    ("eligible", "ineligible"),
+    ("qualified", "disqualified"),
+    ("complete", "incomplete"),
+    ("valid", "invalid"),
+    ("accepted", "rejected"),
+    ("grants", "denies"),
+]
+
+# Words that genuinely negate. The rule used to be a prefix regex -
+# ``(un|non|dis|in)[a-z]{3,}`` - which counted "university", "information",
+# "internal", "inspection" and "disbursement" as negations, so deleting any row
+# containing one of them reported negation_changed.
+NEGATED_FORMS = [
+    "non-compliant", "non-compliance", "non-conforming", "non-conformity",
+    "non-conformance", "unsatisfactory", "unapproved", "unauthorized",
+    "unauthorised", "unsigned", "unqualified", "unavailable", "unsuccessful",
+    "incomplete", "ineligible", "invalid", "inapplicable", "inaccurate",
+    "disapproved", "disapproves", "disqualified", "dishonored", "disallowed",
+]
+
 # ── Tokenizer special tokens ──────────────────────────────────
 # [DEL]/[INS] mark the change; [ROLE]/[STEP] keep a procedure table's role
 # attached to its step once the table is linearised (Appendix A3).
 
 SPECIAL_TOKENS = ["[DEL]", "[/DEL]", "[INS]", "[/INS]", "[ROLE]", "[STEP]"]
 
-MAX_LENGTH = 384
+MAX_LENGTH = 512
 
 # ── Feature order for Layer 3 ─────────────────────────────────
 # The fusion model consumes a flat vector; this fixes its column order.

@@ -301,7 +301,7 @@ def test_the_same_change_is_not_described_twice():
     assert "non_equivalent_term" not in labels
 
     # A swap that is not a modal change still reports normally.
-    other = run_layer1("The QMR shall verify it.", "The QMR shall check it.", REASON)
+    other = run_layer1("The QMR shall approve it.", "The QMR shall review it.", REASON)
     assert "non_equivalent_term" in {f["label"] for f in other.flags}
 
 

@@ -168,7 +168,7 @@ def test_equivalent_swap_counted():
 
 
 def test_non_equivalent_swap_counted():
-    assert feats("The QMR shall verify it.", "The QMR shall check it.")["non_equivalent_swaps"] == 1
+    assert feats("The QMR shall approve it.", "The QMR shall review it.")["non_equivalent_swaps"] == 1
 
 
 def test_unknown_swap_counted():
@@ -207,7 +207,7 @@ def test_equivalent_swap_is_terminology_equivalent():
 
 
 def test_non_equivalent_swap_is_terminology_non_equivalent():
-    assert run_layer1("The QMR shall verify it.", "The QMR shall check it.", REASON).change_type == "terminology_non_equivalent"
+    assert run_layer1("The QMR shall approve it.", "The QMR shall review it.", REASON).change_type == "terminology_non_equivalent"
 
 
 def test_meaning_change_is_substantive():

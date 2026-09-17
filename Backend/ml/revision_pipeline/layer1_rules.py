@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from . import config
 from .diffing import (
+    aligned_units,
     change_ratios,
     marked_text,
     normalise,
@@ -35,7 +36,14 @@ from .glossary import EQUIVALENT, NOT_EQUIVALENT, UNKNOWN, get_glossary
 # A role carrying a numeric suffix: "Accounting Staff-4". Appendix A5 is
 # explicit that changing the suffix is a responsibility change, not a numeric
 # one, so these are matched first and excluded from number detection.
-_SUFFIX_ROLE_RE = re.compile(r"\b[A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,3}-\d+\b")
+_SUFFIX_ROLE_RE = re.compile(r"\b[A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,3}\s*-\s*\d+\b")
+# Spacing around the suffix is not a difference between two people.
+_ROLE_SPACING_RE = re.compile(r"\s*-\s*(\d+)\b")
+
+
+def _normalise_role(role: str) -> str:
+    """"Accounting Staff -3" and "Accounting Staff-3" are one role."""
+    return _ROLE_SPACING_RE.sub(r"-\1", (role or "").strip())
 
 # "Republic Act 10173", "Executive Order No. 02, series of 2016"
 _LEGAL_REF_RE = re.compile(
@@ -65,7 +73,14 @@ _DURATION_RE = re.compile(
 )
 
 _NEGATIONS = {"not", "no", "never", "without", "except", "neither", "nor", "none"}
-_NEG_PREFIX_RE = re.compile(r"\b(?:un|non|dis|in)-?[a-z]{3,}\b", re.IGNORECASE)
+# Explicit negated forms. The prefix regex this replaces matched any word
+# starting un/non/dis/in, so "university", "information", "internal",
+# "inspection" and "disbursement" all counted as negations and deleting a row
+# containing one reported negation_changed.
+_NEGATED_FORMS_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(f) for f in config.NEGATED_FORMS) + r")\b",
+    re.IGNORECASE,
+)
 
 _PUNCT_RE = re.compile(r"[^\w\s]")
 
@@ -122,6 +137,67 @@ def _phrases_present(text: str, phrases: list[str]) -> set[str]:
     return {p for p in phrases if p and normalise(p) in low}
 
 
+# The number that labels an item or a step, at the start of a line, a cell, or
+# a clause: "3.15", "1.", "4.2.1". Renumbering a list is not a change of
+# requirement, and treating it as one made every renumbered section look like a
+# changed figure - and, where a sibling section still carried the old number,
+# like a contradiction.
+_ITEM_NUMBER_RE = re.compile(
+    r"(?:(?<=^)|(?<=\|)|(?<=\n))\s*\d{1,3}(?:\.\d{1,3})*\.?(?=[\s)])",
+    re.MULTILINE,
+)
+
+
+def _strip_item_numbers(text: str) -> str:
+    """Blank out item and step numbers so they are not read as quantities."""
+    return _ITEM_NUMBER_RE.sub(" ", text or "")
+
+
+def _sense_reversals(old_unit: str, new_unit: str) -> list:
+    """Pairs where the edit swapped one side of a reversal for the other.
+
+    Returns (from, to) for each reversal found. Word boundaries keep "with"
+    from matching inside "without", so with -> without is reported once, by the
+    pair, rather than twice.
+    """
+    found = []
+    for first, second in config.SENSE_REVERSALS:
+        for a, b in ((first, second), (second, first)):
+            pattern_a = re.compile(rf"\b{re.escape(a)}\b", re.IGNORECASE)
+            pattern_b = re.compile(rf"\b{re.escape(b)}\b", re.IGNORECASE)
+            lost = len(pattern_a.findall(old_unit)) - len(pattern_a.findall(new_unit))
+            gained = len(pattern_b.findall(new_unit)) - len(pattern_b.findall(old_unit))
+            if lost > 0 and gained > 0:
+                found.append((a, b))
+                break
+    return found
+
+
+_LEGAL_PREFIX_MAP = (
+    (re.compile(r"^republic\s+act", re.IGNORECASE), "ra"),
+    (re.compile(r"^r\.?a\.?", re.IGNORECASE), "ra"),
+    (re.compile(r"^executive\s+order", re.IGNORECASE), "eo"),
+    (re.compile(r"^e\.?o\.?", re.IGNORECASE), "eo"),
+    (re.compile(r"^memorandum\s+circular", re.IGNORECASE), "mc"),
+    (re.compile(r"^m\.?c\.?", re.IGNORECASE), "mc"),
+    (re.compile(r"^presidential\s+decree", re.IGNORECASE), "pd"),
+)
+
+
+def _canonical_legal_ref(reference: str) -> str:
+    """"R.A. 9184" and "Republic Act No. 9184" are the same statute.
+
+    Both spellings are used across the manuals, so rewriting one as the other
+    is a formatting change. Comparing the raw strings made it a changed figure.
+    """
+    text = reference.strip()
+    for pattern, short in _LEGAL_PREFIX_MAP:
+        if pattern.match(text):
+            digits = re.sub(r"\D", "", text)
+            return f"{short}{digits}"
+    return re.sub(r"\s+", " ", text.lower())
+
+
 def _numeric_tokens(text: str) -> set[str]:
     """Numbers, durations, legal references and frequency words.
 
@@ -130,8 +206,9 @@ def _numeric_tokens(text: str) -> set[str]:
     number change.
     """
     masked = _SUFFIX_ROLE_RE.sub(lambda m: m.group(0).rsplit("-", 1)[0], text or "")
+    masked = _strip_item_numbers(masked)
     tokens: set[str] = set()
-    tokens.update(m.group(0).lower() for m in _LEGAL_REF_RE.finditer(masked))
+    tokens.update(_canonical_legal_ref(m.group(0)) for m in _LEGAL_REF_RE.finditer(masked))
     tokens.update(m.group(0).lower() for m in _DURATION_RE.finditer(masked))
     tokens.update(m.group(0).lower() for m in _NUMBER_RE.finditer(masked))
     for w in words(masked):
@@ -158,10 +235,16 @@ def _modal_counts(text: str) -> dict:
     }
 
 
+# "No." before a figure is the abbreviation for "number". Counting it as the
+# negation "no" made rewriting "R.A. 9184" as "Republic Act No. 9184" look like
+# a reversed requirement.
+_NUMBER_ABBREV_RE = re.compile(r"\bnos?\.?\s*(?=\d)", re.IGNORECASE)
+
+
 def _negation_tokens(text: str) -> list:
-    low = normalise(text)
+    low = _NUMBER_ABBREV_RE.sub(" ", normalise(text))
     found = [w for w in words(low) if w in _NEGATIONS]
-    found += [m.group(0) for m in _NEG_PREFIX_RE.finditer(low)]
+    found += [m.group(0) for m in _NEGATED_FORMS_RE.finditer(low)]
     return found
 
 
@@ -228,6 +311,116 @@ def _strip_punct(s: str) -> str:
 
 
 # -- Main entry point ------------------------------------------
+
+def _role_keys(text: str, role_phrases, numbers) -> set:
+    found = _phrases_present(text, role_phrases)
+    found |= {_normalise_role(m.group(0)) for m in _SUFFIX_ROLE_RE.finditer(text or "")}
+    return _drop_contained(
+        normalise(_normalise_role(r)) for r in found
+        if normalise(_normalise_role(r)) not in numbers
+    )
+
+
+_EXPANSION_RE = re.compile(r"\(([A-Z][A-Za-z.]{1,9})\)")
+
+
+def _is_acronym_expansion(role: str, with_full: str, with_acronym: str) -> bool:
+    """True when one side writes the role out and the other uses its acronym.
+
+    "Forwards the DV to the BAC" and "Forwards the DV to the Bids and Awards
+    Committee (BAC)" name the same party. Without this, spelling an acronym out
+    on first use - which is a documentation improvement - was reported as a
+    change of responsibility.
+    """
+    for match in _EXPANSION_RE.finditer(with_full or ""):
+        acronym = match.group(1)
+        # The role has to be the thing being expanded - the words immediately
+        # before the bracket. Merely appearing somewhere earlier in the row is
+        # not enough: a step mentioning "(DV)" would otherwise suppress every
+        # role change in that row, which is what happened.
+        before = normalise(with_full[:match.start()]).rstrip()
+        if not before.endswith(role):
+            continue
+        if re.search(rf"\b{re.escape(acronym)}\b", with_acronym or ""):
+            return True
+    return False
+
+
+_ROW_LINE = re.compile(r"^\|.*\|$")
+_SEP_LINE = re.compile(r"^\|?\s*:?-{2,}")
+
+
+def _inherit_roles(text: str) -> str:
+    """Fill an empty Responsibility cell with the role above it (A3).
+
+    A procedure table leaves the cell blank while the same person keeps
+    working, so a blank cell does not mean "nobody". Reading it literally, a
+    step that changed hands from an inherited role looked like no change at
+    all, and deleting the row that carried the name looked like the role had
+    left the section.
+    """
+    out, current = [], ""
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if not _ROW_LINE.match(stripped) or _SEP_LINE.match(stripped):
+            out.append(line)
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if len(cells) < 2:
+            out.append(line)
+            continue
+        if cells[0]:
+            current = cells[0]
+        elif current:
+            cells[0] = current
+        out.append("| " + " | ".join(cells) + " |")
+    return "\n".join(out)
+
+
+def _unit_level_deltas(old_text: str, new_text: str, key_terms, role_phrases):
+    """Roles, key terms and figures that changed *within* a surviving unit.
+
+    Each pair is one step before and after the edit, so a role, a form name or
+    a figure that moved off that step counts even when the section as a whole
+    still mentions it somewhere. Units that were added or deleted outright are
+    not paired: those are deletions, and the deletion rules already cover them.
+    """
+    roles_changed, terms_lost = set(), set()
+    nums_gone, nums_new = set(), set()
+    reversals = []
+
+    for old_unit, new_unit in aligned_units(_inherit_roles(old_text),
+                                            _inherit_roles(new_text)):
+        if normalise(old_unit) == normalise(new_unit):
+            continue
+        reversals.extend(_sense_reversals(old_unit, new_unit))
+        old_nums = _numeric_tokens(old_unit)
+        new_nums = _numeric_tokens(new_unit)
+        nums_gone |= old_nums - new_nums
+        nums_new |= new_nums - old_nums
+
+        old_roles = _role_keys(old_unit, role_phrases, old_nums)
+        new_roles = _role_keys(new_unit, role_phrases, new_nums)
+        # Expanding an acronym in place - "BAC" becoming "Bids and Awards
+        # Committee (BAC)" - adds a name without moving the responsibility. A
+        # role still spelled out somewhere in the other side of the pair is the
+        # same party, so it is not a change.
+        old_norm, new_norm = normalise(old_unit), normalise(new_unit)
+        moved = {
+            role for role in old_roles ^ new_roles
+            if not (role in old_norm and role in new_norm)
+            and not _is_acronym_expansion(role, old_unit, new_unit)
+            and not _is_acronym_expansion(role, new_unit, old_unit)
+        }
+        roles_changed |= moved
+
+        terms_lost |= (
+            _phrases_present(old_unit, key_terms)
+            - _phrases_present(new_unit, key_terms)
+        )
+
+    return roles_changed, terms_lost, nums_gone, nums_new, reversals
+
 
 def run_layer1(
     old_text: str,
@@ -331,18 +524,50 @@ def run_layer1(
     old_roles = _phrases_present(old_text, ents.role_phrases)
     new_roles = _phrases_present(new_text, ents.role_phrases)
     # Suffixed roles tracked separately so "Staff-4" -> "Staff-7" counts.
-    old_roles |= {m.group(0) for m in _SUFFIX_ROLE_RE.finditer(old_text or "")}
-    new_roles |= {m.group(0) for m in _SUFFIX_ROLE_RE.finditer(new_text or "")}
+    old_roles |= {_normalise_role(m.group(0)) for m in _SUFFIX_ROLE_RE.finditer(old_text or "")}
+    new_roles |= {_normalise_role(m.group(0)) for m in _SUFFIX_ROLE_RE.finditer(new_text or "")}
     # A frequency or duration word is not a role, however it was mined.
     # "Quarterly" reached the role list from a table column header and was
     # being reported as a change of responsibility.
     old_role_keys = _drop_contained(
-        normalise(r) for r in old_roles if normalise(r) not in old_nums
+        normalise(_normalise_role(r)) for r in old_roles
+        if normalise(_normalise_role(r)) not in old_nums
     )
     new_role_keys = _drop_contained(
-        normalise(r) for r in new_roles if normalise(r) not in new_nums
+        normalise(_normalise_role(r)) for r in new_roles
+        if normalise(_normalise_role(r)) not in new_nums
     )
     roles_changed = sorted(old_role_keys ^ new_role_keys)
+
+    # A whole-section comparison cannot see a step change hands *within* the
+    # section: give step 4 to an officer who already owns step 7 and the set of
+    # roles present is identical. Roles, key terms and figures are therefore
+    # compared a second time on matched units - the same step before and after
+    # - and the two views are unioned. Nothing the set view caught is lost.
+    (unit_roles, unit_terms_lost, unit_nums_gone, unit_nums_new,
+     unit_reversals) = _unit_level_deltas(
+        old_text, new_text, key_terms, ents.role_phrases
+    )
+    if unit_roles:
+        roles_changed = sorted(set(roles_changed) | unit_roles)
+    # The section-wide comparison sees the same acronym expansion the unit-level
+    # one does, so the filter has to run on the union rather than on one branch.
+    roles_changed = [
+        role for role in roles_changed
+        if not _is_acronym_expansion(role, new_text, old_text)
+        and not _is_acronym_expansion(role, old_text, new_text)
+    ]
+    if unit_terms_lost:
+        terms_lost = sorted(set(terms_lost) | unit_terms_lost)
+        feats["key_terms_deleted_count"] = len(terms_lost)
+    if unit_reversals:
+        feats["negation_changed"] = negation_delta + len(unit_reversals)
+    if unit_nums_gone or unit_nums_new:
+        nums_gone = sorted(set(nums_gone) | unit_nums_gone)
+        nums_new = sorted(set(nums_new) | unit_nums_new)
+        nums_changed = nums_gone + nums_new
+        feats["numeric_changed_count"] = len(nums_changed)
+
     feats["role_terms_changed_count"] = len(roles_changed)
 
     # -- Glossary swaps --------------------------------------------
@@ -404,17 +629,42 @@ def run_layer1(
         else:
             evidence = "an obligation became a permission"
         flags.append(_flag("modal_weakened", evidence, {"pairs": modal_pairs}))
-    if negation_delta:
-        if added_neg and not removed_neg:
-            action, words_used = "added", added_neg
-        elif removed_neg and not added_neg:
-            action, words_used = "removed", removed_neg
+    if negation_delta or unit_reversals:
+        if unit_reversals and not negation_delta:
+            # A sense reversal uses no negation word at all: "before" became
+            # "after", "at least" became "at most". The requirement is reversed
+            # just as surely, so it is reported under the same label with the
+            # pair itself as the evidence.
+            action = "reversed"
+            evidence = ", ".join(
+                f'"{a}" became "{b}"' for a, b in unit_reversals[:3]
+            )
         else:
-            action, words_used = "changed", added_neg + removed_neg
+            if added_neg and not removed_neg:
+                action, words_used = "added", added_neg
+            elif removed_neg and not added_neg:
+                action, words_used = "removed", removed_neg
+            else:
+                action, words_used = "changed", added_neg + removed_neg
+            reversal_words = {w.lower() for pair in unit_reversals for w in pair}
+            unexplained = [w for w in words_used if w.lower() not in reversal_words]
+            if unit_reversals and not unexplained:
+                # "with" became "without" is one change, not a reversal plus an
+                # added negation word.
+                action = "reversed"
+                evidence = ", ".join(
+                    f'"{a}" became "{b}"' for a, b in unit_reversals[:3]
+                )
+            else:
+                evidence = _quote_list(unexplained or words_used) or "a negation"
+                if unit_reversals:
+                    evidence += ", and " + ", ".join(
+                        f'"{a}" became "{b}"' for a, b in unit_reversals[:2]
+                    )
         flags.append(_flag(
-            "negation_changed",
-            _quote_list(words_used) or "a negation",
-            {"action": action, "added": added_neg, "removed": removed_neg},
+            "negation_changed", evidence,
+            {"action": action, "added": added_neg, "removed": removed_neg,
+             "reversals": unit_reversals},
         ))
     if nums_changed:
         # Direction, not just "a figure changed": one pair reads as
@@ -441,11 +691,14 @@ def run_layer1(
     # A shall -> may swap is already reported as modal_weakened, which says
     # more. Reporting it again as a non-equivalent term describes the same
     # change twice in the same paragraph.
-    reportable_swaps = non_equivalent_swaps
-    if weakened:
-        reportable_swaps = [
-            (a, b) for a, b in non_equivalent_swaps if not _is_modal_pair(a, b)
-        ]
+    # A pair is reported once. A modal weakening and a sense reversal each have
+    # their own label, so neither is repeated here as a term swap.
+    reversal_words = {w.lower() for pair in unit_reversals for w in pair}
+    reportable_swaps = [
+        (a, b) for a, b in non_equivalent_swaps
+        if not (weakened and _is_modal_pair(a, b))
+        and not (a.lower() in reversal_words and b.lower() in reversal_words)
+    ]
     if reportable_swaps:
         flags.append(_flag(
             "non_equivalent_term",
