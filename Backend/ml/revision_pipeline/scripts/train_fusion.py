@@ -34,10 +34,18 @@ from revision_pipeline.layer3_fusion import (                 # noqa: E402
 
 
 def find_prediction_files(root: Path) -> list:
-    """Every predictions.jsonl under root, fold subdirectories included."""
-    direct = list(root.glob("predictions.jsonl"))
-    nested = sorted(root.glob("*/predictions.jsonl"))
-    return direct + nested
+    """Every prediction file under root, fold subdirectories included.
+
+    Fold runs write val_predictions.jsonl and test_predictions.jsonl; the
+    combined predictions.jsonl is still read so an older run is not orphaned.
+    """
+    patterns = ("predictions.jsonl", "val_predictions.jsonl",
+                "test_predictions.jsonl")
+    found = []
+    for pattern in patterns:
+        found += list(root.glob(pattern))
+        found += sorted(root.glob(f"*/{pattern}"))
+    return found
 
 
 def load_predictions(root: Path, split: str = "val") -> list:

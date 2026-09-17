@@ -385,11 +385,18 @@ def train(args) -> dict:
         predictions += dump_predictions(model, test_rows, test_loader, device, "test", args.fold)
 
     if predictions:
-        pred_path = out_dir / "predictions.jsonl"
-        pred_path.write_text(
-            "\n".join(json.dumps(r) for r in predictions), encoding="utf-8"
-        )
-        print(f"wrote {len(predictions)} predictions to {pred_path}")
+        # One file per split. Per-fold fusion trains on this fold's val
+        # predictions and is scored on its test predictions, so the two have to
+        # be separable without re-reading and filtering a combined file.
+        for split in ("val", "test"):
+            rows_for_split = [r for r in predictions if r.get("split") == split]
+            if not rows_for_split:
+                continue
+            pred_path = out_dir / f"{split}_predictions.jsonl"
+            pred_path.write_text(
+                "\n".join(json.dumps(r) for r in rows_for_split), encoding="utf-8"
+            )
+            print(f"wrote {len(rows_for_split)} {split} predictions to {pred_path}")
 
     metrics_path = out_dir / "metrics.json"
     metrics_path.write_text(json.dumps({

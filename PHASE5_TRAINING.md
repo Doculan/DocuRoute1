@@ -59,10 +59,10 @@ Two of these commits will change files under them:
 - **41 `.pyc` files are removed from tracking.** They will disappear from their
   working tree on pull and be regenerated on the next run. Harmless, but it
   looks alarming in a diff.
-- **`Backend/db.sqlite3` changed** (the re-extraction). It is a binary file, so
-  git cannot merge it. If they have local changes to their database, their pull
-  will conflict and they should take ours:
-  `git checkout --theirs Backend/db.sqlite3`.
+- **`Backend/db.sqlite3` is no longer tracked.** Git will delete it from their
+  working tree on pull. **They must copy it somewhere before pulling** and put
+  it back afterwards. It holds the extracted manual text and the repository is
+  public, which is why it is out; it is also binary, so it could never merge.
 
 Ask them to commit or stash their work before pulling.
 
@@ -115,30 +115,24 @@ not the whole run. Re-running the notebook skips folds that already have a
 | Cell | What it does | What you should see |
 |---|---|---|
 | 1. Mount Drive | Asks for permission | `results will be written to /content/drive/MyDrive/DocuRoute/context_v2` |
-| 2. Clone | Pulls the repo at `main` | The clone finishes and the working directory becomes `/content/DocuRoute1/Backend` |
+| 2. Clone | Asks for a GitHub token, then clones `main` | Leave the prompt blank if the repo is public. The token is typed with `getpass`, never stored, and is scrubbed from the clone output |
 | 3. Install | transformers, datasets, accelerate, scikit-learn | A few quiet minutes |
 | 4. Build the splits | Runs `make_splits.py` | Five lines, `fold 0` … `fold 4`, each naming its test documents |
 | 5. Folds | Trains five models, keeps **metrics only** | `fold 0 finished in N min` five times. No weights are written to Drive — they are gigabytes and you do not need them |
 | 6. Fold summary | Reads the five `metrics.json` | A table of per-fold verdict accuracy and per-label F1 |
-| 7. Fusion | `train_fusion.py` over the saved predictions | Fusion metrics, and `fusion.joblib` |
+| 7. Fusion | Per-fold evaluation, then the shipped model | A table of rules-only / model-only / fusion for each fold and averaged, written to Drive as `final/fold_evaluation.md` and `.json`; then `fusion.pkl` trained on all folds' val predictions |
 | 8. Final model | Trains on **all 19 documents**, thresholds taken as the median of the five folds | `saved to ml/saved_models/context_v2/final` |
 | 9. Save to Drive | Zips the final model | `NNN MB -> .../final/context_v2_final.zip` |
 
 **If the runtime disconnects**, re-run from cell 1. Finished folds are skipped.
 
-### If you made the repository private
+### The token prompt
 
-Replace the clone line in cell 2 with a token clone. Create the token at
-GitHub → Settings → Developer settings → Personal access tokens → Fine-grained,
-with read access to this repository only:
-
-```python
-from getpass import getpass
-TOKEN = getpass('GitHub token: ')
-!git clone --depth 1 --branch main https://{TOKEN}@github.com/Doculan/DocuRoute1.git /content/DocuRoute1
-```
-
-Do not paste the token into a cell you will commit.
+Cell 2 always asks for a token. **Leave it blank if the repository is public.**
+If it is private, create one at GitHub → Settings → Developer settings →
+Personal access tokens → Fine-grained, with read access to this repository
+only. It is read with `getpass`, deleted from memory after the clone, and
+scrubbed out of the clone's output, so it is never written to the notebook.
 
 ---
 
@@ -181,9 +175,11 @@ folder, not a commit.
 - **Per-label F1 for the two thin labels**, `key_term_deleted` (126 examples)
   and `non_equivalent_term` (89). Both are below the 150 floor and will be the
   weakest.
-- **Whether fusion beats Layer 1 alone.** The rules reach the wrong verdict on
-  about 28% of the dataset; if fusion does not clearly beat that, the model is
-  not earning its place.
+- **Whether fusion beats Layer 1 alone**, from `final/fold_evaluation.md`. It
+  scores rules-only, model-only and fusion on the same held-out test rows of
+  each fold, so the three are directly comparable. Fusion is fitted on that
+  fold's val predictions only - the shipped model is trained separately on all
+  folds' val predictions, and is not what these numbers describe.
 
 `DATASET_CARD.md` in `Backend/ml/datasets/context_v2/` lists what the dataset
 does not cover, which is the right context for reading any of these numbers.
