@@ -1,0 +1,51 @@
+﻿no,id,verdict,issues,generator,strategy,quality_score,hard_negative,note
+1,HRM_4.02-9065-2041,reject,requirement_removed,requirement_drop,drop a requirement,1.0,False,
+2,SDM_3.02-9113-2577,needs_revision,key_term_deleted,partial_key_term_delete,delete term,1.0,False,removed Permit to Enter the Campus/Attend Classes Form
+3,FAM_8.03_-9037-3430,approve,,typo_fix,adn -> and,1.0,False,
+4,FAM_5.01-8969-670,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+5,FAM_6.04-9009-1249,approve,,typo_fix,teh -> the,1.0,False,
+6,SDM_3.01-9102-2467,needs_revision,modal_weakened,combo,typo_fix + modal_weaken_single,1.0,False,an improvement and a problem in one revision
+7,HRM_4.04-9092-3206,reject,excessive_deletion; requirement_removed,bulk_deletion,cut a run,0.55,False,
+8,FAM_6.02-8987-956,approve,,legal_reference_format,reference format,1.0,False,
+9,HRM_4.04-9088-2240,approve,,typo_fix,adn -> and,1.0,False,
+10,FAM_6.02-8990-1109,reject,responsibility_changed,role_swap,swap role,1.0,False,
+11,FAM_5.01-8966-576,approve,,typo_fix,teh -> the,1.0,False,
+12,HRM_4.02-9067-2084,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+13,FAM_6.01-8976-847,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+14,SDM_3.01-9103-2506,reject,negation_changed,negation_flip,shall -> shall not,1.0,False,
+15,FAM_4.02-8953-396,approve,,step_split_reformat,split a crowded step,1.0,True,hard negative: a row appears but no wording is added
+16,SDM_3.01-9098-3207,reject,excessive_deletion; requirement_removed,bulk_deletion,cut a run,1.0,False,
+17,HRM_4.03-9083-2182,reject,responsibility_changed,role_swap,swap role,1.0,False,
+18,FAM_4.02-8954-2875,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+19,SDM_3.03-9118-2624,needs_revision,modal_weakened,modal_weaken_single,will -> may,1.0,False,
+20,FAM_6.01-8973-693,needs_revision,key_term_deleted,key_term_vagueing,generic noun,1.0,False,Application for Student Records -> records
+21,HRM_4.02-9063-3749,approve,,typo_fix,adn -> and,1.0,False,
+22,FAM_6.01-8976-2922,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+23,FAM_4.01-8942-235,needs_revision,contradicts_manual,step_reorder_dependent,swap numbered steps,1.0,False,"consecutive numbered steps swapped, so the sequence contradicts itself"
+24,SDM_3.06-9122-2684,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+25,FAM_6.03-8999-1194,needs_revision,key_term_deleted,partial_key_term_delete,delete term,1.0,False,removed Official Receipt
+26,FAM_6.01-8977-859,needs_revision,key_term_deleted,partial_key_term_delete,delete term,1.0,False,removed Official Receipt
+27,FAM_6.01-8976-832,reject,responsibility_changed,role_step_reassign,reassign a step,1.0,False,
+28,FAM_4.02-8955-2878,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+29,HRM_4.01-9056-3066,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+30,FAM_4.02-8950-3174,needs_revision,non_equivalent_term,non_equivalent_swap,all -> any,1.0,False,
+31,FAM_8.01-9023-1521,approve,,typo_fix,aproval -> approval,1.0,False,
+32,FAM_8.03_-9039-1767,needs_revision,key_term_deleted,partial_key_term_delete,delete term,1.0,False,removed Notice of Award
+33,FAM_6.01-8974-711,approve,,whitespace_format,spacing,1.0,False,
+34,FAM_8.03_-9038-1724,reject,responsibility_changed,role_step_reassign,reassign a step,1.0,False,
+35,HRM_4.01-9053-1861,approve,,typo_fix,adn -> and,1.0,False,
+36,FAM_6.02-8988-3186,reject,excessive_deletion; requirement_removed,bulk_deletion,cut a run,0.55,False,
+37,FAM_4.02-8949-293,approve,,typo_fix,teh -> the,1.0,False,
+38,FAM_6.03-8999-1184,approve,,step_split_reformat,split a crowded step,1.0,True,hard negative: a row appears but no wording is added
+39,FAM_4.02-8950-308,approve,,equivalent_synonym,in accordance with -> following,1.0,False,
+40,FAM_6.04-9014-2983,needs_revision,contradicts_manual,step_reorder_dependent,swap numbered steps,1.0,False,"consecutive numbered steps swapped, so the sequence contradicts itself"
+41,FAM_4.01-8943-2849,needs_revision,contradicts_manual,step_reorder_dependent,swap numbered steps,1.0,False,"consecutive numbered steps swapped, so the sequence contradicts itself"
+42,FAM_6.02-8989-1065,needs_revision,key_term_deleted,partial_key_term_delete,delete term,1.0,False,removed Promissory Note
+43,FAM_4.02-8956-536,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+44,FAM_6.02-8989-1048,approve,,typo_fix,teh -> the,1.0,False,
+45,SDM_3.01-9100-2414,reject,requirement_removed,requirement_drop,drop a requirement,1.0,False,
+46,FAM_6.04-9012-1314,needs_revision,modal_weakened,modal_weaken_single,shall -> may,1.0,False,
+47,SDM_3.01-9102-2433,approve,,typo_fix,adn -> and,1.0,False,
+48,FAM_6.04-9013-3395,approve,,acronym_expansion,expand BS,1.0,False,
+49,SDM_3.03-9118-2612,approve,,whitespace_format,spacing,1.0,False,
+50,FAM_4.02-8956-3606,approve,,typo_fix,teh -> the,1.0,False,

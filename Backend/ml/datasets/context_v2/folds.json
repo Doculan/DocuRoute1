@@ -1,0 +1,24 @@
+{
+  "by_document": {
+    "SDM 3.03": 0,
+    "FAM 4.02": 1,
+    "FAM 6.02": 2,
+    "HRM 4.04": 3,
+    "FAM 5.01": 4,
+    "FAM 6.04": 0,
+    "FAM 6.01": 1,
+    "ASM 3.0": 2,
+    "SDM 3.01": 3,
+    "FAM 8.01": 4,
+    "SDM 3.02": 0,
+    "HRM 4.03": 1,
+    "HRM 4.01": 2,
+    "FAM 8.02 Evaluation of External Providers": 3,
+    "FAM 6.03": 4,
+    "FAM 8.03 ": 0,
+    "SDM 3.06": 1,
+    "FAM 4.01": 2,
+    "HRM 4.02": 3
+  },
+  "folds": 5
+}

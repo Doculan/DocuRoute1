@@ -1,0 +1,51 @@
+﻿no,id,verdict,issues,generator,strategy,quality_score,hard_negative,note
+1,FAM_4.02-8956-2886,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+2,FAM_4.01-8939-3806,approve,,typo_fix,adn -> and,1.0,False,
+3,FAM_5.01-8969-3338,approve,,whitespace_format,spacing,1.0,False,
+4,SDM_3.03-9119-2661,needs_revision,non_equivalent_term,non_equivalent_swap,all -> any,1.0,False,
+5,HRM_4.02-9065-2051,reject,requirement_removed,requirement_drop,drop a requirement,1.0,False,
+6,FAM_6.02-8989-1081,reject,contradicts_manual,step_reorder_dependent,swap numbered steps,1.0,False,"consecutive numbered steps swapped, so the sequence contradicts itself"
+7,ASM_3.0-8935-62,approve,,acronym_expansion,expand CHED,1.0,False,
+8,FAM_5.01-8966-3187,needs_revision,non_equivalent_term,non_equivalent_swap,all -> any,1.0,False,
+9,FAM_8.03_-9038-1729,reject,excessive_deletion; requirement_removed,bulk_deletion,cut a run,1.0,False,
+10,SDM_3.06-9124-2711,approve,,acronym_expansion,expand CGMC,1.0,False,
+11,FAM_6.03-8996-1136,approve,,typo_fix,teh -> the,1.0,False,
+12,FAM_5.01-8969-3625,approve,,typo_fix,teh -> the,1.0,False,
+13,HRM_4.01-9050-1810,approve,,typo_fix,adn -> and,1.0,False,
+14,FAM_8.01-9022-1510,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+15,HRM_4.04-9088-2247,approve,,whitespace_format,spacing,1.0,False,
+16,FAM_4.01-8943-2856,reject,contradicts_manual,step_reorder_dependent,swap numbered steps,1.0,False,"consecutive numbered steps swapped, so the sequence contradicts itself"
+17,FAM_4.01-8943-3286,approve,,whitespace_format,spacing,1.0,False,
+18,FAM_6.01-8973-3346,approve,,typo_fix,teh -> the,1.0,False,
+19,FAM_6.01-8974-3348,approve,,typo_fix,teh -> the,1.0,False,
+20,FAM_6.01-8977-859,needs_revision,non_equivalent_term,non_equivalent_swap,review -> note,1.0,False,
+21,FAM_4.02-8955-477,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+22,HRM_4.03-9082-2145,needs_revision,non_equivalent_term,non_equivalent_swap,any -> all,1.0,False,
+23,FAM_4.02-8950-322,reject,negation_changed,negation_flip,before -> after,1.0,False,before became after
+24,FAM_4.02-8948-282,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+25,FAM_4.02-8950-2864,needs_revision,non_equivalent_term,non_equivalent_swap,review -> approve,1.0,False,
+26,FAM_6.04-9010-1275,needs_revision,modal_weakened,modal_weaken_single,must -> may,1.0,False,
+27,FAM_6.01-8978-2934,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+28,FAM_6.02-8990-1102,approve,,cross_reference_addition,cross reference,1.0,False,
+29,FAM_6.02-8989-1071,reject,negation_changed,negation_flip,including -> excluding,1.0,False,including became excluding
+30,FAM_8.03_-9038-1696,needs_revision,non_equivalent_term,non_equivalent_swap,file -> record,1.0,False,
+31,FAM_5.01-8966-3333,approve,,legal_reference_format,reference format,1.0,False,
+32,FAM_6.02-8987-963,needs_revision,numeric_changed,numeric_change,quantity,1.0,False,365 -> 730
+33,FAM_4.01-8941-196,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+34,FAM_6.01-8972-683,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+35,FAM_8.01-9020-1467,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+36,HRM_4.04-9090-2288,needs_revision,modal_weakened,modal_weaken_single,shall -> can,1.0,False,
+37,FAM_4.02-8955-465,reject,responsibility_changed,role_step_reassign,reassign a step,1.0,False,
+38,FAM_4.02-8950-3604,approve,,typo_fix,adn -> and,1.0,False,
+39,SDM_3.03-9118-3155,reject,negation_changed,negation_flip,after -> before,1.0,False,after became before
+40,SDM_3.01-9102-2459,needs_revision,modal_weakened,modal_weaken_single,shall -> may,1.0,False,
+41,HRM_4.03-9082-3752,approve,,typo_fix,teh -> the,1.0,False,
+42,FAM_6.04-9009-1266,reject,requirement_removed,requirement_drop,drop a requirement,1.0,False,
+43,SDM_3.03-9118-2637,reject,negation_changed,negation_flip,before -> after,1.0,False,before became after
+44,FAM_4.02-8956-3318,approve,,whitespace_format,spacing,1.0,False,
+45,FAM_8.01-9023-1553,reject,out_of_scope_content,foreign_insertion,insert foreign material,1.0,False,
+46,FAM_6.02-8987-2935,needs_revision,non_equivalent_term,non_equivalent_swap,all -> any,1.0,False,
+47,FAM_8.02_Evaluation_of_External_Providers-9032-1615,reject,responsibility_changed,combo,typo_fix + role_swap,1.0,False,an improvement and a problem in one revision
+48,HRM_4.02-9066-2056,approve,,benign_reorder,swap unordered rows,1.0,True,hard negative: rows move but the list has no sequence
+49,FAM_8.01-9019-3000,needs_revision,numeric_changed,combo,typo_fix + numeric_change,1.0,False,an improvement and a problem in one revision
+50,FAM_4.01-8941-3280,approve,,whitespace_format,spacing,1.0,False,
