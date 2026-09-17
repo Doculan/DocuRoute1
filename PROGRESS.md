@@ -219,6 +219,36 @@ download, no extra memory.
 
 ---
 
+## Phase 4 — design (agreed before building)
+
+### Unit vs. submission unit
+
+The app submits **whole stored sections** — revision 12 was the entirety of
+`4.0 PROCEDURES`, not one row. So:
+
+- **Table rows are where edits are applied**, per A3.
+- **`old_text` / `new_text` are the whole stored section**, exactly as the app
+  would submit it.
+- **1–3 edited rows per example**, so a revision can carry several small
+  changes the way a real one does.
+- Report the **token-length distribution on the built dataset** — the earlier
+  measurements were on whole sections without edits and will not transfer.
+
+### Sampling
+
+- **Stratify by section type** (Objectives / Scope / Policies / Procedures) so
+  procedures — which hold all 487 table rows — do not swamp the rest. Report
+  counts per type.
+- **Minimum 150 positive examples per issue label.** Adjust the generator mix
+  to reach it and raise the total above 3,000 if needed; training runs on
+  Colab, so size is cheap. Report per-label counts and name any label that
+  cannot reach the floor.
+
+All earlier Phase 4 rules stand: the quality bar below, the borderline-match
+discard rule, and decision 9.
+
+---
+
 ## Phase 4 — dataset quality bar (agreed before building)
 
 **Treat every generated example as if a real staff member submitted it and a

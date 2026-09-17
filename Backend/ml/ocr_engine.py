@@ -100,6 +100,44 @@ _STRAY_LINE_RE = re.compile(r'^\s*[^\w\s]{1,3}\s*$')
 # A backtick the text layer invented: "Responsibility`".
 _STRAY_BACKTICK_RE = re.compile(r'`')
 
+# All-lowercase glue the capital-letter rule cannot see. An explicit table
+# rather than dictionary segmentation, because a segmenter cannot tell
+# "ofthe" from "informs", "install", "intake" or "inappropriate" - all real
+# words that begin with a function word. Every entry below was verified in
+# context in the corpus.
+_LOWER_GLUE = {
+    "ofthe": "of the", "onthe": "on the", "Onthe": "On the",
+    "tothe": "to the", "forthe": "for the", "andthe": "and the",
+    "Ifthere": "If there", "arenomore": "are no more",
+    "forappropriate": "for appropriate", "forthenecessary": "for the necessary",
+    "ofaccomplishment": "of accomplishment", "onthereport": "on the report",
+    "andhis": "and his", "herparent": "her parent", "orguardian": "or guardian",
+    "onduty": "on duty", "theresults": "the results", "timehe": "time he",
+    "Enterthe": "Enter the", "forsignature": "for signature",
+    "thelogbookupon": "the logbook upon", "upontherespondent": "upon the respondent",
+    "actiontoimprove": "action to improve", "theirsystembased": "their system based",
+    "schoolseal": "school seal", "Disseminateresults": "Disseminate results",
+    "alloffices": "all offices", "gatheredfromthe": "gathered from the",
+    "Accomplishthe": "Accomplish the", "Formto": "Form to",
+    "Submissionofyearly": "Submission of yearly", "Submissionof": "Submission of",
+    "DPCRto": "DPCR to", "thePMT": "the PMT",
+    "CalibrationoftheDPCR": "Calibration of the DPCR",
+    "Noreport": "No report", "Lackingmore": "Lacking more", "than5": "than 5",
+    "Afterdeadline": "After deadline", "1-2days": "1-2 days",
+    "Weekofthe": "Week of the", "Administrationand": "Administration and",
+    "Enrolment": "Enrolment",
+}
+_LOWER_GLUE_RE = re.compile(
+    r"\b(" + "|".join(sorted(map(re.escape, _LOWER_GLUE), key=len, reverse=True)) + r")\b"
+)
+
+# An acronym fused to the next word: "OSDStaff", "BACMembers". Genuine mixed
+# casing is spelled out here so it survives untouched.
+_ACRONYM_EXCEPTIONS = {
+    "eNGAS", "PhilGEPS", "eBudget", "iSchool", "eSPMS", "RCDisb",
+}
+_ACRONYM_GLUE_RE = re.compile(r"\b([A-Z]{2,6})([A-Z][a-z]{2,})\b")
+
 # Two or more numbered steps crammed into one table cell:
 # "1. Receives the Clearances. 2. Checks the ledger."
 _STEP_SPLIT_RE = re.compile(r'(?<=[.;)])\s+(?=\d{1,2}\.\s*[A-Z])')
@@ -130,6 +168,12 @@ def repair_artefacts(s):
     s = _GLUED_COLON_RE.sub(': ', s)
     s = _GLUED_NUMBER_RE.sub(' ', s)
     s = _GLUED_WORD_RE.sub(' ', s)
+    s = _LOWER_GLUE_RE.sub(lambda m: _LOWER_GLUE[m.group(1)], s)
+    s = _ACRONYM_GLUE_RE.sub(
+        lambda m: m.group(0) if m.group(0) in _ACRONYM_EXCEPTIONS
+        else f"{m.group(1)} {m.group(2)}",
+        s,
+    )
     return s
 
 

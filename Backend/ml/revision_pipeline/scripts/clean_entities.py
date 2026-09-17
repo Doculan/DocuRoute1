@@ -59,7 +59,61 @@ _EXTRA_SYSTEMS = [
     "PhilGEPS",
 ]
 
+_EXTRA_FORMS = [
+    "Report of Cash Disbursements (RCDisb)",
+]
+
 _WS_RE = re.compile(r"\s+")
+
+# ── Reviewed decisions ───────────────────────────────────────
+# Encoded here rather than hand-edited into entities.json, so re-mining the
+# corpus reproduces the same reviewed lists.
+
+# Column headers and cell values the miner read as roles.
+_NOT_ROLES = {
+    "frequency", "position", "new", "placement", "recruitment", "regular",
+    "selection", "rating", "date", "particulars", "remarks",
+    # "Program Chair" and "Program Curriculum Committee" are split across
+    # table columns in the source, leaving "Pro" and "Pro Com" behind.
+    "pro", "pro com",
+    # Appears once, as a schedule row label ("Submission of IPCR to HRMO
+    # Faculty Personnel"), never as a party carrying a responsibility.
+    "faculty personnel",
+}
+
+# Whole sentences and schedule labels mined as if they were roles.
+_FRAGMENT_MARKERS = (
+    "submission of", "submissionof", "calibration of", "monitoring of",
+    "informs ", "signs the", "receives the",
+)
+
+# Acronyms that name a genuine body. They belong in offices, spelled out.
+_ACRONYM_BODIES = {
+    "ccc": "College Curriculum Committee (CCC)",
+    "ucc": "University Curriculum Committee (UCC)",
+    "pmt": "Performance Management Team (PMT)",
+}
+
+# Truncated or glued role names, completed from the source document.
+_ROLE_REWRITES = {
+    "bacmembers": "BAC Members",
+    "bacmembers,twg": "BAC Members/TWG",
+    "bac members,twg": "BAC Members/TWG",
+    "bac members, twg, secretariat": "BAC Members/TWG/Secretariat",
+    "bac members, secretariat, twg, end- user": "BAC Members/Secretariat/TWG/End-user",
+    "osdstaff": "OSD Staff",
+    "vice-president for administrationand":
+        "Vice-President for Administration and Finance (VPAF)",
+    "vice-president for administration and":
+        "Vice-President for Administration and Finance (VPAF)",
+    # The source truncates this mid-phrase; completed from the full form that
+    # appears elsewhere in the same document.
+    "vice-president for administration":
+        "Vice-President for Administration and Finance (VPAF)",
+    # Instances of one role, not separate roles.
+    "student 1": "Student", "student 3": "Student", "student 9": "Student",
+    "students": "Student",
+}
 
 # A table's column header bleeding into the first cell of a row.
 _HEADER_PREFIX_RE = re.compile(
@@ -137,16 +191,48 @@ def _dedupe(values: list) -> list:
     return sorted(best.values(), key=lambda s: (s.lower()))
 
 
+def _apply_role_decisions(values: list):
+    """Returns (roles, bodies_to_move_to_offices)."""
+    kept, moved = [], []
+    for value in values:
+        low = value.lower().strip()
+        if low in _NOT_ROLES:
+            continue
+        if low in _ACRONYM_BODIES:
+            moved.append(_ACRONYM_BODIES[low])
+            continue
+        if any(low.startswith(marker) for marker in _FRAGMENT_MARKERS):
+            continue
+        kept.append(_ROLE_REWRITES.get(low, value))
+    return kept, moved
+
+
 def clean(draft: dict) -> dict:
     roles = [v for v in _dedupe(draft.get("roles", [])) if not _is_noise(v)]
-    offices = [v for v in _dedupe(draft.get("offices", [])) if not _is_noise(v)]
+    roles, promoted = _apply_role_decisions(roles)
+    roles = _dedupe(roles)
+    offices = [v for v in _dedupe(list(draft.get("offices", [])) + promoted)
+               if not _is_noise(v)]
     # An acronym is meaningful even when short, so bare category filtering is
     # relaxed here - but headings and pure punctuation still go.
     systems = [
         v for v in _dedupe(list(draft.get("systems", [])) + _EXTRA_SYSTEMS)
         if not _is_noise(v, bare_ok=True)
     ]
-    forms = [v for v in _dedupe(draft.get("forms", [])) if not _is_noise(v)]
+    forms = [v for v in _dedupe(list(draft.get("forms", [])) + _EXTRA_FORMS)
+             if not _is_noise(v)]
+
+    # A body promoted to offices must not also sit in roles, and
+    # "X Committee" and "X Committee (XC)" are one entry, not two.
+    def base(name):
+        return re.sub(r"\s*\([A-Z]{2,8}\)\s*$", "", name).strip().lower()
+
+    office_bases = {base(o) for o in offices}
+    offices = [
+        o for o in offices
+        if "(" in o or not any(base(other) == base(o) and "(" in other for other in offices)
+    ]
+    roles = [r for r in roles if base(r) not in office_bases]
 
     return {
         "_comment": (
