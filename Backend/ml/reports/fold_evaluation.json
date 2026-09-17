@@ -1,0 +1,245 @@
+{
+  "folds": {
+    "fold_0": {
+      "kind": "boosting",
+      "train_n": 735,
+      "test_n": 466,
+      "precise_rule_labels": [
+        "excessive_deletion",
+        "modal_weakened",
+        "non_equivalent_term"
+      ],
+      "rules_only": {
+        "verdict_accuracy": 0.7725,
+        "verdict_macro_f1": 0.7778,
+        "issue_micro_f1": 0.6779
+      },
+      "model_only": {
+        "verdict_accuracy": 0.9635,
+        "verdict_macro_f1": 0.9622,
+        "issue_micro_f1": 0.8876
+      },
+      "fusion": {
+        "verdict_accuracy": 0.9807,
+        "verdict_macro_f1": 0.9807,
+        "issue_micro_f1": 0.8862
+      },
+      "issue_policies": {
+        "model": 0.8876,
+        "union": 0.7264,
+        "rules_precise": 0.8862,
+        "agree": 0.8614
+      },
+      "silenced_labels": {
+        "model": [],
+        "union": [],
+        "rules_precise": [],
+        "agree": [
+          "contradicts_manual",
+          "out_of_scope_content"
+        ]
+      }
+    },
+    "fold_1": {
+      "kind": "boosting",
+      "train_n": 650,
+      "test_n": 735,
+      "precise_rule_labels": [
+        "excessive_deletion",
+        "modal_weakened",
+        "non_equivalent_term"
+      ],
+      "rules_only": {
+        "verdict_accuracy": 0.8204,
+        "verdict_macro_f1": 0.8046,
+        "issue_micro_f1": 0.6372
+      },
+      "model_only": {
+        "verdict_accuracy": 0.9075,
+        "verdict_macro_f1": 0.8884,
+        "issue_micro_f1": 0.7477
+      },
+      "fusion": {
+        "verdict_accuracy": 0.985,
+        "verdict_macro_f1": 0.9829,
+        "issue_micro_f1": 0.7498
+      },
+      "issue_policies": {
+        "model": 0.7477,
+        "union": 0.6159,
+        "rules_precise": 0.7498,
+        "agree": 0.8288
+      },
+      "silenced_labels": {
+        "model": [],
+        "union": [],
+        "rules_precise": [],
+        "agree": [
+          "contradicts_manual",
+          "out_of_scope_content"
+        ]
+      }
+    },
+    "fold_2": {
+      "kind": "logistic",
+      "train_n": 481,
+      "test_n": 650,
+      "precise_rule_labels": [
+        "excessive_deletion",
+        "modal_weakened",
+        "non_equivalent_term"
+      ],
+      "rules_only": {
+        "verdict_accuracy": 0.7846,
+        "verdict_macro_f1": 0.7863,
+        "issue_micro_f1": 0.6648
+      },
+      "model_only": {
+        "verdict_accuracy": 0.9631,
+        "verdict_macro_f1": 0.9619,
+        "issue_micro_f1": 0.8887
+      },
+      "fusion": {
+        "verdict_accuracy": 0.9708,
+        "verdict_macro_f1": 0.9698,
+        "issue_micro_f1": 0.8927
+      },
+      "issue_policies": {
+        "model": 0.8887,
+        "union": 0.7121,
+        "rules_precise": 0.8927,
+        "agree": 0.8635
+      },
+      "silenced_labels": {
+        "model": [],
+        "union": [],
+        "rules_precise": [],
+        "agree": [
+          "contradicts_manual",
+          "out_of_scope_content"
+        ]
+      }
+    },
+    "fold_3": {
+      "kind": "boosting",
+      "train_n": 430,
+      "test_n": 481,
+      "precise_rule_labels": [
+        "excessive_deletion",
+        "modal_weakened",
+        "non_equivalent_term"
+      ],
+      "rules_only": {
+        "verdict_accuracy": 0.8191,
+        "verdict_macro_f1": 0.8159,
+        "issue_micro_f1": 0.6908
+      },
+      "model_only": {
+        "verdict_accuracy": 0.9647,
+        "verdict_macro_f1": 0.9625,
+        "issue_micro_f1": 0.8825
+      },
+      "fusion": {
+        "verdict_accuracy": 0.9792,
+        "verdict_macro_f1": 0.9776,
+        "issue_micro_f1": 0.8825
+      },
+      "issue_policies": {
+        "model": 0.8825,
+        "union": 0.7352,
+        "rules_precise": 0.8825,
+        "agree": 0.863
+      },
+      "silenced_labels": {
+        "model": [],
+        "union": [],
+        "rules_precise": [],
+        "agree": [
+          "contradicts_manual",
+          "out_of_scope_content"
+        ]
+      }
+    },
+    "fold_4": {
+      "kind": "boosting",
+      "train_n": 466,
+      "test_n": 430,
+      "precise_rule_labels": [
+        "excessive_deletion",
+        "modal_weakened",
+        "non_equivalent_term"
+      ],
+      "rules_only": {
+        "verdict_accuracy": 0.7605,
+        "verdict_macro_f1": 0.7571,
+        "issue_micro_f1": 0.6629
+      },
+      "model_only": {
+        "verdict_accuracy": 0.9558,
+        "verdict_macro_f1": 0.9548,
+        "issue_micro_f1": 0.8563
+      },
+      "fusion": {
+        "verdict_accuracy": 0.9814,
+        "verdict_macro_f1": 0.9809,
+        "issue_micro_f1": 0.8563
+      },
+      "issue_policies": {
+        "model": 0.8563,
+        "union": 0.6863,
+        "rules_precise": 0.8563,
+        "agree": 0.8719
+      },
+      "silenced_labels": {
+        "model": [],
+        "union": [],
+        "rules_precise": [],
+        "agree": [
+          "contradicts_manual",
+          "out_of_scope_content"
+        ]
+      }
+    }
+  },
+  "averaged": {
+    "rules_only": {
+      "verdict_accuracy": 0.7914,
+      "verdict_macro_f1": 0.7883,
+      "issue_micro_f1": 0.6667
+    },
+    "model_only": {
+      "verdict_accuracy": 0.9509,
+      "verdict_macro_f1": 0.946,
+      "issue_micro_f1": 0.8526
+    },
+    "fusion": {
+      "verdict_accuracy": 0.9794,
+      "verdict_macro_f1": 0.9784,
+      "issue_micro_f1": 0.8535
+    }
+  },
+  "issue_policies": {
+    "model": 0.8526,
+    "union": 0.6952,
+    "rules_precise": 0.8535,
+    "agree": 0.8577
+  },
+  "silenced_labels": {
+    "model": [],
+    "union": [],
+    "rules_precise": [],
+    "agree": [
+      "contradicts_manual",
+      "out_of_scope_content"
+    ]
+  },
+  "best_issue_policy": "rules_precise",
+  "best_chosen_among": [
+    "model",
+    "union",
+    "rules_precise"
+  ],
+  "configured_issue_policy": "rules_precise",
+  "issue_threshold": 0.5,
+  "note": "Fusion is fitted on each fold's val predictions and scored on that fold's test predictions, which neither it nor that fold's Layer 2 model has seen. The shipped fusion model is trained separately, on all folds' val predictions."
+}

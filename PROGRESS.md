@@ -808,6 +808,55 @@ Per-label F1 under the chosen policy against the old union, worst first:
 `requirement_removed` 0.637 -> 0.783, `key_term_deleted` 0.694 -> 0.782,
 `negation_changed` 0.765 -> 0.951.
 
+### The official figures, and why Colab said 0.975
+
+**The official numbers are the ones in `Backend/ml/reports/fold_evaluation.md`:
+verdict accuracy 0.979, issue micro-F1 0.854.** They come from the committed
+code, the committed dataset and the pinned seed, over the same fold predictions
+Colab produced, and can be reproduced with one command. The Colab run reported
+0.975 for the verdict; that environment is not pinned anywhere.
+
+The difference is not in the model. The fold predictions are the same files,
+and Layer 1's features are recomputed deterministically from the text. What
+moves is which estimator `FusionModel.train` picks: it fits logistic regression
+and gradient boosting and keeps whichever validates better, and that decision
+is close enough to flip between scikit-learn versions.
+
+Forcing one estimator across all five folds:
+
+| Fusion estimator | Per fold | Mean |
+|---|---|---:|
+| logistic only | 0.985, 0.946, 0.971, 0.977, 0.979 | 0.9715 |
+| boosting only | 0.981, 0.985, 0.965, 0.979, 0.981 | 0.9782 |
+| as selected (boost, boost, logistic, boost, boost) | | **0.9794** |
+
+Fold 1 alone swings 4 points on that choice - 0.946 with logistic, 0.985 with
+boosting. One fold selecting differently under Colab's scikit-learn accounts
+for the 0.4 points exactly.
+
+**Known issue, not yet acted on:** picking between two estimators by a hair
+makes the result environment-dependent, and the fusion model the app ships
+could be either kind depending on where it was fitted. Boosting is better on
+average and on four of five folds; pinning it would make this reproducible at
+the cost of the selection step. Local scikit-learn is 1.9.0.
+
+### The issue policy was chosen on the test folds, and holds on validation too
+
+`ISSUE_POLICY` was selected on each fold's **test** predictions, which is the
+same data the reported figures come from. Checked the other way round - the
+precise-label set taken from the test rows and the policies scored on the
+validation rows, the mirror of what was done - the ranking is identical:
+
+| Policy | Scored on val | Scored on test |
+|---|---:|---:|
+| model | 0.8534 | 0.8526 |
+| union | 0.6955 | 0.6952 |
+| rules_precise | **0.8546** | **0.8535** |
+| agree | 0.8573 | 0.8577 |
+
+Same order, same margins, and `agree` still unusable for the reason above. The
+choice is not an artefact of which split it was measured on.
+
 ### Two faults in the Colab run
 
 - **The final-model cell trained on the CPU.** GPU memory sat at 0.0 GB for
