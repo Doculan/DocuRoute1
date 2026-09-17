@@ -51,7 +51,29 @@ def feature_names() -> list:
 
 # -- issue merging ---------------------------------------------
 
-def merge_issues(rule_flags: list, issue_probs, thresholds: dict = None) -> list:
+def select_issue_labels(rule_labels, model_labels, policy: str = None,
+                        precise_labels=None) -> set:
+    """Which labels survive, under the policy in force.
+
+    Kept apart from merge_issues so the choice can be scored on saved
+    predictions without building the explanation payload for each one.
+    """
+    policy = policy or config.ISSUE_POLICY
+    rule_labels = set(rule_labels or ())
+    model_labels = set(model_labels or ())
+
+    if policy == "model":
+        return model_labels
+    if policy == "agree":
+        return rule_labels & model_labels
+    if policy == "rules_precise":
+        allowed = set(precise_labels or ())
+        return model_labels | (rule_labels & allowed)
+    return rule_labels | model_labels
+
+
+def merge_issues(rule_flags: list, issue_probs, thresholds: dict = None,
+                 policy: str = None, precise_labels=None) -> list:
     """Union of what the rules flagged and what the model predicted.
 
     ``source`` records which side raised each one, because "both agree" is a
@@ -103,6 +125,14 @@ def merge_issues(rule_flags: list, issue_probs, thresholds: dict = None) -> list
                 "clause": config.ISSUE_CLAUSE.get(label, ""),
                 "evidence": "",
             }
+
+    # Drop whatever the policy in force does not keep. The payload above is
+    # built for every candidate; this decides which ones are reported.
+    rule_labels = {f.get("label") for f in (rule_flags or []) if f.get("label")}
+    model_labels = {label for label, entry in by_label.items()
+                    if entry.get("source") in ("model", "both")}
+    keep = select_issue_labels(rule_labels, model_labels, policy, precise_labels)
+    by_label = {label: entry for label, entry in by_label.items() if label in keep}
 
     return sorted(
         by_label.values(),

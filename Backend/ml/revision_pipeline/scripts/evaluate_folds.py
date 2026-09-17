@@ -38,6 +38,7 @@ from revision_pipeline.data import load_jsonl                       # noqa: E402
 from revision_pipeline.layer1_rules import run_layer1               # noqa: E402
 from revision_pipeline.layer3_fusion import (                       # noqa: E402
     FusionModel, build_feature_vector, rules_only_verdict,
+    select_issue_labels,
 )
 
 ISSUE_THRESHOLD = 0.5
@@ -132,6 +133,26 @@ def prepare(records: list, dataset: dict) -> list:
     return prepared
 
 
+ISSUE_POLICIES = ("model", "union", "rules_precise", "agree")
+
+
+def precise_rule_labels(rows: list, floor: float) -> list:
+    """Labels the rules get right often enough to be worth adding.
+
+    Measured on the fold's *training* rows, never on the rows the policy is
+    then scored on, so a label cannot earn its place on the test set.
+    """
+    hits = {}
+    for row in rows:
+        for label in row["rules_issues"]:
+            correct, seen = hits.get(label, (0, 0))
+            hits[label] = (correct + (label in row["issues_true"]), seen + 1)
+    return sorted(
+        label for label, (correct, seen) in hits.items()
+        if seen >= 5 and correct / seen >= floor
+    )
+
+
 def score_fold(train_rows: list, test_rows: list, seed: int) -> dict:
     fusion = FusionModel.train(
         [r["features"] for r in train_rows],
@@ -148,17 +169,33 @@ def score_fold(train_rows: list, test_rows: list, seed: int) -> dict:
 
     truth = [r["verdict_true"] for r in test_rows]
     issues_true = [r["issues_true"] for r in test_rows]
-    result = {"kind": fusion.kind, "train_n": len(train_rows), "test_n": len(test_rows)}
+    precise = precise_rule_labels(train_rows, config.RULE_PRECISION_FLOOR)
+    result = {
+        "kind": fusion.kind, "train_n": len(train_rows), "test_n": len(test_rows),
+        "precise_rule_labels": precise,
+    }
     for name, verdicts, issues in (
         ("rules_only", [r["rules_verdict"] for r in test_rows],
          [r["rules_issues"] for r in test_rows]),
         ("model_only", [r["model_verdict"] for r in test_rows],
          [r["model_issues"] for r in test_rows]),
-        ("fusion", fusion_verdicts, [r["fusion_issues"] for r in test_rows]),
+        ("fusion", fusion_verdicts,
+         [select_issue_labels(r["rules_issues"], r["model_issues"], "union")
+          for r in test_rows]),
     ):
         scores = verdict_scores(truth, verdicts)
         scores["issue_micro_f1"] = issue_micro_f1(issues_true, issues)
         result[name] = scores
+
+    # The verdict is fusion's either way; only the issue set changes, so the
+    # policies are compared on that alone.
+    result["issue_policies"] = {
+        policy: issue_micro_f1(issues_true, [
+            select_issue_labels(r["rules_issues"], r["model_issues"], policy, precise)
+            for r in test_rows
+        ])
+        for policy in ISSUE_POLICIES
+    }
     return result
 
 
@@ -211,9 +248,20 @@ def main() -> int:
         for system in systems
     }
 
+    policy_means = {
+        policy: round(statistics.fmean(
+            fold["issue_policies"][policy] for fold in per_fold.values()
+        ), 4)
+        for policy in ISSUE_POLICIES
+    }
+    best_policy = max(policy_means, key=policy_means.get)
+
     report = {
         "folds": per_fold,
         "averaged": averaged,
+        "issue_policies": policy_means,
+        "best_issue_policy": best_policy,
+        "configured_issue_policy": config.ISSUE_POLICY,
         "issue_threshold": ISSUE_THRESHOLD,
         "note": (
             "Fusion is fitted on each fold's val predictions and scored on that "
@@ -253,6 +301,20 @@ def main() -> int:
             f"| {scores['verdict_macro_f1']:.3f} "
             f"| {scores['issue_micro_f1']:.3f} |"
         )
+
+    lines += ["", "## How Layer 3 should combine the two issue sets", "",
+              "The verdict is fusion's under every one of these; only the issue",
+              "set changes. Scored per fold, then averaged.", "",
+              "| policy | issue micro-F1 |", "|---|---:|"]
+    for policy in ISSUE_POLICIES:
+        mark = "  **<- best**" if policy == best_policy else ""
+        lines.append(f"| {policy} | {policy_means[policy]:.3f}{mark} |")
+    lines += ["", f"Configured: `{config.ISSUE_POLICY}`. "
+                  f"Best measured: `{best_policy}`.",
+              "", "Labels the rules were precise enough to add, per fold:"]
+    for name, fold in per_fold.items():
+        labels = ", ".join(fold["precise_rule_labels"]) or "none"
+        lines.append(f"- {name}: {labels}")
     (out_dir / "fold_evaluation.md").write_text("\n".join(lines) + "\n",
                                                 encoding="utf-8")
 
@@ -262,6 +324,14 @@ def main() -> int:
         print(f"   {system:<12} acc {scores['verdict_accuracy']:.3f}  "
               f"macro-F1 {scores['verdict_macro_f1']:.3f}  "
               f"issue micro-F1 {scores['issue_micro_f1']:.3f}")
+    print("\nissue policies (verdict is fusion's under each):")
+    for policy in ISSUE_POLICIES:
+        mark = "   <-- best" if policy == best_policy else ""
+        print(f"   {policy:<14} issue micro-F1 {policy_means[policy]:.3f}{mark}")
+    if best_policy != config.ISSUE_POLICY:
+        print(f"\nconfig.ISSUE_POLICY is '{config.ISSUE_POLICY}'; "
+              f"'{best_policy}' scores better here.")
+
     print(f"\nwrote {out_dir / 'fold_evaluation.json'} and .md")
     return 0
 

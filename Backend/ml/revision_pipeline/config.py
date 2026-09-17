@@ -119,6 +119,24 @@ PERMISSIVE_MODALS = [
     "is optional", "are optional",
 ]
 
+# ── How Layer 3 combines the two sources of issues ────────────
+# The union was the first thing tried and the only thing tried. Measured on the
+# five folds it cost 16 points of issue micro-F1 against the model alone
+# (0.853 -> 0.695): every rule false positive is added to a set the model had
+# right. ISSUE_POLICY names which rule is in force; evaluate_folds.py scores
+# all of them on held-out fold predictions.
+#
+#   "model"          - what Layer 2 predicts, and nothing else
+#   "union"          - every rule flag plus every model issue
+#   "rules_precise"  - model issues, plus rule flags only for labels the rules
+#                      get right often enough to be worth adding
+#   "agree"          - only where both sides say the same thing
+ISSUE_POLICY = "union"
+
+# A rule label has to be at least this precise, measured on held-out
+# predictions, before "rules_precise" will add it.
+RULE_PRECISION_FLOOR = 0.90
+
 # ── Sense reversals ───────────────────────────────────────────
 # Pairs that reverse a requirement without using a negation word. Swapping one
 # for the other flips what the manual asks for just as surely as inserting
