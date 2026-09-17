@@ -21,10 +21,10 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | Phase | State |
 |---|---|
 | 0 — Explore and report | **Done** (CHECKPOINT 0 approved) |
-| 1 — Prereq fixes + Layer 1 rules | **Done** (awaiting CHECKPOINT 1) |
-| 2 — Layer 2 context model | **Done** (awaiting CHECKPOINT 2) |
-| 3 — Layer 3 fusion + Layer 4 explanation | **Done** (awaiting CHECKPOINT 3) |
-| 4 — Dataset creation | Not started |
+| 1 — Prereq fixes + Layer 1 rules | **Done** (CHECKPOINT 1 approved) |
+| 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
+| 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
+| 4 — Dataset creation | **Rebuilt** after CHECKPOINT 4 was rejected (awaiting re-review) |
 | 5 — Train and evaluate | Not started |
 | 6 — Wire into the app | Not started |
 | 7 — Repo hygiene, setup, README | Not started |
@@ -284,6 +284,471 @@ spot mechanical edits, which is not the task.
 
 ---
 
+## Phase 4 — what was built
+
+### Files
+
+| File | What it holds |
+|---|---|
+| `revision_pipeline/section_doc.py` | A stored section parsed into the places an edit can land: table rows, prose sentences. Edits one; renders the whole section back. |
+| `revision_pipeline/generators.py` | 22 edit generators across approve / needs_revision / reject, plus the change-reason pools. |
+| `revision_pipeline/quality.py` | The gate. Judges each candidate as an admin would and discards rather than guesses. |
+| `scripts/build_dataset.py` | The build: first pass, top-up passes, dedup, balancing, splits, dataset card, Checkpoint 4 samples. |
+| `scripts/report_token_lengths.py` | Token-length distribution on the built dataset (design point 3). |
+| `scripts/report_rule_coverage.py` | Measures the rule-hard share instead of trusting the declared set. |
+| `tests/test_unit_alignment.py` | The unit-level comparison described below. |
+
+### What the build does
+
+1. **Parse once.** Every usable section is parsed and its context assembled up
+   front; generation then runs more than once over the same jobs.
+2. **First pass** — every generator, `--per-section` attempts each.
+3. **Issue top-ups** — for each label still under the floor, re-run only the
+   generators that can produce it. A uniform `--per-section` cannot reach the
+   floor for a rare label: 156 units in the whole corpus carry an obligation
+   modal, so raising it for everything mostly produces more of what is already
+   plentiful.
+4. **Approve top-ups** — the issue top-ups only run generators that produce an
+   issue, so each round pushes the approve share down. Without its own rounds
+   the build came out 8% approve.
+5. **Quality gate** on every candidate, counted by reason.
+6. **Balancing** (see below), then a document-grouped 5-fold split, the
+   dataset card, and the samples.
+
+### Balancing, in priority order
+
+The three goals conflict, and the order matters — getting it wrong cost two
+full builds:
+
+1. **Per-label floor** (150). Never traded away.
+2. **Verdict balance.** No verdict class is trimmed below `--verdict-floor-share`
+   (0.2). A dataset that is 8% approve teaches the model to say no.
+3. **Section type.** No type may exceed `--type-max-share` (0.45), trimmed
+   weakest-first, and only from examples that are spare under 1 and 2. A type
+   that cannot be trimmed that far stays over its share and the report says so.
+
+The first attempt capped each type at 2.5× the smallest with no regard for the
+other two, and took its whole surplus out of the approve class: 1,225 examples,
+102 of them approve, and not one from `typo_fix`, `whitespace_format`,
+`benign_reorder`, `redundant_removal` or `equivalent_synonym`.
+
+### Finding that changed Phase 1: the rules could not see a step change hands
+
+Layer 1 compared roles, key terms and figures as **whole-section sets**. Give
+step 4 to an officer who already owns step 7 and the set of roles present is
+identical, so the rules reported nothing — and the quality gate then discarded
+the example for claiming `responsibility_changed` when Layer 1 could not see
+it. 64 examples went that way in the first probe build.
+
+`diffing.aligned_units()` now pairs the units that are the same step before and
+after the edit (a table row is matched on its step text, so a changed
+Responsibility cell still matches the same step), and Layer 1 compares roles,
+key terms and figures **again on each matched pair**, unioning the result with
+the section-wide view. Nothing the old view caught is lost; reordering rows
+still reports nothing.
+
+Identical units are paired first and only the leftovers go through the
+pairwise scan, so the common case — one to three units edited out of twenty —
+stays close to linear.
+
+**`RULE_HARD` is now measured, not declared.** The unit-level comparison made
+role reassignment visible to the rules, so the declared set drifted.
+`report_rule_coverage.py` counts non-approve examples on which Layer 1 raises
+no flag at all.
+
+### Generators added during the build
+
+- **`bulk_deletion`** — `mass_deletion` only worked on tables, and half a table
+  often falls short of the deletion threshold, so `excessive_deletion` reached
+  a fifth of the floor. This cuts a run out of a table *or* a prose section and
+  keeps the example only when the cut is genuinely large but not a replacement.
+- **`key_term_vagueing`** — the commonest way a named control disappears from a
+  procedure is not deletion but genericisation ("attach the Disbursement
+  Voucher" → "attach the document"), and it leaves a readable step, which
+  straight deletion often does not.
+
+Six generators that only ever looked at table rows now edit prose sentences
+too (`modal_weaken_single`, `negation_flip`, `numeric_change`,
+`non_equivalent_swap`, `partial_key_term_delete`, `contradiction_from_context`).
+63 of the 104 usable sections have no table at all, so those generators had
+been returning `None` for Objectives, Scope and most Policies — exactly the
+section types the dataset was thinnest in. `numeric_change` went from 16
+produced to 55 on the same probe.
+
+### Build result (2026-09-17, `--per-section 5`)
+
+**2,637 examples, 19 documents, 22 generators.** 3,238 candidates generated,
+75 rejected by the gate, 0 duplicates, 526 trimmed by the type cap.
+
+| | |
+|---|---|
+| approve | 663 (25%) |
+| needs_revision | 667 (25%) |
+| reject | 1,307 (50%) |
+| Procedures / Policies / Objectives / Scope | 1,423 / 919 / 191 / 104 |
+| files | `all.jsonl` 9.3 MB, splits 9.3 MB, ~2.3 MB packed |
+
+Nine of the ten issue labels reach the 150 floor. `negation_changed` reaches
+**110** and cannot go higher on this corpus: only about 110 units contain
+"shall" and 79 contain a negation word, and 15 further flips were generated
+but rejected because they reverse the sense without changing a negation word
+("before" → "after"), which Layer 1 does not count.
+
+**Borderline matches:** 69 examples (2.6%) contain a sentence pair scoring in
+the 0.5-0.7 band around the 0.6 removal cut-off; 10 more scored 0.5 as hard
+negatives that trip a rule by design. Everything else scored 1.0.
+
+**Edited units:** 2,336 examples edit one unit, 162 edit two, 26 edit three.
+The 51 above three are `bulk_deletion` and `mass_deletion`, which are bulk cuts
+by definition - a deliberate exception to the 1-3 rule.
+
+**Token lengths** (`report_token_lengths.py`): p50 207, p75 477, p90 759,
+p99 1,871. `max_length=384` keeps the change whole for **70%** of examples,
+512 for 77%. The Phase 2 figure of 83.5% was measured on whole sections with
+no edit applied; the markers an edit inserts push it down.
+
+### The 40% rule-hard target is not met
+
+The build report's own figure (43%) is computed from the **declared**
+`generators.RULE_HARD` set, which went stale the moment the unit-level
+comparison made role reassignment visible to the rules. Measured on the built
+dataset:
+
+| Measure | Result |
+|---|---|
+| Layer 1 raises no flag at all (non-approve) | 136 / 1,974 = **7%** |
+| Layer 1 alone reaches the wrong verdict (all) | 833 / 2,637 = **32%** |
+| Layer 1 alone reaches the wrong verdict (non-approve) | 417 / 1,974 = **21%** |
+
+The two requirements pull against each other: the quality gate *requires*
+Layer 1 to confirm six of the ten labels, which by construction makes those
+examples rule-visible. What is left for Layer 2 is where the rules see
+something and still reach the wrong answer - all 368 `clarifying_addition`
+examples (rules say needs_revision, truth is approve), all 227
+`contradiction_from_context` (rules see only a changed figure, truth is
+reject), all 111 `step_reorder_dependent` (rules see nothing), and the hard
+negatives.
+
+### Deviation: no examples with a missing change reason
+
+The quality bar asks for a few examples with no `change_reason`, to exercise
+the clause 6.3 hard fail. They are **not** in the dataset, deliberately:
+
+- A missing reason is a Layer 1 hard fail, so Layer 2 never sees the example —
+  the pipeline short-circuits before the model runs.
+- Training on them would teach the model to reject content that is fine, since
+  the text itself carries no defect.
+- The gate would reject them anyway: a reject example with no issue label, and
+  there is no issue label for a missing reason.
+
+The hard fail is covered by `tests/test_layer1_rules.py` instead.
+
+### Second sweep of extraction glue (2026-09-17)
+
+The reviewed glue table caught two-word fusions. A sweep of the re-extracted
+sections found **17 occurrences of longer runs** the table did not cover —
+`itempurchasesintherecords`, `organizationadviseraswitnessesinthe`,
+`BUR Sinthe'Utilization'columnoftheRBUD`, `JE Vusing`, `OS Dandfurthersecure`
+and ten more. All are written out explicitly in `_LOWER_GLUE`, no segmentation.
+Applied to the stored sections with `clean_section_content --apply`
+(17 sections; database backed up to `db.sqlite3.bak-2026-09-17-glue` first).
+Glue occurrences: **17 → 0**.
+
+Re-cleaning also exposed a latent bug: `_render_table` emitted `|  |` for an
+empty cell and only the *storage* path collapsed it to `| |`, so re-cleaning
+reported 41 sections as changed when 17 had really changed. The renderer now
+collapses the spaces itself, which makes a second cleaning pass a no-op.
+
+---
+
+## Checkpoint 4 — rejected, and what the rebuild changed
+
+The first build was reviewed example by example and **not approved**. Nine
+faults were found; all are fixed below. Two of them were faults in the *rule
+layer*, not the generators, and would have mislabelled real revisions too.
+
+### 1. Renumbering was being read as a changed figure
+
+The worst of them. Layer 1 treated every digit as a quantity, so changing
+"3.15" to "1.15" counted as a changed figure - and where a sibling section
+still carried the old number, as a contradiction.
+
+**Measured on the rejected build:**
+
+| Generator | Renumbering only | A real quantity |
+|---|---:|---:|
+| `contradiction_from_context` | **216 of 227 (95%)** | 11 |
+| `numeric_change` | **152 of 160 (95%)** | 8 |
+
+- `layer1_rules._strip_item_numbers` blanks an item or step number at the start
+  of a line, a cell or a clause before numeric tokens are read.
+- `generators._quantity_spans` finds only real figures: a number with a unit
+  ("15 days", "30%"), the house-style "three (3)" pair, or an amount of money.
+- `contradiction_from_context` now needs a fact **a sibling section still
+  states**. Durations are compared in days, so "1 year" here and "365 days"
+  there are recognised as the same fact - which is the example given in the
+  review. Only **2 sections in the whole corpus** restate a fact that way, so
+  this generator is capacity-limited to 3 examples and `contradicts_manual` is
+  carried by `step_reorder_dependent`.
+
+### 2. `benign_reorder` was swapping dependent steps
+
+It now refuses any section that is a procedure table, any pair where either row
+opens with a step number, and any pair mentioning a sequence ("Return to step
+4", "thereafter", "once"). It is left with genuinely unordered lists, which is
+6 examples - small, and correct.
+
+### 3. `redundant_removal` was deleting distinct entries — generator removed
+
+It duplicated a row into `old_text` and then removed it, which made `old_text` a
+section the manual never had, and read exactly like deleting a real bank account
+row. The corpus was searched for genuine duplicates: the only repeats are the
+same step text in **different sub-procedures** of one section, where deleting
+one is not approve either. So the generator is gone, replaced by two honest
+hard negatives:
+
+- `row_merge_reformat` - joins two rows that are one step, keeping every word.
+- `benign_reorder` - as above.
+
+**Why Layer 1 flagged `negation_changed` on the bank rows:** the negation test
+was a prefix regex, `(un|non|dis|in)[a-z]{3,}`, which matched **"university"**,
+"information", "internal", "inspection" and "disbursement". Deleting any row
+containing one of those changed the count. Replaced by an explicit
+`config.NEGATED_FORMS` list.
+
+### 4. The approve class was thin and repetitive
+
+`clarifying_addition` was 55% of approvals, reused two sentences, and one of
+them ("Copies are retained by the office concerned") added a requirement. It is
+deleted. Seven approve generators now work from the section's own content:
+
+| Generator | What it does |
+|---|---|
+| `typo_fix` | corrects a misspelling the submitted text carries |
+| `whitespace_format` | spacing and punctuation only |
+| `equivalent_synonym` | a curated phrase swap, grammar-aware |
+| `acronym_expansion` | spells an acronym out on first use, from the corpus's own definitions |
+| `spell_out_figure` | "15 days" becomes "fifteen (15) days", the manual's house style |
+| `legal_reference_format` | "R.A. 9184" becomes "Republic Act No. 9184" - same statute |
+| `cross_reference_addition` | adds a pointer to a real sibling section |
+
+`equivalent_synonym` no longer draws from the glossary, which produced "as
+mandatory", "Once accomplish" and "all office", and renamed documents ("Form"
+became "Template"). It uses a curated list of phrases with their inflections,
+skips any span inside a Title-Case run, and is checked by the grammar gate.
+
+A **strategy cap** (`--strategy-max-share`, default 0.07) stops any single
+phrasing filling the dataset: no one typo, synonym pair or added clause may
+hold more than that share.
+
+### 5. Change reasons now match the edit
+
+`_REASONS` is keyed by the kind of edit - typo, format, term, clarify, merge,
+reorder - and each approve generator draws from its own pool. "Fixed spelling"
+can no longer appear on a deletion. Revisions that are not approvals draw from
+the plausible and vague pools, which fit any edit.
+
+### 6. Broken generators
+
+- **Sentence splitter**: `diffing.sentences` joins a fragment back when the one
+  before it ends in an abbreviation. "governed by E.O. No. 2, series of 2016"
+  was three sentences, so an edit near it looked like several sentences
+  appearing and disappearing.
+- **`key_term_vagueing`**: only terms that really name a document are eligible,
+  and the replacement is the generic noun for *that kind* of document, with the
+  article and any bracketed acronym handled as one unit.
+- **`partial_key_term_delete`**: takes the article and the acronym with the
+  term, so "submits the Disbursement Voucher (DV) to" no longer leaves "submits
+  the to".
+- **`non_equivalent_swap`**: modal pairs, sense-reversal pairs and
+  strengthening are all excluded. "should" becoming "shall" is not an issue.
+- **`negation_flip`**: rebuilt on `config.SENSE_REVERSALS`. with/without is
+  only applied where the following word keeps it grammatical, so "without first
+  exhausting" is never turned into "with first exhausting".
+- **`foreign_insertion`**: a table section takes a row of the matching column
+  count, a prose section takes a sentence.
+- **Role generators**: `_role_rows` requires a Responsibility/Activity table and
+  a role the rule layer itself recognises. The frequency column ("Quarterly",
+  "First Week of the Year") is excluded by name.
+
+### 7. A grammar and format gate
+
+`quality.grammar_faults` rejects an example when the **edit introduces**
+repeated function words, a determiner before a determiner ("each the"), an
+article before a verb or a preposition ("submits the to"), a dangling
+preposition, "with" followed by a gerund, unbalanced parentheses, table rows of
+differing column counts, or a row that stops mid-phrase. Faults already present
+in the master copy do not count against the edit.
+
+### 8. Extraction, third pass
+
+- **Glue**, found by segmenting every rare token against the corpus's own
+  vocabulary and then written out by hand: `itreceives`, `overthe`,
+  `purchaseditems`, `renderthe`, `Providersif`, `asnecessary`,
+  `bidsfromprospective`, `otherSDs`, `supportingdocuments`, `theCGMC`,
+  `theVPSDto`, `Fillout`, `backto`, `LNUIGO`, and the
+  `BUR Sinthe'Utilization'columnoftheRBUD` run. **Count now 0.**
+- **Acronym over-splitting**: the rule split `CGMCreleasinglogbook` into
+  "CGM Creleasinglogbook". Its second half is now length-bounded, and both
+  spellings are repaired explicitly.
+- **Step numbers stranded in the Responsibility cell**: the source writes
+  "Student<br>1.", so FAM 6.01 4.4 read "| Student 1. | Pays ... |" and every
+  role in the table looked like a different person.
+  `_move_stranded_step_numbers` puts the number back at the front of its step.
+- **Rows wrapped across two lines**: "(see FAM" / "9.02 Receiving of
+  Deliveries)" and "List of Scholars/" / "Grantees per Scholarship Grant" were
+  each one step split by the PDF's line wrapping. `_join_wrapped_rows` merges
+  them, and is off entirely in tables with no step numbers, so the bank and
+  calendar tables are untouched.
+- A **final glue pass** runs over the assembled text, because the per-fragment
+  repair happens before a cell's line breaks are joined.
+- `_render_table` now collapses its own doubled spaces, so re-cleaning stored
+  content is a no-op. It reported 41 changed sections when 17 had changed.
+
+New command **`api/management/commands/reextract_manuals.py`** re-extracts from
+the master-copy files and updates sections **in place**, matched by section
+number. The previous re-extraction used a script that was never committed.
+203 sections matched, 0 unmatched, nothing deleted; 2 revisions and 3 history
+rows still attached. Backups: `db.sqlite3.bak-2026-09-17-glue`,
+`db.sqlite3.bak-2026-09-17-cp4fixes`.
+
+### 9. Sensitive data
+
+- Bank account numbers are replaced in the dataset with the fixed placeholder
+  `0000-0000-00` (`build_dataset.redact`). 14 distinct numbers in the corpus, 21
+  examples carry the placeholder, none survive unredacted. The pattern requires
+  two or more hyphens so a year range like "2016-2017" is left alone.
+- `CHECKPOINT4_REVIEW.html` is gitignored.
+- **The repository is public and the master copies are already in it.** See
+  "Known issues" below.
+
+### Decisions applied
+
+- **Rule-hard**: verdict disagreement accepted as the measure, re-measured
+  below.
+- **Negation**: `config.SENSE_REVERSALS` added (21 pairs), detected on matched
+  units, reported under `negation_changed` with the pair as evidence, and
+  reported once - never also as a term swap. 32 tests in
+  `tests/test_sense_and_numbers.py`.
+- **`MAX_LENGTH` is now 512.**
+
+---
+
+## Phase 4 — final dataset (2026-09-17, third round)
+
+**2,811 examples, 19 documents, 25 generators.** 3,962 candidates, 143 discarded
+by the gate, 510 by the strategy cap, 498 by the section-type cap.
+
+| | |
+|---|---|
+| approve / needs_revision / reject | 1,002 (36%) / 661 (24%) / 1,148 (41%) |
+| Procedures / Policies / Objectives / Scope | 1,441 / 1,109 / 150 / 111 |
+| labels at the 150 floor | 9 of 10 (`key_term_deleted` 123) |
+| borderline sentence matches | 64 |
+| hard negatives | 21 |
+| distinct generator strategies | 116 |
+| cross-references | 161 = 16% of approvals |
+
+### Third round of fixes
+
+1. **Grammar gate discards** rather than rewrites: a dangling tail ("of.",
+   "using."), a fragment opening ("No. 2, series of ..."), an item number lost
+   from a **surviving** line, a truncated row, padded empty columns. Discards
+   are reported per generator. The item-number rule had to be narrowed once:
+   comparing the sets of numbers flagged every legitimate deletion, 607 of
+   them, because removing a step removes its number too.
+2. **Synonyms are one-directional.** The plain word is the one these manuals
+   use, so "use" never becomes "utilize", "forwards" never becomes "endorses".
+   `verify | check` is out of the glossary - in this register it is not a
+   change of meaning. A swap can no longer land inside a named document
+   ("Transcript of Record"), which needed a pattern that runs through the
+   lowercase connectors rather than one that checks the immediate neighbours.
+3. **Negation flips are discarded** inside an already-negative clause (which
+   would produce a double negative) and where the result is a past participle
+   used attributively ("disapproved policies").
+4. **Role spacing** is normalised at extraction and in Layer 1, so
+   "Accounting Staff -3" and "Accounting Staff-3" are one person and a spacing
+   difference is never an issue. (`db.sqlite3.bak-2026-09-17-rolespacing`.)
+5. **Empty Responsibility cells inherit the role above** before Layer 1
+   compares units (A3). A blank cell means the same person is still working,
+   not that nobody is.
+6. **Cross-references** point only at sections with TF-IDF cosine similarity
+   >= 0.08 (the 75th percentile of within-document similarity: median 0.042,
+   p75 0.079, p90 0.120), sit at the end of a sentence, never in a table cell
+   holding a value and never after a semicolon, and are capped at 15% of the
+   approve class after stratification - 16% as shipped.
+
+### Blind label audit
+
+`scripts/export_label_audit.py` writes `label_audit.csv` (50 examples, seeded,
+stratified by verdict, with the diff and empty columns to fill in) and
+`label_audit_key.csv` (the labels, generator and strategy). The labels are not
+in the first file, so the audit measures agreement rather than recognition.
+
+Accepted limitations are recorded in `DATASET_CARD.md`: thin cross-section
+contradictions, out-of-sequence steps only as swaps, narrow typo variety, 21
+hard negatives, `key_term_deleted` below the floor.
+
+---
+
+## Blind label audit — result (2026-09-17)
+
+50 examples, seeded and stratified by verdict, judged without the labels.
+
+| | |
+|---|---|
+| verdict agreement | **44 / 50 = 88%** |
+| issue set exact | **47 / 50 = 94%** |
+| both | 44 / 50 |
+
+Confusion: 18 approve and 18 reject agreed outright, 8 needs_revision agreed;
+2 needs_revision judged approve, 2 needs_revision judged reject, 2 reject judged
+needs_revision.
+
+### The six disagreements, and what changed
+
+| # | Generator | Disagreement | Outcome |
+|---|---|---|---|
+| 6, 16 | `step_reorder_dependent` | reject vs needs_revision | **Relabelled needs_revision.** A swapped sequence is a slip a reviewer sends back, not a control removed or reversed. 143 examples. |
+| 22 | `non_equivalent_swap` | "any records" -> "all records" labelled an issue | **Fixed.** Widening a scope is strengthening, and strengthening is not an issue - the same rule that keeps "should" -> "shall" out. The `any -> all` direction is no longer generated. |
+| 30 | `non_equivalent_swap` | "computer file" -> "computer record" labelled an issue | **Fixed.** The glossary pair separates two *verbs*. A pair whose words are noun/verb ambiguous is now only applied in verb position - the start of a step, or after a modal or conjunction. |
+| 32 | `numeric_change` | "365 days or 1 year" -> "730 days or 1 year", labelled only a changed figure | **Fixed.** A figure the same unit restates another way is left alone; changing it makes the sentence contradict itself, which is a different finding. |
+| 49 | `combo` | needs_revision vs reject on weights that no longer total 100% | Follows from the #32 fix: the generator no longer produces that shape. |
+
+The auditor also flagged, without disputing the label: `acronym_expansion`
+dropping an article ("by Commission on Higher Education" - **fixed**, a body's
+name now takes "the"), and "settlement of any their" reaching the dataset
+(**fixed**, the gate now rejects "any" before a possessive; "all their" is
+still fine English and is left alone).
+
+`verify | check` was removed from the glossary in the same pass - in this
+register it is not a change of meaning. Three tests that used it as their
+example of a non-equivalent swap now use `approve | review`.
+
+---
+
+## Phase 4 — dataset after the audit (2026-09-17)
+
+**2,762 examples, 19 documents, 25 generators.** 3,934 candidates, 143 discarded
+by the gate, 534 by the strategy cap, 495 by the section-type cap.
+
+| | |
+|---|---|
+| approve / needs_revision / reject | 1,019 (37%) / 730 (26%) / 1,013 (37%) |
+| Procedures / Policies / Objectives / Scope | 1,402 / 1,084 / 155 / 121 |
+| labels at the 150 floor | 8 of 10 (`key_term_deleted` 126, `non_equivalent_term` 89) |
+| cross-references | 166 = 16% of approvals |
+
+The verdict mix is now within a point of the planned 40/25/35.
+`non_equivalent_term` fell from 150 to 89 as the direct cost of the two audit
+fixes, which was the right trade: both cut examples whose label a reviewer
+disputed.
+
+A second audit pair is exported as `label_audit_r2.csv` /
+`label_audit_r2_key.csv` (the first pair is left untouched).
+
+---
+
 ## Queued — to do after Phase 2, before Phase 4
 
 1. ~~Re-extract the manuals with the new A3 table format.~~ **Done** — see
@@ -387,6 +852,28 @@ worse than a stale diff; the original is in the export either way.
 ---
 
 ## Known issues / deviations
+
+### The GitHub repository is public and holds the master copies
+
+Verified 2026-09-17 by anonymous request: `https://github.com/Doculan/DocuRoute1`
+returns 200 to a request with no credentials (a non-existent repository returns
+404), and `raw.githubusercontent.com` serves the files.
+
+Already on `origin/main`:
+
+- all **19 master-copy PDFs** under `Backend/media/mastercopies/`, pushed in
+  commit `66406da` on 2026-09-13;
+- two revision PDFs and one upload under `Backend/media/`;
+- **`Backend/db.sqlite3`**, which holds the extracted section text - including
+  the bank account numbers the dataset now redacts.
+
+Redacting the dataset does nothing about any of this. It is the owner's call;
+nothing has been changed. The options are to make the repository private, to
+remove the files from history and force-push, or to decide the manuals are
+public documents. Note that making it private does not retract copies already
+taken, and a force-push invalidates every existing clone.
+
+
 
 - **PyPI unreachable from the agent sandbox** (GitHub 200, PyPI times out).
   Dependency installs must be run by the user.
