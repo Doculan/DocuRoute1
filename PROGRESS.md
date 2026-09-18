@@ -25,7 +25,7 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 | 2 — Layer 2 context model | **Done** (CHECKPOINT 2 approved) |
 | 3 — Layer 3 fusion + Layer 4 explanation | **Done** (CHECKPOINT 3 approved) |
 | 4 — Dataset creation | **Done** (CHECKPOINT 4 approved after two rebuilds and a blind audit) |
-| 5 — Train and evaluate | **Done** — verdicts 0.978 fused, issues 0.854 (both means of five folds); final model trained on Kaggle and in place; CPU training measured at ~2 h for the full split |
+| 5 — Train and evaluate | **Done** — verdicts 0.978 fused, issues 0.854 (both means of five folds); rules-only 0.791 with the clause 6.3 check excluded from scoring; final model trained on Kaggle and in place; CPU training measured at ~2 h for the full split |
 | 6 — Wire into the app | **Done** (CHECKPOINT 6 approved) |
 | 7 — Repo hygiene, setup, README | Started: compiled Python untracked, size check written |
 
@@ -1258,6 +1258,44 @@ free would page unless other applications are closed.
 Caveat recorded in `EVALUATION.md` 8: this measures throughput, not
 attainable accuracy. 0.705 on 200 examples says nothing about whether a
 CPU-trained model would reach the shipped 0.951.
+
+---
+
+### The rule layer's figure: three numbers, one of them the ablation's
+
+`rules_only` is **0.791**, scored with the clause 6.3 change-reason check
+excluded. The same rows can be given three figures, so all three are stated:
+
+| figure | what it measures |
+|---|---|
+| **0.791** | before the clause 6.3 validation existed |
+| **0.730** | with the validation applied to the corpus's generated reasons |
+| **0.791** | the ablation's figure: validation deliberately excluded from scoring |
+
+The first and third agree to three decimals, which is the evidence that the
+entire 0.730 was the reason check.
+
+**Why exclude it.** The ablation asks how much of the verdict is decidable
+from the textual change alone. The clause 6.3 check examines the submission's
+metadata rather than the change, and in the live system it fires at the API
+before an assessment is requested, so anything reaching Layer 2 has passed it
+already. Leaving it in measured the generators' placeholder reasons instead of
+the rules: **579 of 2,762 rows** carry filler such as `"Per instruction."`
+that tier 1 rejects, and rows with no reason were handed the literal string
+`"recorded"`, also rejected. Every one hard-failed, and `rules_only_verdict`
+returns `reject` on any hard fail, so a fifth of the corpus scored `reject`
+regardless of content.
+
+Excluded for all three ablation systems so the comparison is like-for-like,
+though only `rules_only` can notice: `model_only` reads Layer 2's
+probabilities and fusion reads a feature vector with no reason-derived column.
+Confirmed by re-running - **fusion held at 0.978 / 0.854**, `model_only` at
+0.951, unchanged to three decimals.
+
+This was not caused by the citation rule. The clause 6.3 validation shipped in
+`ee69160` and the folds were never re-evaluated afterwards, so 0.791 had been
+stale since then; the 0.730 run was simply the first honest measurement of the
+code as it stood.
 
 ---
 

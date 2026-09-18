@@ -74,19 +74,19 @@ had effectively memorised.
 
 | fold | system | verdict acc | verdict macro-F1 | issue micro-F1 |
 |---|---|---:|---:|---:|
-| 0 | rules only | 0.772 | 0.778 | 0.678 |
+| 0 | rules only | 0.772 | 0.778 | 0.677 |
 | 0 | model only | 0.964 | 0.962 | 0.888 |
 | 0 | **fusion** | **0.981** | 0.981 | 0.886 |
-| 1 | rules only | 0.820 | 0.805 | 0.637 |
+| 1 | rules only | 0.820 | 0.805 | 0.634 |
 | 1 | model only | 0.907 | 0.888 | 0.748 |
-| 1 | **fusion** | **0.985** | 0.983 | 0.750 |
-| 2 | rules only | 0.785 | 0.786 | 0.665 |
+| 1 | **fusion** | **0.986** | 0.984 | 0.750 |
+| 2 | rules only | 0.785 | 0.786 | 0.663 |
 | 2 | model only | 0.963 | 0.962 | 0.889 |
 | 2 | **fusion** | **0.965** | 0.963 | 0.893 |
-| 3 | rules only | 0.819 | 0.816 | 0.691 |
+| 3 | rules only | 0.819 | 0.816 | 0.689 |
 | 3 | model only | 0.965 | 0.963 | 0.882 |
-| 3 | **fusion** | **0.979** | 0.978 | 0.882 |
-| 4 | rules only | 0.760 | 0.757 | 0.663 |
+| 3 | **fusion** | **0.977** | 0.976 | 0.882 |
+| 4 | rules only | 0.760 | 0.757 | 0.659 |
 | 4 | model only | 0.956 | 0.955 | 0.856 |
 | 4 | **fusion** | **0.981** | 0.981 | 0.856 |
 
@@ -94,9 +94,43 @@ had effectively memorised.
 
 | system | verdict acc | verdict macro-F1 | issue micro-F1 |
 |---|---:|---:|---:|
-| Layer 1 — rules only | 0.791 | 0.788 | 0.667 |
+| Layer 1 — rules only | 0.791 | 0.788 | 0.664 |
 | Layer 2 — model only | 0.951 | 0.946 | 0.853 |
 | **Layers 1+2+3 — fusion** | **0.978** | **0.977** | **0.854** |
+
+### What the rule layer is measured on, and three numbers for it
+
+`rules_only` is scored **with the clause 6.3 change-reason check excluded**,
+and that needs stating plainly because the same row can be given three
+different figures:
+
+| figure | what it measures |
+|---|---|
+| **0.791** | before the clause 6.3 validation existed |
+| **0.730** | with the validation applied to the corpus's generated reasons |
+| **0.791** | the ablation's figure: validation deliberately excluded from scoring |
+
+The first and third coincide to three decimals, and that identity is the
+evidence: **the entire 0.730 was the reason check and nothing else.**
+
+Why exclude it. The ablation asks one question — how much of the verdict is
+decidable from the textual change alone. The clause 6.3 check does not examine
+the change at all; it examines the submission's metadata, and in the live
+system it fires at the API before an assessment is ever requested, so any
+revision reaching Layer 2 has already passed it. Leaving it in measured the
+generators' placeholder reasons rather than the rules: **579 of the 2,762 rows
+carry filler such as "Per instruction."** that the tier-1 check rejects, and
+rows with no reason were handed the literal string `"recorded"`, which it also
+rejects. Each one hard-failed, and `rules_only_verdict` returns `reject` on any
+hard fail, so a fifth of the corpus scored as `reject` whatever its content.
+
+It is excluded for all three systems so the comparison is like-for-like,
+though only `rules_only` can notice: `model_only` reads Layer 2's
+probabilities, and fusion reads a feature vector with no reason-derived column
+— `config.LAYER1_FEATURES` is fourteen textual-diff quantities and
+`change_type` is derived from the text and those features. Confirmed by
+re-running: fusion held at **0.978 / 0.854** and `model_only` at 0.951,
+unchanged to three decimals.
 
 ### Reading it
 
@@ -596,6 +630,74 @@ applications are closed first.
 
 ---
 
+## 8b. When a silent rule layer meets a confident Layer 2
+
+A revision reported from the app exposed a failure worth measuring. On
+HRM 4.01 3.1, `Republic Act 10173 or the Data Privacy Act of 2012` was replaced
+with `intent for privacy mandated by local government unit`. Layer 2 called it
+**needs_revision at 0.767**; fusion returned **approve at 0.665**. The rule
+layer had found nothing, because the entity lists hold the manuals' own
+vocabulary and not the statutes they rest on, so the only trace of the lost
+citation was its digits leaving the quantity tokens as `numeric_changed` — a
+finding the `rules_precise` policy then discarded.
+
+The obvious reading is that fusion treats "no rule flags" as "harmless edit"
+and overrules the model. That reading was tested across every fold test row:
+
+```
+fold test rows scored                2762
+Layer 2 confident (>=0.7 needs_revision/reject)   1660
+  ... and no rule flags at all                     153
+  ... and fusion returned approve                    6
+
+true label of those six:  approve x 6
+generators: typo_fix 2, benign_reorder 2, equivalent_synonym 1,
+            acronym_expansion 1
+```
+
+**Fusion was right all six times.** In two of them Layer 2 gave `reject` a
+probability of 0.987 on a typo fix, and fusion corrected it. Of the 153 rows
+matching the pattern, fusion sided with Layer 2 on 147 and overrode on 6,
+correctly each time. This is not a defect: it is the mechanism by which fusion
+earns its 2.7 points over `model_only`, and a confidence cap on fusion — the
+fix that suggests itself — would have cost six correct decisions here and
+prevented nothing.
+
+**The real statement is narrower and harder to fix.** Fusion has learned that
+a silent rule layer means a benign edit. That holds across this corpus because
+every non-benign edit type *in it* has a rule that fires. It breaks for edit
+types the generators never produced, where the rules are silent not because
+the edit is harmless but because nothing covers it. The distribution taught
+fusion a correlation that is true of the training data and not of the world.
+
+### The missing generator
+
+No generator replaces a legal citation with a different authority.
+`legal_reference_format` (19 examples, approve) only rewrites the same
+reference — `Republic Act No. 10173` to `R.A. No. 10173`. Across all 2,762
+examples a citation disappears in 41, and every one is either a large deletion
+that removes it incidentally (`bulk_deletion` 20, `requirement_drop` 12, all
+reject) or a reformat that keeps it (`legal_reference_format` 8, approve).
+
+**An edit that swaps one authority for a weaker one while the sentence length
+barely moves has no training signal at all.**
+
+That is the real remedy: a generator producing exactly that shape, labelled
+`needs_revision` or `reject`. It is not a small change — it needs a GPU run to
+retrain Layer 2, per-fold thresholds re-derived, the fusion model retrained,
+and every figure in this document re-measured. Recorded as the correct fix
+rather than attempted.
+
+What was done instead is a Layer 1 rule: a legal reference present in the old
+text and absent from the new, compared canonically so a reformat is not a loss,
+counted as a key term gone. It sets `key_terms_deleted_count`, which moves
+fusion from approve 0.665 to **needs_revision 0.9997** on the reported case,
+and gives the reviewer the evidence the explanation had been missing. It fixes
+this shape of edit. It does not fix the pattern, and nothing short of the
+generator will.
+
+---
+
 ## 9. Limitations
 
 **On the evaluation:**
@@ -635,10 +737,19 @@ applications are closed first.
    It filters rule flags when Layer 2 is present and *is* the whole issue
    output when Layer 2 is absent. §4 has the demonstration; the decoupling is
    future work.
-10. **Clause 7.5.2 is deliberately out of scope.** Document number, revision
+10. **Fusion reads a silent rule layer as a benign edit.** §8b. True of this
+    corpus, where every non-benign edit type has a rule that fires, and false
+    for edit types the generators never produced. Measured: fusion overrode a
+    confident Layer 2 with no rule signal 6 times in 2,762 rows and was right
+    all six, so the correlation is load-bearing and cannot simply be capped.
+11. **No generator swaps one legal authority for another.** §8b. A citation
+    disappears in 41 of 2,762 examples, always either inside a large deletion
+    or as a reformat that keeps it. Fixing it needs a GPU run and every figure
+    here re-measured.
+12. **Clause 7.5.2 is deliberately out of scope.** Document number, revision
    number and effectivity date are handled by the system's document-control
    features, not the model.
-11. **The assessment is advisory.** It never changes a revision's status. Every
+13. **The assessment is advisory.** It never changes a revision's status. Every
     figure in this document describes advice to a human reviewer who decides.
 
 ---
@@ -649,12 +760,14 @@ applications are closed first.
 |---|---|
 | Fusion beats rules by 19 points on verdicts | 0.978 vs 0.791, 5-fold grouped CV |
 | The model is the largest contributor | 0.791 → 0.951 |
-| Fusion's value is stability, not just average | fold 1: model 0.907, fusion 0.985 |
+| Fusion's value is stability, not just average | fold 1: model 0.907, fusion 0.986 |
 | Issue detection is uneven by kind of judgement | lexical labels 0.95-1.00, judgement labels 0.70-0.78 (§3, pooled) |
 | A good label score can still hide a narrow label | `non_equivalent_term` F1 0.952 on 83% one pattern (§3) |
 | The issue policy was chosen on substance | `agree` scored higher and was rejected for silencing two labels |
 | The reported figure is stable | fusion pinned to boosting; 0.979/0.975 ambiguity removed |
 | Labels were checked against a human | 44/50 verdicts, 47/50 issue sets; six disagreements fixed |
+| Fusion's overrides of a confident Layer 2 were right | 6 of 6 on the fold rows (§8b) |
+| The rule layer is scored without the clause 6.3 check | 0.791; with it, 0.730 on synthetic reasons (§2) |
 | It runs on the target hardware | 0.3–0.5 s warm, ~680 MB, no GPU |
 
 The system is **advisory**, its training labels are **generated**, and its

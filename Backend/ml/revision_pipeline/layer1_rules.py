@@ -31,6 +31,7 @@ from .diffing import (
 )
 from .entities import get_entities
 from .glossary import EQUIVALENT, NOT_EQUIVALENT, UNKNOWN, get_glossary
+from .malformed import malformed_advisories
 
 # -- Patterns --------------------------------------------------
 
@@ -134,6 +135,35 @@ def _flag(label: str, evidence, extra: dict | None = None) -> dict:
     if extra:
         out.update(extra)
     return out
+
+
+def _legal_refs_lost(old_text: str, new_text: str) -> list[str]:
+    """Statutes cited in the old text and no longer cited in the new.
+
+    Compared canonically, so rewriting "R.A. 10173" as "Republic Act No.
+    10173" is not a loss - that is a formatting change and
+    `legal_reference_format` generates it as an approve.
+
+    A citation that stops appearing is treated as a key term gone, because
+    that is what it is: the obligation loses the named authority it rested on.
+    Before this, the only trace was the statute's digits vanishing from the
+    quantity tokens, which surfaced as `numeric_changed` - a finding the
+    `rules_precise` policy then discarded, leaving the rule layer silent on an
+    edit that replaces one authority with another.
+
+    Returns the spelling as it appeared, so the reviewer sees "Republic Act
+    10173" rather than the canonical key.
+    """
+    original = {}
+    for match in _LEGAL_REF_RE.finditer(old_text or ""):
+        original.setdefault(
+            _canonical_legal_ref(match.group(0)), match.group(0).strip()
+        )
+    still_cited = {
+        _canonical_legal_ref(match.group(0))
+        for match in _LEGAL_REF_RE.finditer(new_text or "")
+    }
+    return [text for key, text in original.items() if key not in still_cited]
 
 
 def _phrases_present(text: str, phrases: list[str]) -> set[str]:
@@ -472,8 +502,18 @@ def run_layer1(
             "label": "vague_change_reason",
             "clause": "6.3",
             "severity": "low",
+            # A reason too vague to confirm the change was planned is not
+            # something to wave through on the model's word, so this one does
+            # move the verdict. Contrast the malformed-text advisories below.
+            "affects_verdict": True,
             "evidence": reason_message,
         })
+
+    # Text the edit has broken: a cross-reference dropped inside a citation, an
+    # acronym whose name was deleted, a bracket left open. No issue label
+    # covers any of it, so without this the reviewer sees nothing at all. These
+    # are reported, never acted on - see malformed.py.
+    result.advisories.extend(malformed_advisories(old_text, new_text))
     if not (new_text or "").strip():
         result.hard_fails.append({
             "reason": "empty_revision",
@@ -504,6 +544,10 @@ def run_layer1(
     old_terms = _phrases_present(old_text, key_terms)
     new_terms = _phrases_present(new_text, key_terms)
     terms_lost = sorted(old_terms - new_terms)
+    # A statute that stops being cited counts here too. The entity lists hold
+    # the manuals' own vocabulary, not the statutes they rest on, so without
+    # this the rules had nothing to say about an authority being swapped.
+    terms_lost = sorted(set(terms_lost) | set(_legal_refs_lost(old_text, new_text)))
     feats["key_terms_deleted_count"] = len(terms_lost)
 
     # -- Modals ----------------------------------------------------

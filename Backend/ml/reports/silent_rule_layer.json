@@ -1,0 +1,144 @@
+{
+  "thresholds": {
+    "layer2_confident": 0.7
+  },
+  "totals": {
+    "rows": 2762,
+    "layer2_confident": 1660,
+    "layer2_confident_no_rule_flags": 153
+  },
+  "hits": [
+    {
+      "id": "FAM_4.02-8952-347",
+      "fold": "fold_1",
+      "generator": "typo_fix",
+      "true": "approve",
+      "layer2": {
+        "approve": 0.006,
+        "needs_revision": 0.007,
+        "reject": 0.987
+      },
+      "fusion": {
+        "approve": 0.962,
+        "needs_revision": 0.0,
+        "reject": 0.038
+      },
+      "nonzero_features": {
+        "net_deleted_word_ratio": 0.008,
+        "unknown_swaps": 1
+      },
+      "old": "| Responsibility | Activity |\n| --- | --- |\n| Faculty/Personnel | 1. Prepares Project Proposal. |\n| IGO Director | 2. Receives Project Proposal and su",
+      "new": "| Responsibility | Activity |\n| --- | --- |\n| Faculty/Personnel | 1. Prepares Project Proposal. |\n| IGO Director | 2. Receives Project Proposal and su"
+    },
+    {
+      "id": "FAM_4.02-8952-3594",
+      "fold": "fold_1",
+      "generator": "typo_fix",
+      "true": "approve",
+      "layer2": {
+        "approve": 0.007,
+        "needs_revision": 0.008,
+        "reject": 0.985
+      },
+      "fusion": {
+        "approve": 0.935,
+        "needs_revision": 0.0,
+        "reject": 0.064
+      },
+      "nonzero_features": {
+        "net_deleted_word_ratio": 0.008,
+        "unknown_swaps": 1
+      },
+      "old": "| Responsibility | Activity |\n| --- | --- |\n| Faculty/Personnel | 1. Prepares Project Proposal. |\n| IGO Director | 2. Receives Project Proposal and su",
+      "new": "| Responsibility | Activity |\n| --- | --- |\n| Faculty/Personnel | 1. Prepares Project Proposal. |\n| IGO Director | 2. Receives Project Proposal and su"
+    },
+    {
+      "id": "HRM_4.02-9066-2047",
+      "fold": "fold_3",
+      "generator": "benign_reorder",
+      "true": "approve",
+      "layer2": {
+        "approve": 0.008,
+        "needs_revision": 0.965,
+        "reject": 0.027
+      },
+      "fusion": {
+        "approve": 0.942,
+        "needs_revision": 0.058,
+        "reject": 0.0
+      },
+      "nonzero_features": {
+        "deleted_line_ratio": 0.0625,
+        "deleted_word_ratio": 0.0588,
+        "inserted_word_ratio": 0.0588
+      },
+      "old": "| Activity | Date |\n| --- | --- |\n| Submission of yearly targets | First Week of the Year |\n| Submission of IPCR to HRMO Faculty Personnel | January \u2013",
+      "new": "| Activity | Date |\n| --- | --- |\n| Submission of yearly targets | First Week of the Year |\n| Submission of IPCR to HRMO Faculty Personnel | January \u2013"
+    },
+    {
+      "id": "SDM_3.01-9103-2481",
+      "fold": "fold_3",
+      "generator": "equivalent_synonym",
+      "true": "approve",
+      "layer2": {
+        "approve": 0.149,
+        "needs_revision": 0.059,
+        "reject": 0.791
+      },
+      "fusion": {
+        "approve": 1.0,
+        "needs_revision": 0.0,
+        "reject": 0.0
+      },
+      "nonzero_features": {
+        "net_deleted_word_ratio": 0.005
+      },
+      "old": "4.1 For Light Offenses\n| Responsibility | Activity |\n| --- | --- |\n| Security Guard/ Faculty/Personnel/ | 1. Issues two (2) copies of the Disciplinary",
+      "new": "4.1 For Light Offenses\n| Responsibility | Activity |\n| --- | --- |\n| Security Guard/ Faculty/Personnel/ | 1. Issues two (2) copies of the Disciplinary"
+    },
+    {
+      "id": "HRM_4.02-9066-3750",
+      "fold": "fold_3",
+      "generator": "benign_reorder",
+      "true": "approve",
+      "layer2": {
+        "approve": 0.005,
+        "needs_revision": 0.078,
+        "reject": 0.918
+      },
+      "fusion": {
+        "approve": 0.994,
+        "needs_revision": 0.004,
+        "reject": 0.002
+      },
+      "nonzero_features": {
+        "deleted_line_ratio": 0.0625,
+        "deleted_word_ratio": 0.0784,
+        "inserted_word_ratio": 0.0784
+      },
+      "old": "| Activity | Date |\n| --- | --- |\n| Submission of yearly targets | First Week of the Year |\n| Submission of IPCR to HRMO Faculty Personnel | January \u2013",
+      "new": "| Activity | Date |\n| --- | --- |\n| Submission of yearly targets | First Week of the Year |\n| Submission of DPCR to the PMT | January \u2013 June & July \u2013 "
+    },
+    {
+      "id": "FAM_5.01-8969-3624",
+      "fold": "fold_4",
+      "generator": "acronym_expansion",
+      "true": "approve",
+      "layer2": {
+        "approve": 0.206,
+        "needs_revision": 0.759,
+        "reject": 0.035
+      },
+      "fusion": {
+        "approve": 0.912,
+        "needs_revision": 0.088,
+        "reject": 0.0
+      },
+      "nonzero_features": {
+        "net_deleted_word_ratio": 0.0018
+      },
+      "old": "| Responsibility | Activity |\n| --- | --- |\n| Accounting Staff-3 | 1. Gathers Supporting Documents (SDs) to initiate the payment of claims. Forwards t",
+      "new": "| Responsibility | Activity |\n| --- | --- |\n| Accounting Staff-3 | 1. Gathers Supporting Documents (SDs) to initiate the payment of claims. Forwards t"
+    }
+  ]
+}

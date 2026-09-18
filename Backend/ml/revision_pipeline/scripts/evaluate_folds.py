@@ -94,6 +94,28 @@ def index_dataset(data_dir: Path) -> dict:
     return rows
 
 
+# The ablation asks one question: how much of the verdict is decidable from
+# the textual change itself? The clause 6.3 check answers a different one - it
+# examines the submission's metadata, not the change - and in the live system
+# it fires at the API before an assessment is ever requested, so a revision
+# reaching Layer 2 has already passed it.
+#
+# Leaving it in measured the generators' placeholder reasons instead of the
+# rules: 579 of the 2,762 rows carry filler like "Per instruction." that the
+# tier-1 check rejects, and rows with no reason at all were handed the literal
+# string "recorded", which it also rejects. Every one of those hard-failed, and
+# rules_only_verdict returns reject on any hard fail, so a fifth of the corpus
+# was scored as reject regardless of its content - dropping rules_only from
+# 0.791 to 0.730 for reasons that have nothing to do with the rule layer.
+#
+# Substituted for every row, so all three systems in the ablation see the same
+# thing. In practice only rules_only can notice: model_only reads Layer 2's
+# probabilities, and fusion reads the feature vector, which carries no
+# reason-derived column (config.LAYER1_FEATURES is entirely textual-diff
+# quantities, and change_type is derived from the text and those features).
+SCORING_CHANGE_REASON = "Reason recorded with the submission, checked at the API."
+
+
 def prepare(records: list, dataset: dict) -> list:
     """Join predictions to their text and run Layer 1 once per example."""
     prepared = []
@@ -103,7 +125,7 @@ def prepare(records: list, dataset: dict) -> list:
             continue
         layer1 = run_layer1(
             row.get("old_text", ""), row.get("new_text", ""),
-            revision_meta={"change_reason": row.get("change_reason") or "recorded"},
+            revision_meta={"change_reason": SCORING_CHANGE_REASON},
             manual_key_terms=row.get("key_terms"),
         )
         model_issues = {

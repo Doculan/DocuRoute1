@@ -385,11 +385,17 @@ def run_layer3(layer1_result, layer2_output: dict = None,
     # A vague reason never blocks a revision - the edit itself may be
     # perfectly good - but it does mean the reviewer cannot confirm the change
     # was planned, so it is not something to wave through on the model's word.
-    if advisories and verdict == "approve":
+    # Only advisories that claim to bear on the verdict. A vague change reason
+    # does; text the edit mangled does not - it is worth showing a reviewer and
+    # is not grounds for the pipeline to overrule its own verdict. Advisories
+    # written before this field existed default to acting, which preserves the
+    # clause 6.3 behaviour.
+    acting = [a for a in advisories if a.get("affects_verdict", True)]
+    if acting and verdict == "approve":
         verdict = "needs_revision"
         overrides.append({
             "rule": "advisory",
-            "detail": ", ".join(a["label"] for a in advisories),
+            "detail": ", ".join(a["label"] for a in acting),
         })
 
     return FusionResult(

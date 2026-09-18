@@ -43,6 +43,17 @@ _OPENINGS = {
     ],
 }
 
+# An approve that still carries concerns needs an opening that admits them.
+# "No blocking problems were found in this revision." followed immediately by a
+# medium-severity concern reads as though the two came from different systems,
+# and the reader believes the first sentence - which is the one that tells them
+# to stop reading. {points} is filled with "one point is" or "three points are".
+_APPROVE_WITH_CONCERNS = [
+    "No blocking problems were found, but {points} worth checking.",
+    "This revision looks broadly acceptable, though {points} worth a look.",
+    "Nothing here blocks approval, but {points} worth confirming first.",
+]
+
 _CONNECTORS = ["In addition,", "Also,", "Further,"]
 _HIGH_CONNECTORS = ["More importantly,", "More seriously,", "Of greater concern,"]
 
@@ -50,63 +61,88 @@ _HIGH_CONNECTORS = ["More importantly,", "More seriously,", "Of greater concern,
 # a model-only issue has no quoted words to point at, and without a fillable
 # option the renderer fell back to a template with an empty slot, producing
 # "is likely stated differently elsewhere" with nothing in front of it.
+#
+# Those evidence-free variants must still be actionable. "A term this section
+# relies on likely no longer appears" is true, unarguable and useless: it tells
+# a reviewer neither what kind of term nor where to look, and the model is the
+# only source precisely when there is nothing to quote. Each one therefore
+# names the category of thing that may have changed and points at where to
+# check it, so an unevidenced finding is still a lead rather than a shrug.
 _PHRASINGS = {
     "excessive_deletion": [
-        "a large part of section {section} was {hedge} removed",
+        "a large part of section {section} was {hedge} removed, so compare the "
+        "two versions and confirm nothing required went with it",
         "section {section} {hedge} lost {ratio} of its wording",
         "{portion} of section {section} was {hedge} deleted ({ratio} of the wording)",
     ],
     "key_term_deleted": [
-        "a term this section relies on {hedge} no longer appears",
+        "a term this section depends on {hedge} no longer appears, so check "
+        "the old text for a defined term, form name or legal reference that "
+        "is missing from the new one",
         "the term {terms} {hedge} no longer appears",
-        "it {hedge} drops {terms} from the text",
+        "it {hedge} drops {terms} from section {section}",
         "{terms} was {hedge} removed from section {section}",
     ],
     "modal_weakened": [
-        "an obligation {hedge} became optional",
+        "an obligation {hedge} became optional, so look for shall, must or "
+        "required giving way to may, should or can",
         "{terms}, so an obligation {hedge} became a permission",
         "{terms}, which {hedge} turns a requirement into a permission",
     ],
     "negation_changed": [
-        "a negation {hedge} changed, which reverses the meaning",
+        "a negation {hedge} changed, so look for not, no or never added or "
+        "dropped, which reverses what this section requires",
         "the word {terms} was {hedge} {action}, which reverses the meaning",
         "the word {terms} was {hedge} {action}, inverting what this section requires",
         "the sense of this section was {hedge} inverted when {terms} was {action}",
     ],
     "numeric_changed": [
-        "a figure in section {section} {hedge} changed",
+        "a figure in section {section} {hedge} changed, so check each amount, "
+        "deadline, percentage and count against the old version",
         "a figure was {hedge} changed from {from_text} to {to_text}",
         "the value {hedge} changed from {from_text} to {to_text}",
         "a figure was {hedge} {direction}: {terms}",
     ],
     "responsibility_changed": [
-        "the party responsible for this step {hedge} changed",
+        "the party responsible {hedge} changed, so check the role named in "
+        "section {section} against the one it replaced",
         "the assigned role {hedge} changed ({terms}), which ISO clause {clause} covers",
         "responsibility {hedge} moved to a different party ({terms})",
         "{terms} is {hedge} no longer the party named for this step",
     ],
     "requirement_removed": [
-        "a required step was {hedge} removed from section {section}",
+        "a required step was {hedge} removed from section {section}, so look "
+        "for a sentence in the old text with no counterpart in the new",
         "the required step “{old}” was {hedge} removed",
         "the revision {hedge} drops a required step: “{old}”",
         "the obligation “{old}” is {hedge} no longer stated",
     ],
     "non_equivalent_term": [
-        "a term was {hedge} swapped for one that does not mean the same thing",
+        "a term was {hedge} swapped for one that does not mean the same thing, "
+        "so compare the changed wording against how this manual uses it "
+        "elsewhere",
         "a term was {hedge} swapped for one that does not mean the same thing ({terms})",
         "{terms}, and those are {hedge} not equivalent in this manual",
         "the substitution {terms} {hedge} changes what is being asked",
     ],
     "contradicts_manual": [
-        "it {hedge} conflicts with another section of the same document",
+        "it {hedge} conflicts with another section of this document, so check "
+        "whether the same value, deadline or role is stated elsewhere",
         "it {hedge} conflicts with another section of the same document ({terms})",
         "{terms} is {hedge} stated differently elsewhere in this document",
         "another section {hedge} still carries the previous value ({terms})",
     ],
     "out_of_scope_content": [
-        "inserted wording {hedge} does not belong to this section",
-        "content was {hedge} added that is outside the scope of section {section}",
-        "the addition {hedge} sits outside what section {section} covers",
+        "wording was {hedge} added that does not belong to section {section}, "
+        "so check whether the new text strays into what another section "
+        "covers",
+        # Every phrasing for this label renders without evidence - the model
+        # reports it with nothing to quote - so all three have to be useful.
+        "content was {hedge} added that is outside the scope of section "
+        "{section}, so read the new text for anything the section did not "
+        "cover before",
+        "the addition {hedge} sits outside what section {section} covers, so "
+        "check whether it belongs in a different section of the manual",
     ],
 }
 
@@ -183,6 +219,14 @@ def _section_slot(section_label: str) -> str:
         return "this section"
     first = label.split(None, 1)[0]
     return first if first.replace(".", "").isdigit() else label
+
+
+_NUMBER_WORDS = ("", "one", "two", "three", "four", "five", "six")
+
+
+def _number_word(count: int) -> str:
+    """Small counts read better as words in a sentence than as digits."""
+    return _NUMBER_WORDS[count] if 0 < count < len(_NUMBER_WORDS) else str(count)
 
 
 def _lower_first(text: str) -> str:
@@ -279,31 +323,45 @@ def explain(fusion_result, layer1_result, section_label: str = "",
     rng = random.Random(str(revision_id) if revision_id is not None else "0")
 
     verdict = fusion_result.verdict
-    sentences = [rng.choice(_OPENINGS.get(verdict, _OPENINGS["needs_revision"]))]
 
+    # The body is written first so the opening can describe what the body
+    # actually says. Choosing the opening up front is how an approve came to
+    # announce "no blocking problems" and then list one.
+    procedural = []
     # A hard fail is procedural - say exactly which rule, not a hedged guess.
     if layer1_result.failed:
         for fail in layer1_result.hard_fails:
             detail = (fail.get("detail") or "").rstrip(".")
             clause = fail.get("clause")
-            sentences.append(
+            procedural.append(
                 f"{detail}, which clause {clause} requires." if clause else f"{detail}."
             )
 
     issues = list(fusion_result.issues or [])
-    body_budget = max_sentences - len(sentences) - 2   # change type + closing
+    body_budget = max_sentences - 1 - len(procedural) - 2  # opening + change + closing
     shown, remaining = issues[:max(body_budget, 0)], issues[max(body_budget, 0):]
 
-    for position, issue in enumerate(shown):
+    body = []
+    for issue in shown:
         clause_text = _render(issue, section_label, rng)
         if not clause_text:
             continue
-        if position == 0:
+        if not body:
             sentence = _start_sentence(clause_text)
         else:
             pool = _HIGH_CONNECTORS if issue.get("severity") == "high" else _CONNECTORS
             sentence = f"{rng.choice(pool)} {_lower_first(clause_text)}"
-        sentences.append(sentence.rstrip(".") + ".")
+        body.append(sentence.rstrip(".") + ".")
+
+    concerns = len(body) + len(remaining)
+    if verdict == "approve" and concerns:
+        points = ("one point is" if concerns == 1
+                  else f"{_number_word(concerns)} points are")
+        opening = rng.choice(_APPROVE_WITH_CONCERNS).format(points=points)
+    else:
+        opening = rng.choice(_OPENINGS.get(verdict, _OPENINGS["needs_revision"]))
+
+    sentences = [opening] + procedural + body
 
     if remaining:
         labels = ", ".join(i["label"].replace("_", " ") for i in remaining[:3])

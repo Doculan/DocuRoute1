@@ -286,9 +286,18 @@ and it never changes a revision's status.
 
 v2 on the five cross-validation folds: **97.8% verdict accuracy** against 79.1%
 for the rule layer alone, and **0.854 issue micro-F1** — each the mean of the
-five per-fold scores. `Backend/ml/reports/EVALUATION.md` is the full write-up,
-including what those numbers do and do not support;
-`Backend/ml/reports/fold_evaluation.md` is the raw table.
+five per-fold scores.
+
+The rule layer's 79.1% is measured with the clause 6.3 change-reason check
+excluded, because the ablation asks what is decidable from the textual change
+and that check examines metadata instead — in the live system it fires at the
+API, before any assessment. Scored with it against the corpus's generated
+placeholder reasons the figure is 73.0%. `EVALUATION.md` §2 states all three
+figures and why.
+
+`Backend/ml/reports/EVALUATION.md` is the full write-up, including what those
+numbers do and do not support; `Backend/ml/reports/fold_evaluation.md` is the
+raw table.
 
 ## 9. Rebuilding the pipeline's data
 

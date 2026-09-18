@@ -13,7 +13,7 @@ from revision_pipeline import config
 from revision_pipeline.layer1_rules import run_layer1
 from revision_pipeline.layer3_fusion import FusionResult, run_layer3
 from revision_pipeline.layer4_explain import (
-    _PHRASINGS, MAX_SENTENCES, explain, not_assessed_message,
+    _PHRASINGS, _render, MAX_SENTENCES, explain, not_assessed_message,
 )
 
 REASON = {"change_reason": "Updated after the August 2026 management review."}
@@ -346,3 +346,87 @@ def test_forms_section_message_says_not_assessed():
     assert "Not assessed" in message
     assert "manual admin review" in message
     assert "5.0 LIST OF FORMS" in message
+
+
+# -- an unevidenced finding must still be a lead ---------------
+
+# Words that only restate that *something* happened. A phrasing built solely
+# from these tells the reviewer nothing they did not know from the label.
+_GENERIC_ONLY = (
+    "a term this section relies on no longer appears",
+    "an obligation became optional",
+    "a negation changed",
+    "a figure changed",
+    "the party responsible changed",
+)
+
+
+def _evidence_free_renderings(label):
+    """Every phrasing reachable when the model reports with nothing to quote."""
+    issue = {"label": label, "source": "model", "confidence": 0.78,
+             "severity": config.SEVERITY.get(label), "evidence": "",
+             "clause": config.ISSUE_CLAUSE.get(label)}
+    return {_render(issue, "3.1 POLICIES", random.Random(seed))
+            for seed in range(40)} - {""}
+
+
+@pytest.mark.parametrize("label", config.ISSUE_LABELS)
+def test_evidence_free_phrasing_says_where_to_look(label):
+    """With no words to quote, the text must still name what to check.
+
+    The model-only case is exactly when a reviewer has least to go on, so a
+    phrasing that merely restates the label is worse than useless - it looks
+    like information.
+    """
+    rendered = _evidence_free_renderings(label)
+    assert rendered, f"{label} renders nothing without evidence"
+    for text in rendered:
+        assert len(text.split()) >= 12, f"{label}: too terse to act on: {text!r}"
+        # it has to point somewhere: a section, the old text, or what to compare
+        assert any(cue in text for cue in
+                   ("so check", "so look", "so compare", "so read")), \
+            f"{label}: no pointer to where to look: {text!r}"
+
+
+@pytest.mark.parametrize("label", config.ISSUE_LABELS)
+def test_no_phrasing_is_generic_only(label):
+    for text in _evidence_free_renderings(label):
+        stripped = text.replace("likely ", "").replace("clearly ", "").replace("may ", "")
+        assert stripped.rstrip(".") not in _GENERIC_ONLY, \
+            f"{label}: generic-only phrasing survived: {text!r}"
+
+
+# -- an approve that carries concerns must admit them ----------
+
+def _approve_with(issues):
+    fusion = FusionResult(verdict="approve", confidence=0.7, issues=issues)
+    layer1 = run_layer1("The Cashier shall sign the log.",
+                        "The Cashier shall sign the register.", REASON)
+    return explain(fusion, layer1, section_label="3.1 POLICIES", revision_id=11)
+
+
+def test_approve_with_a_concern_does_not_claim_nothing_was_found():
+    text = _approve_with([{
+        "label": "key_term_deleted", "source": "model", "confidence": 0.8,
+        "severity": "medium", "evidence": "", "clause": "7.5.3",
+    }])
+    assert "one point is worth" in text, text
+    # the old opener promised the opposite of what followed
+    assert "No blocking problems were found in this revision." not in text
+
+
+def test_approve_with_several_concerns_counts_them():
+    text = _approve_with([
+        {"label": "key_term_deleted", "source": "model", "confidence": 0.8,
+         "severity": "medium", "evidence": "", "clause": "7.5.3"},
+        {"label": "numeric_changed", "source": "model", "confidence": 0.8,
+         "severity": "medium", "evidence": "", "clause": "7.5.3"},
+    ])
+    assert "two points are worth" in text, text
+
+
+def test_a_clean_approve_still_reads_as_clean():
+    text = _approve_with([])
+    assert "worth checking" not in text
+    assert "worth a look" not in text
+    assert "worth confirming" not in text

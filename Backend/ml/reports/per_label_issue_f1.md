@@ -24,7 +24,7 @@ F1 per label under each candidate policy. A 0.000 against a label with real supp
 | label | `model` | `union` | `rules_precise` | `agree` | support |
 |---|---:|---:|---:|---:|---:|
 | `excessive_deletion` | 0.703 | 0.698 | 0.698 | 0.993 | 150 |
-| `key_term_deleted` | 0.782 | 0.694 | 0.782 | 0.904 | 126 |
+| `key_term_deleted` | 0.782 | 0.665 | 0.782 | 0.904 | 126 |
 | `modal_weakened` | 0.998 | 0.996 | 0.996 | 1.000 | 229 |
 | `negation_changed` | 0.951 | 0.765 | 0.951 | 1.000 | 155 |
 | `numeric_changed` | 0.966 | 0.460 | 0.966 | 0.976 | 150 |
@@ -33,4 +33,4 @@ F1 per label under each candidate policy. A 0.000 against a label with real supp
 | `non_equivalent_term` | 0.905 | 0.952 | 0.952 | 0.953 | 89 |
 | `contradicts_manual` | 0.700 | 0.700 | 0.700 | 0.000 | 150 |
 | `out_of_scope_content` | 0.753 | 0.753 | 0.753 | 0.000 | 265 |
-| **micro-F1** | **0.842** | **0.686** | **0.844** | **0.855** | |
+| **micro-F1** | **0.842** | **0.684** | **0.844** | **0.855** | |
