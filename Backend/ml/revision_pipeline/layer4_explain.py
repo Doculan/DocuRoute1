@@ -54,6 +54,45 @@ _APPROVE_WITH_CONCERNS = [
     "Nothing here blocks approval, but {points} worth confirming first.",
 ]
 
+# The same findings, addressed to the person who wrote the change rather than
+# the person deciding on it. Only the framing moves: every issue clause, its
+# evidence and its clause number are rendered identically for both audiences,
+# and the stored verdict is the same word in both cases. A submitter is told
+# what a reviewer would probably do, never that they may not submit - the
+# check is required, the verdict never blocks.
+_SUBMITTER_OPENINGS = {
+    "approve": [
+        "This looks ready to submit.",
+        "No blocking problems were found in your change.",
+        "This change appears fine to submit.",
+    ],
+    "needs_revision": [
+        "This would likely be sent back for changes.",
+        "A reviewer would probably ask for changes before approving this.",
+        "This would likely need adjusting before it is approved.",
+    ],
+    "reject": [
+        "This would likely be rejected as written.",
+        "A reviewer would probably not approve this as written.",
+        "This change would likely be turned down in its current form.",
+    ],
+}
+
+_SUBMITTER_APPROVE_WITH_CONCERNS = [
+    "No blocking problems were found, but {points} worth checking before you submit.",
+    "This looks broadly fine, though {points} worth a look first.",
+    "Nothing here would block approval, but {points} worth confirming.",
+]
+
+_SUBMITTER_CLOSINGS = {
+    "approve": "You can go ahead and submit.",
+    "needs_revision": "You can still submit - the reviewer decides, not this check.",
+    "reject": "You can still submit - the reviewer decides, not this check.",
+}
+
+REVIEWER = "reviewer"
+SUBMITTER = "submitter"
+
 _CONNECTORS = ["In addition,", "Also,", "Further,"]
 _HIGH_CONNECTORS = ["More importantly,", "More seriously,", "Of greater concern,"]
 
@@ -317,10 +356,28 @@ def _needed_slots(template: str) -> list:
 # -- main entry point ------------------------------------------
 
 def explain(fusion_result, layer1_result, section_label: str = "",
-            revision_id=None, max_sentences: int = MAX_SENTENCES) -> str:
-    """Readable assessment text for one revision."""
-    # Seeded by revision id: same revision, same words, every time.
-    rng = random.Random(str(revision_id) if revision_id is not None else "0")
+            revision_id=None, max_sentences: int = MAX_SENTENCES,
+            seed=None, audience: str = REVIEWER) -> str:
+    """Readable assessment text for one revision.
+
+    ``audience`` selects who is being addressed. The findings, their evidence
+    and their clause numbers are identical either way; only the opening and
+    closing change, because a submitter deciding whether to submit and a
+    reviewer deciding whether to approve need the same facts framed at
+    different people.
+
+    ``seed`` fixes the phrasing. It exists because the assessment now happens
+    before the revision is saved, so there is no id yet to seed from - and
+    because the submitter and the reviewer must read word-for-word the same
+    text. Passing the content hash gives both, since the same content always
+    produces the same words. ``revision_id`` remains the fallback for the
+    reviewer-side path on older revisions.
+    """
+    if seed is not None:
+        rng = random.Random(str(seed))
+    else:
+        rng = random.Random(str(revision_id) if revision_id is not None else "0")
+    to_submitter = audience == SUBMITTER
 
     verdict = fusion_result.verdict
 
@@ -353,13 +410,17 @@ def explain(fusion_result, layer1_result, section_label: str = "",
             sentence = f"{rng.choice(pool)} {_lower_first(clause_text)}"
         body.append(sentence.rstrip(".") + ".")
 
+    openings = _SUBMITTER_OPENINGS if to_submitter else _OPENINGS
+    with_concerns = (_SUBMITTER_APPROVE_WITH_CONCERNS if to_submitter
+                     else _APPROVE_WITH_CONCERNS)
+
     concerns = len(body) + len(remaining)
     if verdict == "approve" and concerns:
         points = ("one point is" if concerns == 1
                   else f"{_number_word(concerns)} points are")
-        opening = rng.choice(_APPROVE_WITH_CONCERNS).format(points=points)
+        opening = rng.choice(with_concerns).format(points=points)
     else:
-        opening = rng.choice(_OPENINGS.get(verdict, _OPENINGS["needs_revision"]))
+        opening = rng.choice(openings.get(verdict, openings["needs_revision"]))
 
     sentences = [opening] + procedural + body
 
@@ -375,7 +436,8 @@ def explain(fusion_result, layer1_result, section_label: str = "",
     if change_sentence:
         sentences.append(change_sentence)
 
-    sentences.append(_CLOSINGS.get(verdict, _CLOSINGS["needs_revision"]))
+    closings = _SUBMITTER_CLOSINGS if to_submitter else _CLOSINGS
+    sentences.append(closings.get(verdict, closings["needs_revision"]))
     return " ".join(s for s in sentences if s)
 
 

@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -175,5 +177,94 @@ class ManualRevision(models.Model):
     ai_explanation = models.TextField(blank=True)
     ai_trace = models.JSONField(default=dict, blank=True)
 
+    AI_SOURCE_CHOICES = [
+        # The submitter ran the check before submitting and this is what they
+        # read. The only way a new revision gets an assessment.
+        ('staff_precheck', 'Checked by the submitter before submitting'),
+        # Produced by a reviewer pressing an assess button, which is how it
+        # worked before the check moved to the staff side. Kept so old rows
+        # are not passed off as something the submitter saw.
+        ('admin_legacy', 'Assessed by the reviewer under the previous workflow'),
+        ('none', 'Not assessed'),
+    ]
+    ai_source = models.CharField(
+        max_length=20, choices=AI_SOURCE_CHOICES, default='none'
+    )
+
+    # The same findings addressed to the submitter. Stored rather than
+    # re-rendered so a reviewer can see what the submitter was actually told
+    # before choosing to submit anyway.
+    ai_explanation_staff = models.TextField(blank=True)
+    ai_confidence = models.FloatField(null=True, blank=True)
+    ai_change_type = models.CharField(max_length=40, blank=True)
+    ai_hard_fails = models.JSONField(default=list, blank=True)
+    ai_advisories = models.JSONField(default=list, blank=True)
+
+    # When the assessment was made, against which weights, and of exactly what.
+    # The reviewer needs all three: a long gap between check and submission is
+    # worth seeing, and the section may have moved since.
+    ai_assessed_at = models.DateTimeField(null=True, blank=True)
+    ai_model_fingerprint = models.CharField(max_length=64, blank=True)
+    ai_content_hash = models.CharField(max_length=64, blank=True)
+    ai_section_content_hash = models.CharField(max_length=64, blank=True)
+
     def __str__(self):
         return f"Revision by {self.submitted_by} on {self.section.subtitle}"
+
+
+class RevisionPreAssessment(models.Model):
+    """One assessment of content that has not been submitted yet.
+
+    The submitter presses "Check with AI", the result is written here, and the
+    submitter is handed only this row's id. At submit the server recomputes the
+    content hash and compares: matching means the reviewer will read exactly
+    what the submitter read, and that guarantee is the whole point of the
+    table. Nothing about the result is ever accepted from the client.
+
+    Rows are working state, not a record - a submitter who checks and closes
+    the tab leaves one behind - so unconsumed rows are swept after
+    ``pre_assessment.RETENTION_DAYS``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    section = models.ForeignKey(
+        ManualSection, on_delete=models.CASCADE, related_name='pre_assessments'
+    )
+    submitted_by = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='pre_assessments'
+    )
+
+    # What was assessed. change_reason is part of the hash because Layer 1
+    # judges it under clause 6.3, so changing it means the revision has
+    # genuinely not been assessed.
+    content_hash = models.CharField(max_length=64, db_index=True)
+    section_content_hash = models.CharField(max_length=64)
+    proposed_content = models.TextField(blank=True)
+    change_reason = models.TextField(blank=True)
+
+    verdict = models.CharField(max_length=32, blank=True)
+    confidence = models.FloatField(null=True, blank=True)
+    change_type = models.CharField(max_length=40, blank=True)
+    issues = models.JSONField(default=list, blank=True)
+    hard_fails = models.JSONField(default=list, blank=True)
+    advisories = models.JSONField(default=list, blank=True)
+    explanation_reviewer = models.TextField(blank=True)
+    explanation_staff = models.TextField(blank=True)
+    trace = models.JSONField(default=dict, blank=True)
+
+    model_fingerprint = models.CharField(max_length=64, blank=True)
+    pipeline_version = models.CharField(max_length=8, blank=True)
+    assessed_at = models.DateTimeField(auto_now_add=True)
+    consumed_by = models.OneToOneField(
+        ManualRevision, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pre_assessment',
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['submitted_by', 'section', 'content_hash']),
+        ]
+        ordering = ['-assessed_at']
+
+    def __str__(self):
+        return f"Pre-assessment {self.verdict} for section {self.section_id}"

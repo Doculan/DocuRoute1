@@ -1299,6 +1299,125 @@ code as it stood.
 
 ---
 
+## The assessment moved to the staff side, before submission
+
+Previously a reviewer pressed a button and got a verdict. Now the submitter
+runs the check before submitting, reads the result, and confirms; the result is
+stored and the reviewer reads the same assessment. **There is only ever one
+verdict for a revision**, which is the point of the change.
+
+### How the snapshot is kept honest
+
+`POST /api/revisions/pre-assess/<section_id>/` assesses unsaved text and
+returns the result plus an opaque `assessment_id`. At submit the client sends
+only that id; the server loads its own row, **recomputes** the content hash
+from what is actually being submitted, and compares. Nothing about the result
+is ever accepted from the client, and the hash is never computed in the
+browser - a second implementation would be free to drift, and a client-posted
+verdict would be a snapshot of whatever the client felt like claiming.
+
+`content_hash = sha256(section_id, section.content, proposed, change_reason)`,
+each part normalised (NFC, CRLF to LF, trailing spaces per line, blank runs).
+Aggressive on purpose: being sent back to re-check over a pasted CRLF teaches
+people the check is broken. The reason is in the hash because Layer 1 judges
+it under clause 6.3, so changing it means the revision genuinely has not been
+assessed. The section's own text is in the hash because an assessment is about
+a *comparison*, not a string.
+
+### Mandatory, and never a gate
+
+The check is required; the verdict is not. A submitter may submit a `reject`.
+Enforced on both sides, because frontend-only enforcement is not enforcement:
+the Confirm button stays disabled until a check has run for the current text,
+and the endpoint returns 400 when no valid assessment exists for exactly the
+content submitted.
+
+Two mismatches, two messages - they are not the submitter's fault in the same
+way, and one generic "please re-check" makes the innocent case read as a bug:
+
+| cause | message |
+|---|---|
+| edited after checking | "You have changed the text since the AI check..." |
+| the section moved underneath | "This section was updated by someone else while you were working..." |
+
+### What the reviewer gets
+
+Stored on the revision: verdict, confidence, change type, issues, hard fails,
+advisories, **both wording variants**, trace, `assessed_at`, model fingerprint,
+content hash and the section's hash at check time. From those the review screen
+shows where the assessment came from, how long the submitter waited before
+submitting, and whether the section has changed since.
+
+`ai_source` distinguishes `staff_precheck` from `admin_legacy` from `none`,
+backfilled in migration `0013`. A result a reviewer generated under the old
+workflow is never shown as something the submitter read. The reviewer's assess
+button survives **only** for `ai_source = "none"`, labelled as a reviewer-side
+assessment under the old workflow; anything already assessed returns 409.
+
+### Layer 4 addresses two audiences
+
+`explain(..., audience=...)` renders the same findings, evidence and clause
+numbers for both, changing only the opening and closing:
+
+```
+reviewer : This revision should be sent back for adjustment. The word "shall"
+           became "may", so an obligation became a permission. Please check
+           these points before approving.
+submitter: A reviewer would probably ask for changes before approving this.
+           The word "shall" became "may", so an obligation became a
+           permission. You can still submit - the reviewer decides, not this
+           check.
+```
+
+The stored label is the same word in both cases; the softer wording is display
+only. Phrasing is seeded by the **content hash** rather than the revision id,
+which did not exist at check time - so the submitter and the reviewer read
+word-for-word the same sentences, and re-checking identical content produces an
+identical result rather than a reworded one.
+
+### Measured on the live database (revision 17)
+
+```
+check   HTTP 200  14.8 s   needs_revision  modal_weakened  "shall" became "may"
+        (14.8 s is the cold model load; warm checks are ~0.3 s)
+edited after check   HTTP 400   "You have changed the text since the AI check"
+no check at all      HTTP 400   "Please run the AI check before submitting"
+submit  HTTP 201   0.01 s   ai_source staff_precheck
+reviewer re-assess   HTTP 409   already carries an assessment
+```
+
+**Submission is now 0.01 s**: the model cost has moved entirely into the check,
+where the submitter is expecting to wait.
+
+### Consequences worth recording
+
+**Revision 13's `no_change_reason` path is unreachable for new revisions.**
+The clause 6.3 tier-1 check now runs at the pre-assess endpoint as well as at
+submit, so a revision cannot reach the reviewer without a usable reason.
+Revision 13 stays as the only live example of that hard fail.
+
+**The population of submitted revisions is now selected.** A submitter who
+reads "this would likely be rejected" may simply not submit. Whatever reaches
+the reviewer is therefore biased towards changes the submitter believed would
+pass, and any future evaluation against real submitted revisions measures that
+filtered population rather than the work staff actually attempt. This is a
+methodological consequence of the design, not a defect, and it is better named
+than discovered later. Recorded in `EVALUATION.md` 9.
+
+**The load profile changed.** Assessment moved from a handful of reviewers
+pressing a button to every staff member on every submission, plus re-checks
+after edits. The measured numbers are unchanged - three concurrent assessments
+in 0.61 s, ~740 MB shared across a process - but the arrival rate is not, which
+brings the task queue in `DEPLOYMENT.md` 8 forward from a distant scaling note
+to a real requirement. The endpoint is rate-limited to 60 checks per user per
+hour, and unconsumed pre-assessments are swept after 7 days.
+
+**Pre-warming is now required rather than advisable.** The 13.6 s cold start
+used to land on a reviewer who had chosen to press a button. It now lands on a
+staff member mid-task, on their first submission of the day.
+
+---
+
 ### Future work — PRECISE_RULE_LABELS serves two purposes
 
 `PRECISE_RULE_LABELS` does two unrelated jobs, and that is the underlying

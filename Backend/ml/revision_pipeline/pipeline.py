@@ -19,7 +19,7 @@ from . import config
 from .diffing import marked_text
 from .layer1_rules import run_layer1
 from .layer3_fusion import FusionModel, run_layer3
-from .layer4_explain import explain, not_assessed_message
+from .layer4_explain import REVIEWER, SUBMITTER, explain, not_assessed_message
 from .retrieval import (
     Section, format_context, is_forms_section, related_texts, sections_for_manual,
 )
@@ -111,6 +111,10 @@ def assess_texts(
     context: str = "",
     manual_key_terms: list = None,
     revision_id=None,
+    # Fixes the wording. The pre-submission check has no revision id yet, and
+    # the submitter and the reviewer must read the same sentences - passing the
+    # content hash gives both. See api/pre_assessment.py.
+    seed=None,
     model_dir=None,
     device: str = "cpu",
 ) -> dict:
@@ -129,6 +133,7 @@ def assess_texts(
             "issues": [],
             "advisories": [],
             "explanation": not_assessed_message(section_label),
+            "explanation_staff": not_assessed_message(section_label),
             "trace": {"skipped": "forms_section"},
         }
 
@@ -153,8 +158,17 @@ def assess_texts(
         thresholds=bundle.get("thresholds"),
     )
 
+    # Both audiences, rendered from the one set of findings and the one seed,
+    # so the submitter who read this before submitting and the reviewer who
+    # reads it afterwards are looking at the same assessment in different
+    # words - not at two runs that might disagree.
     explanation = explain(
-        layer3, layer1, section_label=section_label, revision_id=revision_id
+        layer3, layer1, section_label=section_label, revision_id=revision_id,
+        seed=seed, audience=REVIEWER,
+    )
+    explanation_staff = explain(
+        layer3, layer1, section_label=section_label, revision_id=revision_id,
+        seed=seed, audience=SUBMITTER,
     )
 
     trace = {
@@ -192,6 +206,7 @@ def assess_texts(
         "issues": layer3.issues,
         "advisories": layer3.advisories,
         "explanation": explanation,
+        "explanation_staff": explanation_staff,
         "trace": trace,
     }
 

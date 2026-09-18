@@ -104,6 +104,121 @@ function SectionContent({ content }) {
   );
 }
 
+const VERDICT_TONE = {
+  approve: { badge: "badge-success", label: "Looks fine" },
+  needs_revision: { badge: "badge-warning", label: "Would likely need changes" },
+  reject: { badge: "badge-danger", label: "Would likely be rejected" },
+};
+
+const SEVERITY_TONE = {
+  high: "badge-danger",
+  medium: "badge-warning",
+  low: "badge-neutral",
+};
+
+/**
+ * What the submitter sees before deciding whether to submit.
+ *
+ * Deliberately not a gate. The verdict is advice and the submit button stays
+ * live whatever it says - the only thing that is required is having read it.
+ * The reviewer will see this same assessment, so it is also a preview of what
+ * they will be looking at.
+ */
+function AiCheckPanel({ result, loading }) {
+  if (loading) {
+    return (
+      <div className="card card-pad" style={{ margin: "0.9rem 0" }}>
+        <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
+          <span className="spinner" />
+          <span className="text-sm">
+            Checking this change… the first check after the server starts takes
+            a few seconds longer.
+          </span>
+        </div>
+      </div>
+    );
+  }
+  if (!result) return null;
+
+  const tone = VERDICT_TONE[result.verdict] || VERDICT_TONE.needs_revision;
+  const issues = result.issues || [];
+  const hardFails = result.hard_fails || [];
+  const advisories = result.advisories || [];
+
+  return (
+    <div className="card card-pad" style={{ margin: "0.9rem 0" }}>
+      <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "center", marginBottom: "0.6rem" }}>
+        <span className="subtle text-xs strong">AI CHECK</span>
+        <span className={`badge ${tone.badge}`}>{tone.label}</span>
+        {typeof result.confidence === "number" && (
+          <span className="badge badge-neutral">
+            confidence {Math.round(result.confidence * 100)}%
+          </span>
+        )}
+        <span className="badge badge-info">advisory only</span>
+      </div>
+
+      {hardFails.length > 0 && (
+        <div style={{ marginBottom: "0.7rem" }}>
+          <div className="label" style={{ marginBottom: "0.35rem" }}>
+            A document-control rule was not met
+          </div>
+          <div className="col" style={{ gap: "0.35rem" }}>
+            {hardFails.map((fail) => (
+              <div key={fail.label} className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+                <span className="badge badge-danger">{(fail.label || "").replaceAll("_", " ")}</span>
+                {fail.clause && <span className="badge badge-info">clause {fail.clause}</span>}
+                {fail.evidence && <span className="text-xs" style={{ color: "var(--n-700)" }}>{fail.evidence}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {result.explanation && (
+        <p className="text-sm" style={{ color: "var(--n-700)", marginBottom: "0.7rem" }}>
+          {result.explanation}
+        </p>
+      )}
+
+      {issues.length > 0 && (
+        <div className="col" style={{ gap: "0.45rem", marginBottom: "0.6rem" }}>
+          {issues.map((issue) => (
+            <div key={issue.label} className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+              <span className={`badge ${SEVERITY_TONE[issue.severity] || "badge-neutral"}`}>
+                {(issue.label || "").replaceAll("_", " ")}
+              </span>
+              {issue.clause && <span className="badge badge-info">clause {issue.clause}</span>}
+              {issue.evidence && (
+                <span className="text-xs" style={{ color: "var(--n-700)" }}>{issue.evidence}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {advisories.length > 0 && (
+        <div className="col" style={{ gap: "0.35rem", marginBottom: "0.6rem" }}>
+          {advisories.map((note) => (
+            <div key={note.label} className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+              <span className="badge badge-warning">{(note.label || "").replaceAll("_", " ")}</span>
+              {note.evidence && (
+                <span className="text-xs" style={{ color: "var(--n-700)" }}>{note.evidence}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="subtle text-xs" style={{ margin: 0 }}>
+        The reviewer will see this same assessment. You can submit whatever it
+        says - the decision is theirs, not this check's.
+      </p>
+    </div>
+  );
+}
+
+
 export default function StaffSections({ manualId, onBack }) {
   const [manual, setManual]           = useState(null);
   const [sections, setSections]       = useState([]);
@@ -131,6 +246,11 @@ export default function StaffSections({ manualId, onBack }) {
   // Text edit
   const [isEditing, setIsEditing]     = useState(false);
   const [editedContent, setEditedContent] = useState("");
+  // The AI check is required before submitting, and its result belongs to
+  // exactly the text that was checked - editing anything clears it, because
+  // the reviewer is going to read the assessment of what was submitted.
+  const [aiCheck, setAiCheck]         = useState(null);
+  const [aiChecking, setAiChecking]   = useState(false);
 
   // Merge proposal
   const [mergeSource, setMergeSource] = useState(null);
@@ -226,6 +346,32 @@ export default function StaffSections({ manualId, onBack }) {
     }
   };
 
+  const runAiCheck = async () => {
+    if (!editedContent.trim()) {
+      setRevMsg("Enter the revised content before checking."); setRevMsgType("error"); return;
+    }
+    if (!changeReason.trim()) {
+      setRevMsg("Please give a reason for this change - a short sentence saying what changed and why.");
+      setRevMsgType("error"); return;
+    }
+    setAiChecking(true);
+    setRevMsg("");
+    try {
+      const res = await axios.post(
+        `${BASE_URL}/api/revisions/pre-assess/${activeSection.id}/`,
+        { proposed_content: editedContent, change_reason: changeReason.trim() },
+        getAuth()
+      );
+      setAiCheck(res.data);
+    } catch (err) {
+      setAiCheck(null);
+      setRevMsg(err.response?.data?.error || "The AI check could not be completed.");
+      setRevMsgType("error");
+    } finally {
+      setAiChecking(false);
+    }
+  };
+
   const handleSubmitTextRevision = async () => {
     if (!editedContent.trim()) {
       setRevMsg("Edited content cannot be empty.");
@@ -242,7 +388,13 @@ export default function StaffSections({ manualId, onBack }) {
     try {
       await axios.post(
         `${BASE_URL}/api/revisions/propose-text/${activeSection.id}/`,
-        { proposed_content: editedContent, change_reason: changeReason.trim() },
+        {
+          proposed_content: editedContent,
+          change_reason: changeReason.trim(),
+          // The server re-checks that this assessment was made of exactly
+          // what is being submitted, and refuses otherwise.
+          assessment_id: aiCheck?.assessment_id,
+        },
         getAuth()
       );
       setRevMsg("Text revision proposed successfully. An admin will review it.");
@@ -250,9 +402,13 @@ export default function StaffSections({ manualId, onBack }) {
       setIsEditing(false);
       setEditedContent("");
       setChangeReason("");
+      setAiCheck(null);
       loadSectionRevisions(activeSection.id);
     } catch (err) {
       const msg = err.response?.data?.error || "Submission failed. Try again.";
+      // A stale or missing check is recoverable: clear the result so the
+      // button says what to do instead of failing silently.
+      if (err.response?.data?.field === "assessment_id") setAiCheck(null);
       setRevMsg(msg);
       setRevMsgType("error");
     } finally {
@@ -577,7 +733,7 @@ export default function StaffSections({ manualId, onBack }) {
                     <textarea
                       className="textarea textarea-doc mono"
                       value={editedContent}
-                      onChange={(e) => setEditedContent(e.target.value)}
+                      onChange={(e) => { setEditedContent(e.target.value); setAiCheck(null); }}
                       placeholder="Enter the revised content…"
                     />
                     <div className="field">
@@ -587,20 +743,43 @@ export default function StaffSections({ manualId, onBack }) {
                         style={{ minHeight: "70px" }}
                         placeholder="Why is this change needed? e.g. the approving role changed in August 2026."
                         value={changeReason}
-                        onChange={(e) => setChangeReason(e.target.value)}
+                        onChange={(e) => { setChangeReason(e.target.value); setAiCheck(null); }}
                         required
                       />
                       <span className="subtle text-xs">
                         Required. A sentence or more: what changed and why. At least 15 characters and 3 words. Recorded against the revision for document control.
                       </span>
                     </div>
-                    <div className="row-wrap" style={{ gap: "0.5rem" }}>
-                      <button className="btn btn-success" onClick={handleSubmitTextRevision} disabled={revLoading}>
-                        {revLoading ? <><span className="spinner spinner-light" /> Submitting…</> : "Propose changes"}
+
+                    <AiCheckPanel result={aiCheck} loading={aiChecking} />
+
+                    <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="btn btn-subtle"
+                        onClick={runAiCheck}
+                        disabled={aiChecking || revLoading}
+                      >
+                        {aiChecking
+                          ? <><span className="spinner" /> Checking…</>
+                          : aiCheck ? "✨ Check again" : "✨ Check with AI"}
                       </button>
-                      <button className="btn btn-ghost" onClick={() => { setIsEditing(false); setEditedContent(""); setChangeReason(""); }}>
+                      <button
+                        className="btn btn-success"
+                        onClick={handleSubmitTextRevision}
+                        disabled={revLoading || aiChecking || !aiCheck}
+                        title={aiCheck ? "" : "Run the AI check first"}
+                      >
+                        {revLoading ? <><span className="spinner spinner-light" /> Submitting…</> : "Confirm and submit"}
+                      </button>
+                      <button className="btn btn-ghost" onClick={() => { setIsEditing(false); setEditedContent(""); setChangeReason(""); setAiCheck(null); }}>
                         Cancel
                       </button>
+                      {!aiCheck && !aiChecking && (
+                        <span className="subtle text-xs">
+                          Run the check before submitting. Whatever it says, you can still submit.
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : (

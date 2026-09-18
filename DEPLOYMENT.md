@@ -349,7 +349,14 @@ purpose of §3.
 ## 8. Known scaling path
 
 **The assessment is CPU-bound and synchronous, and that is the first thing
-that will break under load.** A worker thread running inference occupies a
+that will break under load** - and since the check moved to the staff side it
+is no longer a distant concern. It used to run when a reviewer chose to press
+a button; it now runs on every submission, for every staff member, plus once
+more each time someone edits after checking. The per-request cost is unchanged
+(0.3-0.5 s warm, ~700 MB per worker, three concurrent in 0.61 s); the arrival
+rate is not. Treat the queue below as a requirement for real use rather than a
+future refinement. Pre-warming likewise stops being optional: the cold start
+now lands on a staff member mid-task. A worker thread running inference occupies a
 core for its full duration and cannot serve anything else. At three concurrent
 assessments the cost is already visible — 0.61 s against 0.29 s for one,
 because six torch threads per request oversubscribe six cores. Under real

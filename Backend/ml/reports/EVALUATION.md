@@ -570,6 +570,15 @@ only, no GPU**.
 | resident memory, steady state | ~680 MB |
 | peak, three concurrent | 740 MB |
 
+Since the assessment moved to the staff side, this cost is paid at the
+pre-submission check rather than at review: submitting itself is ~0.01 s
+because the work is already done. **Pre-warming is required rather than
+advisable** - the cold start now lands on a staff member mid-task on their
+first submission of the day, not on a reviewer who chose to press a button.
+Assessment also arrives from every staff member on every submission rather
+than from a handful of reviewers, which does not change the measurements
+above but does change how often they are paid.
+
 The cold start is the encoder being read from disk. The model is cached per
 process behind a lock, so simultaneous first requests wait for one load rather
 than each performing their own — **memory does not scale with concurrent
@@ -746,10 +755,20 @@ generator will.
     disappears in 41 of 2,762 examples, always either inside a large deletion
     or as a reformat that keeps it. Fixing it needs a GPU run and every figure
     here re-measured.
-12. **Clause 7.5.2 is deliberately out of scope.** Document number, revision
+12. **The submitted population is now selected by the check itself.** The
+    assessment runs before submission and the submitter reads it, so a change
+    the submitter is told would likely be rejected may never be submitted at
+    all. Anything a reviewer sees is therefore filtered towards changes the
+    submitter believed would pass. Every figure in this document is measured
+    on generated edits and is unaffected, but **a future evaluation against
+    real submitted revisions would measure that filtered population**, not the
+    work staff actually attempt - and would flatter the system for it. The
+    unfiltered comparison would need the pre-submission results kept for
+    revisions that were never submitted.
+13. **Clause 7.5.2 is deliberately out of scope.** Document number, revision
    number and effectivity date are handled by the system's document-control
    features, not the model.
-13. **The assessment is advisory.** It never changes a revision's status. Every
+14. **The assessment is advisory.** It never changes a revision's status. Every
     figure in this document describes advice to a human reviewer who decides.
 
 ---

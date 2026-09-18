@@ -140,6 +140,67 @@ const VERDICT_LABEL = {
 // the issue list carries the clause it comes from and the evidence it was
 // raised on, because a reviewer who cannot see why will either trust it
 // blindly or ignore it.
+/** How long the submitter sat between reading the check and submitting. */
+function checkGap(assessedAt, submittedAt) {
+  if (!assessedAt || !submittedAt) return null;
+  const seconds = Math.round(
+    (new Date(submittedAt).getTime() - new Date(assessedAt).getTime()) / 1000
+  );
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  if (seconds < 90) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+/**
+ * Where this assessment came from.
+ *
+ * Worth its own block: an assessment the submitter read before choosing to
+ * submit means something different from one a reviewer generated afterwards,
+ * and a reject the submitter saw and submitted anyway is a deliberate act
+ * rather than a system error.
+ */
+function AssessmentProvenance({ rev }) {
+  const gap = checkGap(rev.ai_assessed_at, rev.submitted_at);
+
+  if (rev.ai_source === "staff_precheck") {
+    return (
+      <div className="col" style={{ gap: "0.3rem", marginBottom: "0.7rem" }}>
+        <div className="row-wrap" style={{ gap: "0.4rem", alignItems: "center" }}>
+          <span className="badge badge-info">checked by the submitter before submitting</span>
+          {gap && <span className="badge badge-neutral">submitted {gap} later</span>}
+          {rev.ai_section_changed && (
+            <span className="badge badge-warning">section changed since this check</span>
+          )}
+        </div>
+        {rev.ai_section_changed && (
+          <span className="text-xs" style={{ color: "var(--n-700)" }}>
+            This section has been edited since the check ran, so the assessment
+            compares against an older version of it.
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (rev.ai_source === "admin_legacy") {
+    return (
+      <div className="row-wrap" style={{ gap: "0.4rem", marginBottom: "0.7rem", alignItems: "center" }}>
+        <span className="badge badge-neutral">
+          assessed by a reviewer under the previous workflow
+        </span>
+        <span className="text-xs" style={{ color: "var(--n-700)" }}>
+          The submitter did not see this before submitting.
+        </span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function AiPanelV2({ result }) {
   const [showTrace, setShowTrace] = useState(false);
   const issues = result.issues || [];
@@ -547,14 +608,24 @@ export default function RevisionReview() {
                   {expandedRevision === r.id ? "Hide detailed comparison" : "Show detailed comparison"}
                   <span className={`chevron${expandedRevision === r.id ? " is-open" : ""}`}>▾</span>
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-subtle btn-sm"
-                  onClick={() => analyzeWithAI(r.id, "modified")}
-                  disabled={Boolean(aiLoading[r.id])}
-                >
-                  {aiLoading[r.id] ? <><span className="spinner" /> Analyzing…</> : "✨ AI revision assessment"}
-                </button>
+                {/* The assessment now happens before submission, so there is
+                    nothing to press for: the result is already on the
+                    revision. The button survives only for revisions that
+                    predate the change and carry no assessment at all, so a
+                    reviewer is not left with nothing to go on. */}
+                {r.ai_source === "none" && (
+                  <button
+                    type="button"
+                    className="btn btn-subtle btn-sm"
+                    onClick={() => analyzeWithAI(r.id, "modified")}
+                    disabled={Boolean(aiLoading[r.id])}
+                    title="This revision predates the pre-submission check"
+                  >
+                    {aiLoading[r.id]
+                      ? <><span className="spinner" /> Analyzing…</>
+                      : "✨ Assess (reviewer-side, old workflow)"}
+                  </button>
+                )}
               </div>
 
               <div className="diff-wrap">
@@ -594,6 +665,43 @@ export default function RevisionReview() {
 
               {aiErrors[r.id] && (
                 <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{aiErrors[r.id]}</div>
+              )}
+
+              {/* Stored at submission: what the submitter read, shown without
+                  anyone pressing anything. */}
+              {!aiResults[r.id] && r.ai_source !== "none" && r.ai_verdict && (
+                <div style={{ marginTop: "1rem" }}>
+                  <AssessmentProvenance rev={r} />
+                  <AiPanelV2
+                    result={{
+                      verdict: r.ai_verdict,
+                      confidence: r.ai_confidence,
+                      change_type: r.ai_change_type,
+                      issues: r.ai_issues || [],
+                      hard_fails: r.ai_hard_fails || [],
+                      advisories: r.ai_advisories || [],
+                      explanation: r.ai_explanation,
+                      trace: r.ai_trace || {},
+                    }}
+                  />
+                  {r.ai_source === "staff_precheck" && r.ai_explanation_staff && (
+                    <details style={{ marginTop: "0.5rem" }}>
+                      <summary className="text-xs" style={{ cursor: "pointer", color: "var(--n-700)" }}>
+                        What the submitter was told
+                      </summary>
+                      <p className="text-sm" style={{ color: "var(--n-700)", marginTop: "0.4rem" }}>
+                        {r.ai_explanation_staff}
+                      </p>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              {!aiResults[r.id] && r.ai_source === "none" && (
+                <p className="subtle text-xs" style={{ marginTop: "0.9rem" }}>
+                  No assessment — this revision was submitted before the
+                  pre-submission check was introduced.
+                </p>
               )}
 
               {aiResults[r.id] &&

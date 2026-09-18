@@ -96,35 +96,49 @@ class ChangeReasonValidationTests(TestCase):
         self.assertEqual(ManualRevision.objects.count(), 0)
 
     # -- tier 2: accepted, and left for the pipeline to flag ---
+    #
+    # Submitting now requires a pre-submission AI check for exactly the
+    # content being submitted, so these go through the same two steps a
+    # submitter does. What they are testing is unchanged: a vague-but-real
+    # reason is accepted rather than refused.
+
+    def submit_with_check(self, proposed, reason):
+        checked = self.client.post(
+            "/api/revisions/pre-assess/{}/".format(self.section.id),
+            {"proposed_content": proposed, "change_reason": reason},
+            format="json",
+        )
+        self.assertEqual(checked.status_code, 200, checked.data)
+        return self.client.post(
+            "/api/revisions/propose-text/{}/".format(self.section.id),
+            {"proposed_content": proposed, "change_reason": reason,
+             "assessment_id": checked.data["assessment_id"]},
+            format="json",
+        )
+
 
     def test_a_weak_reason_is_accepted(self):
-        response = self.client.post(
-            "/api/revisions/propose-text/{}/".format(self.section.id),
-            {"proposed_content": "The Accounting Staff-4 shall verify it within ten days.",
-             "change_reason": ACCEPTED_BUT_WEAK},
-            format="json",
+        response = self.submit_with_check(
+            "The Accounting Staff-4 shall verify it within ten days.",
+            ACCEPTED_BUT_WEAK,
         )
         self.assertEqual(response.status_code, 201)
         revision = ManualRevision.objects.get(id=response.data["revision_id"])
         self.assertEqual(revision.change_reason, ACCEPTED_BUT_WEAK)
 
     def test_a_specific_reason_is_accepted_and_stored(self):
-        response = self.client.post(
-            "/api/revisions/propose-text/{}/".format(self.section.id),
-            {"proposed_content": "The Accounting Staff-4 shall verify it within ten days.",
-             "change_reason": "  " + ACCEPTED_CLEAN + "  "},
-            format="json",
+        response = self.submit_with_check(
+            "The Accounting Staff-4 shall verify it within ten days.",
+            "  " + ACCEPTED_CLEAN + "  ",
         )
         self.assertEqual(response.status_code, 201)
         revision = ManualRevision.objects.get(id=response.data["revision_id"])
         self.assertEqual(revision.change_reason, ACCEPTED_CLEAN)
 
     def test_the_reason_reaches_the_reviewer(self):
-        self.client.post(
-            "/api/revisions/propose-text/{}/".format(self.section.id),
-            {"proposed_content": "The Accounting Staff-4 shall verify it within ten days.",
-             "change_reason": ACCEPTED_CLEAN},
-            format="json",
+        self.submit_with_check(
+            "The Accounting Staff-4 shall verify it within ten days.",
+            ACCEPTED_CLEAN,
         )
         admin = CustomUser.objects.create_user(
             username="reviewer", password="pw", role="admin", is_approved=True,

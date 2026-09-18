@@ -5,14 +5,20 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Q
-from .models import CustomUser, Department, Manual, ManualSection, ManualRevision, SectionHistory
+from datetime import timedelta
+from .models import (
+    CustomUser, Department, Manual, ManualSection, ManualRevision,
+    RevisionPreAssessment, SectionHistory,
+)
 from ml.ocr_engine import extract_text
 from ml.revision_pipeline.change_reason import (
     blocks_submission,
     classify_reason,
 )
+from api import pre_assessment
 from ml.svm_model import predict, predict_section
 import difflib
 import re
@@ -1384,6 +1390,12 @@ def propose_text_revision(request, section_id):
     if error:
         return error
 
+    snapshot, error = _consume_pre_assessment(
+        request, section, proposed_content, change_reason
+    )
+    if error:
+        return error
+
     revision = ManualRevision.objects.create(
         section=section,
         submitted_by=request.user,
@@ -1392,11 +1404,13 @@ def propose_text_revision(request, section_id):
         change_reason=change_reason,
         status='pending'
     )
+    _attach_pre_assessment(revision, snapshot)
 
     return Response({
         'revision_id': revision.id,
         'diff_preview': preview_diff(diff),
-        'status': revision.status
+        'status': revision.status,
+        'ai_verdict': revision.ai_verdict,
     }, status=201)
 
 
@@ -1478,6 +1492,25 @@ def list_revisions(request):
         'ai_issues': r.ai_issues,
         'ai_explanation': r.ai_explanation,
         'ai_trace': r.ai_trace,
+        # Where the assessment came from, so a result a reviewer produced
+        # under the old workflow is never shown as one the submitter read.
+        'ai_source': r.ai_source,
+        'ai_explanation_staff': r.ai_explanation_staff,
+        'ai_confidence': r.ai_confidence,
+        'ai_change_type': r.ai_change_type,
+        'ai_hard_fails': r.ai_hard_fails,
+        'ai_advisories': r.ai_advisories,
+        'ai_assessed_at': r.ai_assessed_at,
+        'ai_model_fingerprint': r.ai_model_fingerprint,
+        # True when the section has moved since the check, so the advice is
+        # about a comparison that no longer holds.
+        'ai_section_changed': bool(
+            r.ai_section_content_hash
+            and r.section
+            and r.ai_section_content_hash != pre_assessment.section_content_hash(
+                r.section.content or ''
+            )
+        ),
         'diff_preview': preview_diff(r.diff_text),
         'diff_text': r.diff_text,
     } for r in revisions]
@@ -1502,6 +1535,199 @@ def _validated_change_reason(request, section):
             status=400,
         )
     return reason, None
+
+
+def _assess_unsaved(section, proposed_content, change_reason, seed):
+    """Run the pipeline over text that has not been saved yet."""
+    from ml.revision_pipeline.pipeline import assess_texts
+    from ml.revision_pipeline.retrieval import (
+        format_context, related_texts, sections_for_manual,
+    )
+
+    number, _, title = (section.subtitle or '').partition(' ')
+    sections = sections_for_manual(section.manual)
+    related = related_texts(
+        section.manual.id, section.id, proposed_content or section.content,
+        sections, k=3, section_subtitle=section.subtitle or '',
+    )
+    return assess_texts(
+        section.content or '',
+        proposed_content or '',
+        section_number=number,
+        section_title=title.strip(),
+        change_reason=change_reason,
+        related=related,
+        context=format_context(
+            section.manual.title,
+            [s for s in sections if s.content in related],
+        ),
+        # Seeded by the content, so this text and the reviewer's copy of it
+        # are word-for-word the same, and re-checking identical content
+        # produces an identical result rather than a reworded one.
+        seed=seed,
+    )
+
+
+def _snapshot_payload(snapshot):
+    """What both sides render an assessment from."""
+    return {
+        'assessment_id': str(snapshot.id),
+        'pipeline': 'v2',
+        'assessed': bool(snapshot.verdict),
+        'verdict': snapshot.verdict,
+        'confidence': snapshot.confidence,
+        'change_type': snapshot.change_type,
+        'hard_fails': snapshot.hard_fails or [],
+        'advisories': snapshot.advisories or [],
+        'issues': snapshot.issues or [],
+        'explanation': snapshot.explanation_staff,
+        'assessed_at': snapshot.assessed_at,
+        'model_fingerprint': snapshot.model_fingerprint,
+        'trace': snapshot.trace or {},
+        'advisory_only': True,
+    }
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def pre_assess_text_revision(request, section_id):
+    """Assess proposed text before it is submitted.
+
+    The submitter must run this before submitting, and may submit whatever it
+    says - the verdict is advice, never a gate. What it returns is stored
+    server-side and handed back only as an id, so the reviewer reads the
+    assessment this endpoint made rather than anything the client reports.
+    """
+    try:
+        section = ManualSection.objects.get(id=section_id)
+    except ManualSection.DoesNotExist:
+        return Response({'error': 'Section not found'}, status=404)
+
+    if section.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+
+    proposed_content = request.data.get('proposed_content')
+    if not proposed_content:
+        return Response({'error': 'Proposed content is required'}, status=400)
+
+    # The same clause 6.3 tier-1 check the submission endpoint applies, run
+    # here so the submitter is told about a throwaway reason now rather than
+    # after reading a verdict.
+    change_reason, error = _validated_change_reason(request, section)
+    if error:
+        return error
+
+    # A check costs a model run and the button sits on every staff screen.
+    window = timezone.now() - timedelta(hours=1)
+    recent = RevisionPreAssessment.objects.filter(
+        submitted_by=request.user, assessed_at__gte=window
+    ).count()
+    if recent >= pre_assessment.RATE_LIMIT_PER_HOUR:
+        return Response(
+            {'error': 'Too many AI checks in the past hour. Please wait a '
+                      'few minutes and try again.'},
+            status=429,
+        )
+
+    # Unconsumed rows are working state left by someone who checked and never
+    # submitted. Swept here rather than by a scheduled job, which nothing in
+    # this deployment runs.
+    RevisionPreAssessment.objects.filter(
+        consumed_by__isnull=True,
+        assessed_at__lt=timezone.now() - pre_assessment.RETENTION,
+    ).delete()
+
+    content_hash = pre_assessment.content_hash(
+        section.id, section.content or '', proposed_content, change_reason
+    )
+
+    try:
+        result = _assess_unsaved(section, proposed_content, change_reason,
+                                 seed=content_hash)
+    except Exception as error:
+        return Response({'error': f'AI check failed: {error}'}, status=500)
+
+    snapshot = RevisionPreAssessment.objects.create(
+        section=section,
+        submitted_by=request.user,
+        content_hash=content_hash,
+        section_content_hash=pre_assessment.section_content_hash(
+            section.content or ''
+        ),
+        proposed_content=proposed_content,
+        change_reason=change_reason,
+        verdict=result.get('verdict') or '',
+        confidence=result.get('confidence'),
+        change_type=result.get('change_type') or '',
+        issues=result.get('issues') or [],
+        hard_fails=result.get('hard_fails') or [],
+        advisories=result.get('advisories') or [],
+        explanation_reviewer=result.get('explanation') or '',
+        explanation_staff=result.get('explanation_staff') or '',
+        trace=result.get('trace') or {},
+        model_fingerprint=(result.get('trace') or {}).get('fingerprint', ''),
+        pipeline_version=(result.get('trace') or {}).get('pipeline_version', ''),
+    )
+    return Response(_snapshot_payload(snapshot), status=200)
+
+
+def _consume_pre_assessment(request, section, proposed_content, change_reason):
+    """The snapshot for exactly this content, or a 400 explaining which way
+    it failed to match.
+
+    Returns ``(snapshot, None)`` or ``(None, response)``. Enforced here and
+    not only in the browser: a check the client can skip is not a check.
+    """
+    assessment_id = (request.data.get('assessment_id') or '').strip()
+    if not assessment_id:
+        return None, Response(
+            {'error': pre_assessment.NEVER_CHECKED, 'field': 'assessment_id',
+             'reason': 'missing'},
+            status=400,
+        )
+    try:
+        snapshot = RevisionPreAssessment.objects.get(
+            id=assessment_id, submitted_by=request.user, section=section,
+            consumed_by__isnull=True,
+        )
+    except (RevisionPreAssessment.DoesNotExist, ValidationError, ValueError):
+        return None, Response(
+            {'error': pre_assessment.NEVER_CHECKED, 'field': 'assessment_id',
+             'reason': 'unknown'},
+            status=400,
+        )
+
+    expected = pre_assessment.content_hash(
+        section.id, section.content or '', proposed_content, change_reason
+    )
+    if expected != snapshot.content_hash:
+        return None, Response(
+            {'error': pre_assessment.mismatch_reason(snapshot, section),
+             'field': 'assessment_id', 'reason': 'stale'},
+            status=400,
+        )
+    return snapshot, None
+
+
+def _attach_pre_assessment(revision, snapshot):
+    """Copy the snapshot onto the revision the reviewer will open."""
+    revision.ai_source = 'staff_precheck'
+    revision.ai_verdict = snapshot.verdict
+    revision.ai_confidence = snapshot.confidence
+    revision.ai_change_type = snapshot.change_type
+    revision.ai_issues = snapshot.issues
+    revision.ai_hard_fails = snapshot.hard_fails
+    revision.ai_advisories = snapshot.advisories
+    revision.ai_explanation = snapshot.explanation_reviewer
+    revision.ai_explanation_staff = snapshot.explanation_staff
+    revision.ai_trace = snapshot.trace
+    revision.ai_assessed_at = snapshot.assessed_at
+    revision.ai_model_fingerprint = snapshot.model_fingerprint
+    revision.ai_content_hash = snapshot.content_hash
+    revision.ai_section_content_hash = snapshot.section_content_hash
+    revision.save()
+    snapshot.consumed_by = revision
+    snapshot.save(update_fields=['consumed_by'])
 
 
 @api_view(['PATCH'])
@@ -1585,6 +1811,15 @@ def review_revision(request, revision_id):
 def ai_assessment_view(request, revision_id):
     """Assess one revision and keep the result on it.
 
+    A fallback, not the normal path. Assessment happens before submission now,
+    and the reviewer reads what the submitter read - running it again here
+    would produce a second verdict for the same revision, which is exactly
+    what moving the check was meant to stop.
+
+    It stays for revisions that predate the change and carry no assessment at
+    all, so a reviewer is not left with nothing. Anything already assessed,
+    by a submitter or by a reviewer under the old workflow, is refused.
+
     Which pipeline runs is settings.REVISION_AI_PIPELINE. Either way the answer
     is advice: the admin's decision is what counts, and nothing here changes a
     revision's status.
@@ -1595,6 +1830,14 @@ def ai_assessment_view(request, revision_id):
         )
     except ManualRevision.DoesNotExist:
         return Response({'detail': 'Revision not found.'}, status=404)
+
+    if revision.ai_source != 'none':
+        return Response(
+            {'detail': 'This revision already carries an assessment. '
+                       'Re-assessing would replace what the submitter read.',
+             'ai_source': revision.ai_source},
+            status=409,
+        )
 
     change_type = request.query_params.get('change_type', 'Text Revision')
     original_text = revision.section.content
