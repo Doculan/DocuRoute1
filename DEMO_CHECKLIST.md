@@ -90,19 +90,37 @@ internet-sharing adapter, not your Wi-Fi. Ignore those.
 
 ## 4. Pre-warm the model
 
-**Do not skip this.** The first assessment in a fresh server process spends
-about **13.6 seconds** loading the encoder from disk. Every one after that
-takes **0.3 s**. Pay it now, in private.
+The first check in a fresh server process spends about **14 seconds** loading
+the encoder from disk. Every one after that takes **0.3 s**. That wait now
+lands on a staff member part-way through submitting, so pay it before anyone
+is watching.
 
-- [ ] Open the review screen on the presenting laptop and sign in as admin.
-- [ ] Press **✨ AI revision assessment** on any pending revision.
-- [ ] Wait for the result. It will feel slow. That is the point.
-- [ ] Press it on a second revision and confirm it now returns almost
+**The easy way** — set the flag before starting the backend and it loads
+itself on a background thread:
+
+```bash
+# Backend/, before runserver
+$env:PREWARM_MODEL = "1"      # bash: export PREWARM_MODEL=1
+py manage.py runserver 0.0.0.0:8000
+```
+
+Startup is not delayed: the server accepts requests immediately and the model
+arrives about six seconds later.
+
+- [ ] Set the flag, start the backend, and give it ten seconds.
+- [ ] Confirm by running one check (below) — it should return in under a
+      second.
+
+**By hand**, if you forgot the flag or restarted without it:
+
+- [ ] Sign in as staff, open a section, start an edit, and fill in a reason.
+- [ ] Press **✨ Check with AI**. It will feel slow. That is the point.
+- [ ] Press it again on a different edit and confirm it now returns almost
       instantly.
 
 The model is cached per server process and shared by everyone, so warming it
 once covers all devices. **Restarting the backend resets it** — if you restart
-during the demo, warm it again before showing an assessment.
+mid-demo, warm it again before showing a check.
 
 ---
 
@@ -140,33 +158,45 @@ are relative and Vite forwards them.
 
 - [ ] Each device loads the app and can sign in.
 - [ ] Staff device: open a manual, open a section, see the content.
-- [ ] Submit one test revision from the staff device with a real reason.
-- [ ] It appears on the admin device after a refresh.
-- [ ] Assess it — under a second.
+- [ ] From the staff device: edit a section, write a reason, press
+      **Check with AI** — under a second once warm.
+- [ ] Confirm and submit.
+- [ ] It appears on the admin device after a refresh, with the assessment
+      already attached.
 - [ ] Delete or ignore the test revision so it is not in the way.
 
 ---
 
 ## During the demo — a workable order
 
-1. Staff signs in, opens a manual, proposes a text edit **with a proper
-   reason**.
-2. Admin refreshes the review queue, opens the revision, reads the diff.
-3. Admin reads the **Reason for change · clause 6.3** block.
-4. Admin presses **AI revision assessment** — verdict, confidence, the issues
-   with clause and evidence, the explanation.
-5. Open **Details** to show the trace, if asked how it decided.
-6. Point out that it is **advisory**: the admin approves or rejects, and the
-   assessment never changes a status by itself.
-7. Admin approves; the section updates and the version increments.
+The assessment now happens **before** submission, on the staff side. Staff must
+run it and may submit whatever it says; the reviewer reads the same result.
+There is only ever one verdict for a revision.
+
+1. Staff signs in, opens a manual, edits a section, and writes a proper reason.
+2. Staff presses **✨ Check with AI** — verdict, the issues with clause and
+   evidence, and an explanation addressed to them.
+3. Point out that **Confirm is disabled until the check has run**, and that the
+   verdict does not block: staff can submit a `reject` if they disagree.
+4. Edit one word. The result clears and Confirm greys out again — what the
+   reviewer sees is always what the staff member actually read.
+5. Re-check, then **Confirm and submit**. Submission is instant; the model work
+   already happened.
+6. Admin refreshes the review queue and opens the revision: the same assessment
+   is already there, labelled **checked by the submitter before submitting**,
+   with how long they waited before submitting.
+7. Expand **What the submitter was told** to show the staff-facing wording
+   beside the reviewer's.
+8. Admin approves or rejects. The assessment never changes a status by itself.
 
 Worth having ready to show deliberately:
 
-- A revision with a **weakened obligation** ("shall" → "may") — the model and
-  the rules agree, and the panel says so.
-- A submission with a **throwaway reason** ("update") — the API refuses it
-  with a message, which demonstrates clause 6.3 being enforced rather than
-  merely recorded.
+- A **weakened obligation** ("shall" → "may") — rules and model agree, and the
+  panel says so.
+- A **throwaway reason** ("update") — refused at the check, before any verdict,
+  which shows clause 6.3 being enforced rather than merely recorded.
+- An **upload**: the check shows the text the extractor actually read from the
+  file, which is worth seeing on a scanned PDF.
 
 ---
 

@@ -5,8 +5,15 @@ is that a submitted revision carries the assessment of exactly the content
 submitted, and a stub would let a hashing mistake through untouched.
 """
 
+from datetime import timedelta
+from io import StringIO
+
+from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
+
+from api import pre_assessment
 
 from api.models import (
     CustomUser, Department, Manual, ManualRevision, ManualSection,
@@ -243,3 +250,113 @@ class PreSubmissionAssessmentTests(TestCase):
             "/api/revisions/{}/ai-assessment/".format(revision.id)
         )
         self.assertEqual(response.status_code, 200)
+
+
+class PreAssessmentHousekeepingTests(TestCase):
+    """The rate limit and the retention sweep, exercised rather than assumed.
+
+    Both are cheap to define and easy to leave unwired, so each is tested
+    through the endpoint that is supposed to apply it.
+    """
+
+    def setUp(self):
+        self.department = Department.objects.create(name="Finance")
+        self.user = CustomUser.objects.create_user(
+            username="staffer", password="pw", role="staff",
+            is_approved=True, department=self.department,
+        )
+        self.manual = Manual.objects.create(
+            title="Financial Administrative Manual", department=self.department,
+        )
+        self.section = ManualSection.objects.create(
+            manual=self.manual, subtitle="3.0 POLICIES",
+            content="The Accounting Staff-4 shall verify the request within five days.",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def a_row(self, *, consumed=None, age_days=0, user=None):
+        """A pre-assessment, optionally backdated. assessed_at is auto_now_add,
+        so it has to be pushed back with an update after the fact."""
+        row = RevisionPreAssessment.objects.create(
+            section=self.section, submitted_by=user or self.user,
+            content_hash="x" * 64, section_content_hash="y" * 64,
+            verdict="approve", consumed_by=consumed,
+        )
+        if age_days:
+            RevisionPreAssessment.objects.filter(pk=row.pk).update(
+                assessed_at=timezone.now() - timedelta(days=age_days)
+            )
+        return row
+
+    def check(self):
+        return self.client.post(
+            "/api/revisions/pre-assess/{}/".format(self.section.id),
+            {"proposed_content": "The Accounting Staff-4 shall verify it within ten days.",
+             "change_reason": "Extended after the August 2026 management review."},
+            format="json",
+        )
+
+    # -- rate limit ---------------------------------------------
+
+    def test_the_rate_limit_is_enforced(self):
+        for _ in range(pre_assessment.RATE_LIMIT_PER_HOUR):
+            self.a_row()
+        response = self.check()
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("Too many AI checks", response.data["error"])
+
+    def test_the_rate_limit_is_per_user(self):
+        other = CustomUser.objects.create_user(
+            username="busy-colleague", password="pw", role="staff",
+            is_approved=True, department=self.department,
+        )
+        for _ in range(pre_assessment.RATE_LIMIT_PER_HOUR):
+            self.a_row(user=other)
+        self.assertEqual(self.check().status_code, 200)
+
+    def test_checks_outside_the_window_do_not_count(self):
+        for _ in range(pre_assessment.RATE_LIMIT_PER_HOUR):
+            self.a_row(age_days=1)
+        self.assertEqual(self.check().status_code, 200)
+
+    # -- retention ----------------------------------------------
+
+    def test_running_a_check_sweeps_stale_unconsumed_rows(self):
+        stale = self.a_row(age_days=pre_assessment.RETENTION_DAYS + 1)
+        fresh = self.a_row()
+        self.check()
+        self.assertFalse(
+            RevisionPreAssessment.objects.filter(pk=stale.pk).exists()
+        )
+        self.assertTrue(
+            RevisionPreAssessment.objects.filter(pk=fresh.pk).exists()
+        )
+
+    def test_a_consumed_row_is_never_swept(self):
+        """Attached to a revision, so it is part of that revision's record."""
+        revision = ManualRevision.objects.create(
+            section=self.section, submitted_by=self.user, status="pending",
+        )
+        old = self.a_row(consumed=revision,
+                         age_days=pre_assessment.RETENTION_DAYS + 30)
+        self.check()
+        self.assertTrue(
+            RevisionPreAssessment.objects.filter(pk=old.pk).exists()
+        )
+
+    def test_the_sweep_command_reports_and_deletes(self):
+        stale = self.a_row(age_days=pre_assessment.RETENTION_DAYS + 1)
+        out = StringIO()
+        call_command("sweep_pre_assessments", "--dry-run", stdout=out)
+        self.assertIn("would delete 1", out.getvalue())
+        self.assertTrue(
+            RevisionPreAssessment.objects.filter(pk=stale.pk).exists()
+        )
+
+        out = StringIO()
+        call_command("sweep_pre_assessments", stdout=out)
+        self.assertIn("deleted 1", out.getvalue())
+        self.assertFalse(
+            RevisionPreAssessment.objects.filter(pk=stale.pk).exists()
+        )

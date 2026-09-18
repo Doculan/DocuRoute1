@@ -1354,6 +1354,16 @@ def upload_revision(request, section_id):
     if error:
         return error
 
+    # Hashed on the extracted text, not the file's bytes. Extraction is what
+    # the assessment saw and what the reviewer will read, so that is what has
+    # to match - and it means re-uploading a byte-identical file after a check
+    # is not treated as a change.
+    snapshot, error = _consume_pre_assessment(
+        request, section, text_new, change_reason
+    )
+    if error:
+        return error
+
     revision = ManualRevision.objects.create(
         section=section,
         submitted_by=request.user,
@@ -1362,11 +1372,13 @@ def upload_revision(request, section_id):
         change_reason=change_reason,
         status='pending'
     )
+    _attach_pre_assessment(revision, snapshot)
 
     return Response({
         'revision_id': revision.id,
         'diff_preview': preview_diff(diff),
-        'status': revision.status
+        'status': revision.status,
+        'ai_verdict': revision.ai_verdict,
     }, status=201)
 
 
@@ -1438,9 +1450,20 @@ def propose_merge(request):
     if source.id == target.id:
         return Response({'error': 'Source and target must be different sections.'}, status=400)
 
-    merged_content = f"{target.content}\n\n{source.content}".strip()
+    sources = _merge_sources(target, [source.id])
+    merged_content = _merged_content(target, sources)
     diff = build_diff(target.content, merged_content)
     change_reason, error = _validated_change_reason(request, target)
+    if error:
+        return error
+
+    # The merged text is derived here exactly as the check derived it, so a
+    # merge that was checked still matches. If either the target or a source
+    # has moved since, the hash differs and the submitter is told it was not
+    # their doing.
+    snapshot, error = _consume_pre_assessment(
+        request, target, merged_content, change_reason, sources=sources
+    )
     if error:
         return error
 
@@ -1453,6 +1476,7 @@ def propose_merge(request):
         change_reason=change_reason,
         status='pending'
     )
+    _attach_pre_assessment(revision, snapshot)
 
     return Response({
         'revision_id': revision.id,
@@ -1504,13 +1528,7 @@ def list_revisions(request):
         'ai_model_fingerprint': r.ai_model_fingerprint,
         # True when the section has moved since the check, so the advice is
         # about a comparison that no longer holds.
-        'ai_section_changed': bool(
-            r.ai_section_content_hash
-            and r.section
-            and r.ai_section_content_hash != pre_assessment.section_content_hash(
-                r.section.content or ''
-            )
-        ),
+        'ai_section_changed': _section_moved_since(r),
         'diff_preview': preview_diff(r.diff_text),
         'diff_text': r.diff_text,
     } for r in revisions]
@@ -1535,6 +1553,34 @@ def _validated_change_reason(request, section):
             status=400,
         )
     return reason, None
+
+
+def _merge_sources(target, source_ids):
+    """The sections being folded into ``target``, in a stable order."""
+    return list(
+        ManualSection.objects.filter(
+            id__in=list(source_ids or []), manual=target.manual
+        ).order_by('id')
+    )
+
+
+def _merged_content(target, sources):
+    """Exactly what propose_merge stores, derived the same way in both places
+    so the hash of a checked merge matches the hash of a submitted one."""
+    merged = target.content or ''
+    for source in sources:
+        merged = f"{merged}\n\n{source.content}".strip()
+    return merged
+
+
+def _base_texts(section, sources=()):
+    """Every server-held text an assessment depends on.
+
+    A merge rests on the target and each source; anything else rests on the
+    section alone. Collected here because the hash, the mismatch message and
+    the reviewer's "section changed" flag must all ask the same question.
+    """
+    return [section.content or ''] + [s.content or '' for s in sources]
 
 
 def _assess_unsaved(section, proposed_content, change_reason, seed):
@@ -1565,6 +1611,74 @@ def _assess_unsaved(section, proposed_content, change_reason, seed):
         # are word-for-word the same, and re-checking identical content
         # produces an identical result rather than a reworded one.
         seed=seed,
+    )
+
+
+def _section_moved_since(revision):
+    """Has any text the assessment rested on changed since it was made?
+
+    For a merge that means the sources as well as the target: advice about a
+    merge is advice about the combination, and a source edited afterwards
+    makes it stale just as surely.
+    """
+    if not (revision.ai_section_content_hash and revision.section):
+        return False
+    sources = ()
+    if revision.merge_type == 'merge' and revision.merge_section_ids:
+        sources = _merge_sources(revision.section, revision.merge_section_ids)
+    current = pre_assessment.section_content_hash(
+        *_base_texts(revision.section, sources)
+    )
+    return revision.ai_section_content_hash != current
+
+
+def _rate_limited(user):
+    """A check costs a model run, and the button sits on every staff screen."""
+    window = timezone.now() - timedelta(hours=1)
+    recent = RevisionPreAssessment.objects.filter(
+        submitted_by=user, assessed_at__gte=window
+    ).count()
+    if recent >= pre_assessment.RATE_LIMIT_PER_HOUR:
+        return Response(
+            {'error': 'Too many AI checks in the past hour. Please wait a '
+                      'few minutes and try again.'},
+            status=429,
+        )
+    return None
+
+
+def _sweep_pre_assessments():
+    """Drop working state left by someone who checked and never submitted.
+
+    Opportunistic, because nothing in this deployment runs a scheduler. The
+    `sweep_pre_assessments` management command does the same thing on demand.
+    """
+    RevisionPreAssessment.objects.filter(
+        consumed_by__isnull=True,
+        assessed_at__lt=timezone.now() - pre_assessment.RETENTION,
+    ).delete()
+
+
+def _store_snapshot(user, section, content_hash, base_texts, proposed_content,
+                    change_reason, result):
+    return RevisionPreAssessment.objects.create(
+        section=section,
+        submitted_by=user,
+        content_hash=content_hash,
+        section_content_hash=pre_assessment.section_content_hash(*base_texts),
+        proposed_content=proposed_content,
+        change_reason=change_reason,
+        verdict=result.get('verdict') or '',
+        confidence=result.get('confidence'),
+        change_type=result.get('change_type') or '',
+        issues=result.get('issues') or [],
+        hard_fails=result.get('hard_fails') or [],
+        advisories=result.get('advisories') or [],
+        explanation_reviewer=result.get('explanation') or '',
+        explanation_staff=result.get('explanation_staff') or '',
+        trace=result.get('trace') or {},
+        model_fingerprint=(result.get('trace') or {}).get('fingerprint', ''),
+        pipeline_version=(result.get('trace') or {}).get('pipeline_version', ''),
     )
 
 
@@ -1606,9 +1720,31 @@ def pre_assess_text_revision(request, section_id):
     if section.manual.department != request.user.department:
         return Response({'error': 'Access denied'}, status=403)
 
-    proposed_content = request.data.get('proposed_content')
-    if not proposed_content:
-        return Response({'error': 'Proposed content is required'}, status=400)
+    # An uploaded revision is assessed on the text the extractor pulls out of
+    # the file, which is not always what the submitter believes is in it. The
+    # extracted text goes back with the result so they can see what the system
+    # actually read before they commit to it - assessing text nobody has seen
+    # would be worse than not assessing at all.
+    extracted_text = None
+    uploaded = request.FILES.get('file')
+    if uploaded is not None:
+        try:
+            extracted_text = extract_text(uploaded.read(), uploaded.name)
+        except Exception as error:
+            return Response(
+                {'error': f'Could not read that file: {error}'}, status=400
+            )
+        uploaded.seek(0)
+        proposed_content = extracted_text
+    else:
+        proposed_content = request.data.get('proposed_content')
+
+    if not proposed_content or not str(proposed_content).strip():
+        return Response(
+            {'error': 'No readable content to check. Upload a file or enter '
+                      'the revised text.'},
+            status=400,
+        )
 
     # The same clause 6.3 tier-1 check the submission endpoint applies, run
     # here so the submitter is told about a throwaway reason now rather than
@@ -1617,25 +1753,10 @@ def pre_assess_text_revision(request, section_id):
     if error:
         return error
 
-    # A check costs a model run and the button sits on every staff screen.
-    window = timezone.now() - timedelta(hours=1)
-    recent = RevisionPreAssessment.objects.filter(
-        submitted_by=request.user, assessed_at__gte=window
-    ).count()
-    if recent >= pre_assessment.RATE_LIMIT_PER_HOUR:
-        return Response(
-            {'error': 'Too many AI checks in the past hour. Please wait a '
-                      'few minutes and try again.'},
-            status=429,
-        )
-
-    # Unconsumed rows are working state left by someone who checked and never
-    # submitted. Swept here rather than by a scheduled job, which nothing in
-    # this deployment runs.
-    RevisionPreAssessment.objects.filter(
-        consumed_by__isnull=True,
-        assessed_at__lt=timezone.now() - pre_assessment.RETENTION,
-    ).delete()
+    limited = _rate_limited(request.user)
+    if limited:
+        return limited
+    _sweep_pre_assessments()
 
     content_hash = pre_assessment.content_hash(
         section.id, section.content or '', proposed_content, change_reason
@@ -1647,31 +1768,72 @@ def pre_assess_text_revision(request, section_id):
     except Exception as error:
         return Response({'error': f'AI check failed: {error}'}, status=500)
 
-    snapshot = RevisionPreAssessment.objects.create(
-        section=section,
-        submitted_by=request.user,
-        content_hash=content_hash,
-        section_content_hash=pre_assessment.section_content_hash(
-            section.content or ''
-        ),
-        proposed_content=proposed_content,
-        change_reason=change_reason,
-        verdict=result.get('verdict') or '',
-        confidence=result.get('confidence'),
-        change_type=result.get('change_type') or '',
-        issues=result.get('issues') or [],
-        hard_fails=result.get('hard_fails') or [],
-        advisories=result.get('advisories') or [],
-        explanation_reviewer=result.get('explanation') or '',
-        explanation_staff=result.get('explanation_staff') or '',
-        trace=result.get('trace') or {},
-        model_fingerprint=(result.get('trace') or {}).get('fingerprint', ''),
-        pipeline_version=(result.get('trace') or {}).get('pipeline_version', ''),
+    snapshot = _store_snapshot(
+        request.user, section, content_hash, _base_texts(section),
+        proposed_content, change_reason, result,
     )
-    return Response(_snapshot_payload(snapshot), status=200)
+    payload = _snapshot_payload(snapshot)
+    if extracted_text is not None:
+        payload['extracted_text'] = extracted_text
+    return Response(payload, status=200)
 
 
-def _consume_pre_assessment(request, section, proposed_content, change_reason):
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def pre_assess_merge(request):
+    """Assess a proposed merge before it is submitted.
+
+    The merged text is derived on the server, exactly as propose_merge will
+    derive it, so what is checked is what would be stored. It goes back with
+    the result for the same reason an upload's extracted text does: the
+    submitter is agreeing to content they did not type.
+    """
+    try:
+        source = ManualSection.objects.get(id=request.data.get('source_section_id'))
+        target = ManualSection.objects.get(id=request.data.get('target_section_id'))
+    except (ManualSection.DoesNotExist, ValueError, TypeError):
+        return Response({'error': 'Section not found'}, status=404)
+
+    if target.manual.department != request.user.department:
+        return Response({'error': 'Access denied'}, status=403)
+    if source.id == target.id:
+        return Response(
+            {'error': 'Source and target must be different sections.'},
+            status=400,
+        )
+
+    change_reason, error = _validated_change_reason(request, target)
+    if error:
+        return error
+
+    limited = _rate_limited(request.user)
+    if limited:
+        return limited
+    _sweep_pre_assessments()
+
+    sources = _merge_sources(target, [source.id])
+    merged = _merged_content(target, sources)
+    base_texts = _base_texts(target, sources)
+    content_hash = pre_assessment.content_hash(
+        target.id, target.content or '', merged, change_reason
+    )
+
+    try:
+        result = _assess_unsaved(target, merged, change_reason, seed=content_hash)
+    except Exception as error:
+        return Response({'error': f'AI check failed: {error}'}, status=500)
+
+    snapshot = _store_snapshot(
+        request.user, target, content_hash, base_texts, merged, change_reason,
+        result,
+    )
+    payload = _snapshot_payload(snapshot)
+    payload['merged_content'] = merged
+    return Response(payload, status=200)
+
+
+def _consume_pre_assessment(request, section, proposed_content, change_reason,
+                            sources=()):
     """The snapshot for exactly this content, or a 400 explaining which way
     it failed to match.
 
@@ -1702,7 +1864,8 @@ def _consume_pre_assessment(request, section, proposed_content, change_reason):
     )
     if expected != snapshot.content_hash:
         return None, Response(
-            {'error': pre_assessment.mismatch_reason(snapshot, section),
+            {'error': pre_assessment.mismatch_reason(
+                snapshot, *_base_texts(section, sources)),
              'field': 'assessment_id', 'reason': 'stale'},
             status=400,
         )

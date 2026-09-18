@@ -251,6 +251,11 @@ export default function StaffSections({ manualId, onBack }) {
   // the reviewer is going to read the assessment of what was submitted.
   const [aiCheck, setAiCheck]         = useState(null);
   const [aiChecking, setAiChecking]   = useState(false);
+  // Upload and merge get their own check state: they are separate forms, and
+  // the content each is agreeing to is produced by the server rather than
+  // typed, so each shows what was actually read before it is submitted.
+  const [uploadCheck, setUploadCheck] = useState(null);
+  const [mergeCheck, setMergeCheck]   = useState(null);
 
   // Merge proposal
   const [mergeSource, setMergeSource] = useState(null);
@@ -313,6 +318,63 @@ export default function StaffSections({ manualId, onBack }) {
     }
   };
 
+  const runUploadCheck = async () => {
+    if (!revFile) { setRevMsg("Select a file first."); setRevMsgType("error"); return; }
+    if (!changeReason.trim()) {
+      setRevMsg("Please give a reason for this change - a short sentence saying what changed and why.");
+      setRevMsgType("error"); return;
+    }
+    setAiChecking(true);
+    setRevMsg("");
+    const formData = new FormData();
+    formData.append("file", revFile);
+    formData.append("change_reason", changeReason.trim());
+    try {
+      const res = await axios.post(
+        `${BASE_URL}/api/revisions/pre-assess/${activeSection.id}/`,
+        formData,
+        { headers: { ...getAuth().headers, "Content-Type": "multipart/form-data" } }
+      );
+      setUploadCheck(res.data);
+    } catch (err) {
+      setUploadCheck(null);
+      setRevMsg(err.response?.data?.error || "The AI check could not be completed.");
+      setRevMsgType("error");
+    } finally {
+      setAiChecking(false);
+    }
+  };
+
+  const runMergeCheck = async () => {
+    if (!mergeSource || !mergeTarget) {
+      setMergeMsg("Select both source and target sections first."); setMergeMsgType("error"); return;
+    }
+    if (!changeReason.trim()) {
+      setMergeMsg("Please give a reason for this change - a short sentence saying what changed and why.");
+      setMergeMsgType("error"); return;
+    }
+    setAiChecking(true);
+    setMergeMsg("");
+    try {
+      const res = await axios.post(
+        `${BASE_URL}/api/revisions/pre-assess-merge/`,
+        {
+          source_section_id: mergeSource.id,
+          target_section_id: mergeTarget.id,
+          change_reason: changeReason.trim(),
+        },
+        getAuth()
+      );
+      setMergeCheck(res.data);
+    } catch (err) {
+      setMergeCheck(null);
+      setMergeMsg(err.response?.data?.error || "The AI check could not be completed.");
+      setMergeMsgType("error");
+    } finally {
+      setAiChecking(false);
+    }
+  };
+
   const handleSubmitRevision = async (e) => {
     e.preventDefault();
     if (!revFile) { setRevMsg("Please select a file."); setRevMsgType("error"); return; }
@@ -324,6 +386,9 @@ export default function StaffSections({ manualId, onBack }) {
     const formData = new FormData();
     formData.append("file", revFile);
     formData.append("change_reason", changeReason.trim());
+    if (uploadCheck?.assessment_id) {
+      formData.append("assessment_id", uploadCheck.assessment_id);
+    }
     try {
       await axios.post(
         `${BASE_URL}/api/revisions/upload/${activeSection.id}/`,
@@ -339,6 +404,7 @@ export default function StaffSections({ manualId, onBack }) {
       loadSectionRevisions(activeSection.id);
     } catch (err) {
       const msg = err.response?.data?.error || "Submission failed. Try again.";
+      if (err.response?.data?.field === "assessment_id") setUploadCheck(null);
       setRevMsg(msg);
       setRevMsgType("error");
     } finally {
@@ -439,9 +505,11 @@ export default function StaffSections({ manualId, onBack }) {
           source_section_id: mergeSource.id,
           target_section_id: mergeTarget.id,
           change_reason: changeReason.trim(),
+          assessment_id: mergeCheck?.assessment_id,
         },
         getAuth()
       );
+      setMergeCheck(null);
       setMergeMsg("✅ Merge proposal submitted successfully.");
       setMergeSource(null);
       setMergeTarget(null);
@@ -449,6 +517,7 @@ export default function StaffSections({ manualId, onBack }) {
       loadSectionRevisions(activeSection.id);
     } catch (err) {
       const msg = err.response?.data?.error || "Merge proposal failed.";
+      if (err.response?.data?.field === "assessment_id") setMergeCheck(null);
       setMergeMsg(msg);
       setMergeMsgType("error");
     }
@@ -648,13 +717,35 @@ export default function StaffSections({ manualId, onBack }) {
                     Set target{mergeTarget ? " ✓" : ""}
                   </button>
                   <button
+                    className="btn btn-subtle btn-sm"
+                    onClick={runMergeCheck}
+                    disabled={aiChecking || !mergeSource || !mergeTarget || mergeSource.id === mergeTarget?.id}
+                  >
+                    {aiChecking
+                      ? <><span className="spinner" /> Checking…</>
+                      : mergeCheck ? "✨ Check again" : "✨ Check with AI"}
+                  </button>
+                  <button
                     className="btn btn-success btn-sm"
                     onClick={handleProposeMerge}
-                    disabled={!mergeSource || !mergeTarget || mergeSource.id === mergeTarget?.id}
+                    disabled={!mergeCheck || aiChecking || !mergeSource || !mergeTarget || mergeSource.id === mergeTarget?.id}
+                    title={mergeCheck ? "" : "Run the AI check first"}
                   >
-                    Propose merge
+                    Confirm merge
                   </button>
                 </div>
+
+                {mergeCheck?.merged_content && (
+                  <div className="field" style={{ marginTop: "0.6rem" }}>
+                    <p className="label" style={{ marginBottom: "0.35rem" }}>
+                      The merged section this would create
+                    </p>
+                    <div className="content-box content-box-scroll mono text-xs">
+                      {mergeCheck.merged_content}
+                    </div>
+                  </div>
+                )}
+                <AiCheckPanel result={mergeCheck} loading={aiChecking} />
               </div>
 
               {revMsg && (
@@ -686,7 +777,7 @@ export default function StaffSections({ manualId, onBack }) {
                         className="input-file"
                         type="file"
                         accept=".pdf,.docx,.doc,.txt"
-                        onChange={(e) => setRevFile(e.target.files[0])}
+                        onChange={(e) => { setRevFile(e.target.files[0]); setUploadCheck(null); }}
                         required
                       />
                     </div>
@@ -697,16 +788,56 @@ export default function StaffSections({ manualId, onBack }) {
                         style={{ minHeight: "70px" }}
                         placeholder="Why is this change needed? e.g. the approving role changed in August 2026."
                         value={changeReason}
-                        onChange={(e) => setChangeReason(e.target.value)}
+                        onChange={(e) => { setChangeReason(e.target.value); setUploadCheck(null); }}
                         required
                       />
                       <span className="subtle text-xs">
                         Required. A sentence or more: what changed and why. At least 15 characters and 3 words. Recorded against the revision for document control.
                       </span>
                     </div>
-                    <button type="submit" className="btn btn-success" disabled={revLoading}>
-                      {revLoading ? <><span className="spinner spinner-light" /> Submitting…</> : "Submit revision"}
-                    </button>
+
+                    {uploadCheck?.extracted_text && (
+                      <div className="field">
+                        <p className="label" style={{ marginBottom: "0.35rem" }}>
+                          What the system read from your file
+                        </p>
+                        <div className="content-box content-box-scroll mono text-xs">
+                          {uploadCheck.extracted_text}
+                        </div>
+                        <span className="subtle text-xs">
+                          The assessment below is of this text. If it does not match your
+                          document, the file did not extract cleanly.
+                        </span>
+                      </div>
+                    )}
+
+                    <AiCheckPanel result={uploadCheck} loading={aiChecking} />
+
+                    <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="btn btn-subtle"
+                        onClick={runUploadCheck}
+                        disabled={aiChecking || revLoading}
+                      >
+                        {aiChecking
+                          ? <><span className="spinner" /> Checking…</>
+                          : uploadCheck ? "✨ Check again" : "✨ Check with AI"}
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-success"
+                        disabled={revLoading || aiChecking || !uploadCheck}
+                        title={uploadCheck ? "" : "Run the AI check first"}
+                      >
+                        {revLoading ? <><span className="spinner spinner-light" /> Submitting…</> : "Confirm and submit"}
+                      </button>
+                      {!uploadCheck && !aiChecking && (
+                        <span className="subtle text-xs">
+                          Run the check before submitting. Whatever it says, you can still submit.
+                        </span>
+                      )}
+                    </div>
                   </form>
                 </div>
               )}

@@ -71,9 +71,17 @@ def content_hash(section_id, base_text: str, proposed_content: str,
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def section_content_hash(base_text: str) -> str:
-    """The base text alone, so the admin can be told it moved afterwards."""
-    return hashlib.sha256(normalise(base_text).encode("utf-8")).hexdigest()
+def section_content_hash(*base_texts: str) -> str:
+    """Every server-held text the assessment was derived from.
+
+    Variadic because a merge rests on more than one section: the target the
+    revision lands on and each source being folded into it. If any of them
+    moves, the assessment describes a comparison that no longer exists, and
+    the submitter needs telling it was not their doing. Hashing only the
+    target would blame them for a source someone else edited.
+    """
+    joined = "\x00".join(normalise(text) for text in base_texts)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
 # -- why a submitted hash did not match --------------------------
@@ -93,12 +101,12 @@ NEVER_CHECKED = (
 )
 
 
-def mismatch_reason(snapshot, section) -> str:
+def mismatch_reason(snapshot, *base_texts: str) -> str:
     """Which of the two mismatches happened, so the message can say.
 
     They are not the submitter's fault in the same way, and one generic
     "please re-check" makes the innocent case read as a bug.
     """
-    if snapshot.section_content_hash != section_content_hash(section.content or ""):
+    if snapshot.section_content_hash != section_content_hash(*base_texts):
         return SECTION_MOVED
     return EDITED_AFTER_CHECK

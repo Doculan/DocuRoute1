@@ -9,7 +9,7 @@ from .views import (
     list_sections, create_section, update_section, delete_section, review_section, merge_sections, review_delete_section,
     section_history,
     upload_revision, propose_text_revision, propose_merge, list_revisions, review_revision, set_manual_version,
-    pre_assess_text_revision,
+    pre_assess_text_revision, pre_assess_merge,
     ai_assessment_view, evaluate_svm_model,
 )
 
@@ -60,6 +60,7 @@ urlpatterns = [
     # assessment the submitter read, so there is only ever one verdict.
     path('revisions/pre-assess/<int:section_id>/', pre_assess_text_revision),
     path('revisions/propose-text/<int:section_id>/', propose_text_revision),
+    path('revisions/pre-assess-merge/', pre_assess_merge),
     path('revisions/propose-merge/', propose_merge),
     path('manuals/<int:manual_id>/set-version/', set_manual_version),
     path('admin/revisions/', list_revisions),

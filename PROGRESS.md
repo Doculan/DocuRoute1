@@ -1389,6 +1389,62 @@ reviewer re-assess   HTTP 409   already carries an assessment
 **Submission is now 0.01 s**: the model cost has moved entirely into the check,
 where the submitter is expecting to wait.
 
+### All three submission paths, not just text
+
+Text, upload and merge each require a check for exactly the content being
+submitted. The two non-text paths differ in a way that matters: **the
+submitter is agreeing to content they did not type.**
+
+- **Upload.** The revision is judged on whatever `extract_text` pulls out of
+  the file, which is not always what the submitter believes is in it. The
+  check returns the extracted text alongside the verdict, so they can see what
+  the system actually read before committing to it. The hash is taken over the
+  extracted text rather than the file's bytes - that is what the assessment saw
+  and what the reviewer will read, and it means re-uploading the same file
+  after a check is not treated as a change.
+- **Merge.** The merged text is derived on the server, by the same helper
+  `propose_merge` uses, so what was checked is what would be stored. It comes
+  back with the result for the same reason.
+
+`section_content_hash` is variadic for this: a merge rests on the target *and*
+each source. Hashing only the target would tell a submitter they had changed
+the text when someone else had edited a source - so the "updated by someone
+else" message is now correct for either, and the reviewer's "section changed
+since this check" flag asks the same question about all of them.
+
+### Pre-warming
+
+`PREWARM_MODEL=1` loads the encoder on a **background thread** at WSGI startup.
+Measured: `import backend.wsgi` returns in 0.49 s and the model is ready about
+6 s later, so startup is not delayed at all - the server accepts requests
+immediately and a check arriving during that window blocks on the same lock it
+would have blocked on anyway.
+
+Off by default, deliberately. `runserver` restarts on every file save, and
+paying the load per save would make development miserable; it is meant for the
+demo and for production, where processes are long-lived. It is in `wsgi.py`
+rather than `AppConfig.ready()` because `ready()` runs for every management
+command, so `migrate`, `test` and `makemigrations` would each load a 700 MB
+model they never use.
+
+**The trade-off if it were loaded inline instead:** startup would block for the
+full load - roughly 14 s cold - and gunicorn's `--preload` would pay it once
+before forking, which is fine in production and wrong for development. The
+background thread avoids having to choose.
+
+### Housekeeping, wired rather than declared
+
+Both are exercised by tests through the endpoint that applies them, because a
+constant that nothing reads looks identical to a working limit:
+
+- **Rate limit**, 60 checks per user per hour, returning 429. Tested that it
+  fires, that it is per user rather than global, and that checks outside the
+  window do not count.
+- **Retention**, 7 days, swept opportunistically whenever a check runs -
+  nothing in this deployment runs a scheduler. Consumed rows are never touched:
+  they belong to a revision's record. `py manage.py sweep_pre_assessments
+  [--dry-run] [--days N]` does the same on demand, for cron or before a backup.
+
 ### Consequences worth recording
 
 **Revision 13's `no_change_reason` path is unreachable for new revisions.**
