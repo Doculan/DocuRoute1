@@ -219,7 +219,9 @@ function AiCheckPanel({ result, loading }) {
 }
 
 
-export default function StaffSections({ manualId, onBack }) {
+export default function StaffSections({
+  manualId, onBack, focusSectionId, onOpenRevision,
+}) {
   const [manual, setManual]           = useState(null);
   const [sections, setSections]       = useState([]);
   const [activeSection, setActive]    = useState(null);
@@ -295,6 +297,16 @@ export default function StaffSections({ manualId, onBack }) {
       loadSections();
     }
   }, [manualId, tagFilter, searchQuery]);
+
+  // Arriving from the Sections tab: open the section that was clicked, once
+  // the list has loaded. Both routes land on this same view - that is what
+  // keeps the two tabs from being two different section screens.
+  useEffect(() => {
+    if (!focusSectionId || !sections.length) return;
+    const wanted = sections.find((s) => s.id === focusSectionId);
+    if (wanted) handleSelectSection(wanted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSectionId, sections]);
 
   const handleSelectSection = (s) => {
     setActive(s);
@@ -939,17 +951,28 @@ export default function StaffSections({ manualId, onBack }) {
                           <span className={`badge ${st.badge}`}>{r.status.toUpperCase()}</span>
                           <span className="subtle text-xs">{new Date(r.submitted_at).toLocaleString()}</span>
                         </div>
-                        {r.reviewer_notes && (
-                          <div className="alert" style={{ marginBottom: "0.6rem" }}>
-                            <strong>Admin notes:</strong> {r.reviewer_notes}
-                          </div>
-                        )}
                         {r.diff_preview && (
                           <div className="diff-wrap">
                             <div className="diff-wrap-head">Your proposed changes</div>
                             <div className="diff-scroll">
                               <DiffView diffText={r.diff_preview} />
                             </div>
+                          </div>
+                        )}
+                        {/* Feedback lives in one place. Showing the notes here
+                            too meant two copies drifting apart, and no single
+                            screen that could be called the record. */}
+                        {onOpenRevision && (
+                          <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "center", marginTop: "0.6rem" }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => onOpenRevision(r.id)}
+                            >
+                              {r.reviewer_notes ? "Read the reviewer's feedback" : "Open in My Revisions"}
+                            </button>
+                            {r.reviewer_notes && (
+                              <span className="badge badge-info">feedback</span>
+                            )}
                           </div>
                         )}
                       </div>

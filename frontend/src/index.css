@@ -787,10 +787,24 @@ a:hover { color: var(--brand-500); }
 .stat-card.is-success .stat-value { color: var(--success); }
 .stat-card.is-danger  .stat-value { color: var(--danger); }
 
+/* When the row is a filter rather than a readout, the selected card has to
+   win against hover - they used to share a background, so the thing under
+   the cursor looked exactly as chosen as the thing actually chosen. Gold is
+   the system's active marker, so the underline carries it and the label
+   stops being muted: selected reads as pressed, not merely warm. */
 .stat-card.is-selected {
   background: var(--paper-3);
 }
-.stat-card.is-selected::before { transform: scaleX(1); }
+.stat-card.is-selected::before { transform: scaleX(1); height: 3px; }
+.stat-card.is-selected .stat-label {
+  color: var(--text);
+  font-weight: 600;
+}
+.stat-card[aria-pressed]:hover { background: var(--paper-2); }
+.stat-card[aria-pressed]:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: -2px;
+}
 
 /* ============================================================
    Accordion

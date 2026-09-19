@@ -208,6 +208,11 @@ class ManualRevision(models.Model):
     ai_content_hash = models.CharField(max_length=64, blank=True)
     ai_section_content_hash = models.CharField(max_length=64, blank=True)
 
+    # When the submitter last opened the reviewer's feedback. Drives the badge
+    # on My Revisions: feedback exists and is newer than the last time they
+    # looked. Null means they have never opened it.
+    feedback_seen_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f"Revision by {self.submitted_by} on {self.section.subtitle}"
 

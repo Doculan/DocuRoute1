@@ -1,46 +1,146 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import axios from "axios";
 import StaffManuals from "./StaffManuals";
 import StaffSections from "./StaffSections";
+import StaffSectionSearch from "./StaffSectionSearch";
+import StaffRevisions from "./StaffRevision";
+import StaffHelp from "./StaffHelp";
 import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
 
-const NAV_ITEMS = [
-  { key: "manuals", icon: manualsIcon, label: "My Manuals" },
-  { key: "sections", icon: sectionsIcon, label: "Sections" },
+const getAuth = () => ({
+  headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+});
+
+// Documents you read, then work you have submitted, then how it all works.
+// Dashboard leads because it is the landing page; Help sits last because it
+// is consulted once and then rarely.
+const NAV_GROUPS = [
+  {
+    label: "Overview",
+    items: [{ key: "dashboard", icon: manualsIcon, label: "Dashboard" }],
+  },
+  {
+    label: "Documents",
+    items: [
+      { key: "manuals", icon: manualsIcon, label: "My Manuals" },
+      { key: "sections", icon: sectionsIcon, label: "Sections" },
+    ],
+  },
+  {
+    label: "Your work",
+    items: [
+      { key: "revisions", icon: sectionsIcon, label: "My Revisions" },
+      { key: "help", icon: manualsIcon, label: "Help" },
+    ],
+  },
 ];
+
+const CRUMBS = {
+  dashboard: "Dashboard",
+  manuals: "My Manuals",
+  sections: "Sections",
+  revisions: "My Revisions",
+  help: "Help",
+};
 
 export default function StaffDashboard({ onLogout }) {
   const [activePage, setActivePage] = useState("manuals");
   const [selectedManualId, setSelectedManualId] = useState(null);
+  // A section reached from the Sections tab rather than by drilling into a
+  // manual. Both routes land on the same view - that is the point of keeping
+  // the two tabs - so this just tells StaffSections where to open.
+  const [focusSectionId, setFocusSectionId] = useState(null);
+  // Which revision to open in My Revisions, when something links across to it.
+  const [focusRevisionId, setFocusRevisionId] = useState(null);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
+
   const username = localStorage.getItem("username") || "Staff";
   // Which department you belong to is the useful fact here — "Staff" only
   // repeats what the portal heading already says. Stored at login.
   const department = localStorage.getItem("department");
 
-  const handleSelectManual = (manualId) => {
+  // The badge is the only reason this lives up here: it has to be right on
+  // the nav whichever page you are looking at.
+  const refreshFeedbackCount = useCallback(async () => {
+    try {
+      const res = await axios.get("/api/staff/revisions/?scope=mine", getAuth());
+      setUnreadFeedback(res.data.filter((r) => r.has_unread_feedback).length);
+    } catch {
+      // A badge that cannot load is not worth an error message.
+      setUnreadFeedback(0);
+    }
+  }, []);
+
+  useEffect(() => { refreshFeedbackCount(); }, [refreshFeedbackCount]);
+
+  const openManual = (manualId) => {
     setSelectedManualId(manualId);
+    setFocusSectionId(null);
     setActivePage("sections");
   };
 
-  const handleBackToManuals = () => {
+  const openSection = (section) => {
+    setSelectedManualId(section.manual_id);
+    setFocusSectionId(section.id);
+    setActivePage("sections");
+  };
+
+  const openRevision = (revisionId) => {
+    setFocusRevisionId(revisionId);
+    setActivePage("revisions");
+  };
+
+  const backToManuals = () => {
     setActivePage("manuals");
     setSelectedManualId(null);
+    setFocusSectionId(null);
+  };
+
+  const handleNav = (key) => {
+    if (key === "manuals") return backToManuals();
+    if (key === "sections") {
+      // Sections is a tab in its own right now: clicking it goes to the
+      // cross-manual list, not to whichever manual happened to be open.
+      setSelectedManualId(null);
+      setFocusSectionId(null);
+    }
+    if (key === "revisions") setFocusRevisionId(null);
+    setActivePage(key);
   };
 
   const renderPage = () => {
     switch (activePage) {
+      case "dashboard":
+        return <DashboardPlaceholder onGo={handleNav} />;
       case "manuals":
-        return <StaffManuals onSelectManual={handleSelectManual} />;
+        return <StaffManuals onSelectManual={openManual} />;
       case "sections":
         return selectedManualId ? (
-          <StaffSections manualId={selectedManualId} onBack={handleBackToManuals} />
+          <StaffSections
+            manualId={selectedManualId}
+            focusSectionId={focusSectionId}
+            onBack={() => handleNav("sections")}
+            onOpenRevision={openRevision}
+          />
         ) : (
-          <StaffManuals onSelectManual={handleSelectManual} />
+          <StaffSectionSearch onOpenSection={openSection} />
         );
+      case "revisions":
+        return (
+          <StaffRevisions
+            focusRevisionId={focusRevisionId}
+            onFeedbackRead={refreshFeedbackCount}
+            onOpenSection={(manualId, sectionId) =>
+              openSection({ manual_id: manualId, id: sectionId })}
+          />
+        );
+      case "help":
+        return <StaffHelp />;
       default:
-        return <StaffManuals onSelectManual={handleSelectManual} />;
+        return <StaffManuals onSelectManual={openManual} />;
     }
   };
 
@@ -54,19 +154,25 @@ export default function StaffDashboard({ onLogout }) {
         <div className="sidebar-eyebrow">Staff Portal</div>
 
         <nav className="sidebar-nav">
-          <div className="nav-group">Documents</div>
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              className={`nav-item${activePage === item.key ? " is-active" : ""}`}
-              onClick={() => {
-                if (item.key === "manuals") handleBackToManuals();
-                else setActivePage(item.key);
-              }}
-            >
-              <img className="nav-icon" src={item.icon} alt="" />
-              <span>{item.label}</span>
-            </button>
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              <div className="nav-group">{group.label}</div>
+              {group.items.map((item) => (
+                <button
+                  key={item.key}
+                  className={`nav-item${activePage === item.key ? " is-active" : ""}`}
+                  onClick={() => handleNav(item.key)}
+                >
+                  <img className="nav-icon" src={item.icon} alt="" />
+                  <span>{item.label}</span>
+                  {item.key === "revisions" && unreadFeedback > 0 && (
+                    <span className="nav-count" title="Reviewer feedback you have not opened">
+                      {unreadFeedback}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -83,13 +189,47 @@ export default function StaffDashboard({ onLogout }) {
       </aside>
 
       <div className="app-main">
-        <Topbar crumb={activePage === "manuals" ? "My Manuals" : "Sections"} />
+        <Topbar crumb={CRUMBS[activePage] || "My Manuals"} />
 
         <main className="app-content">
-          <div className="tab-panel" key={`${activePage}-${selectedManualId ?? ""}`}>
+          <div
+            className="tab-panel"
+            key={`${activePage}-${selectedManualId ?? ""}-${focusRevisionId ?? ""}`}
+          >
             {renderPage()}
           </div>
         </main>
+      </div>
+    </div>
+  );
+}
+
+/** Phase 2 builds this. Saying so is better than an empty page that reads
+ *  as something broken. */
+function DashboardPlaceholder({ onGo }) {
+  return (
+    <div>
+      <header className="page-head">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">
+            What needs your attention, and a way back to what you were reading.
+          </p>
+        </div>
+      </header>
+      <div className="empty-state">
+        <p className="empty-title">Not built yet</p>
+        <p className="empty-text">
+          This page is next. For now, open{" "}
+          <button type="button" className="link-btn" onClick={() => onGo("manuals")}>
+            My Manuals
+          </button>{" "}
+          to read a document, or{" "}
+          <button type="button" className="link-btn" onClick={() => onGo("revisions")}>
+            My Revisions
+          </button>{" "}
+          to see what you have submitted.
+        </p>
       </div>
     </div>
   );

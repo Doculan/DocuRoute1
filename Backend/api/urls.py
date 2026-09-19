@@ -4,7 +4,7 @@ from .views import (
     register, login,
     pending_users, approved_users, approve_user, reject_user,
     list_departments, create_department, delete_department,
-    staff_list_manuals, staff_my_revisions,
+    staff_list_manuals, staff_my_revisions, staff_sections, staff_mark_feedback_seen,
     list_manuals, upload_manual, preview_manual_sections, confirm_manual_sections, delete_manual, ocr_extract_manual,
     list_sections, create_section, update_section, delete_section, review_section, merge_sections, review_delete_section,
     section_history,
@@ -53,6 +53,10 @@ urlpatterns = [
     # Staff endpoints
     path('staff/manuals/', staff_list_manuals),
     path('staff/revisions/', staff_my_revisions),
+    # Sections across every manual the staff member can reach - the
+    # route for someone who knows the content, not the document.
+    path('staff/sections/', staff_sections),
+    path('staff/revisions/<int:revision_id>/seen/', staff_mark_feedback_seen),
 
     # Revisions
     path('revisions/upload/<int:section_id>/', upload_revision),

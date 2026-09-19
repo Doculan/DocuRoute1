@@ -1474,6 +1474,82 @@ staff member mid-task, on their first submission of the day.
 
 ---
 
+## Staff portal — phase 1 (navigation, Sections, My Revisions)
+
+Five tabs: Dashboard, My Manuals, Sections, My Revisions, Help. Dashboard and
+Help are honest placeholders until phases 2 and 3 - a page that says "not
+built yet" and points somewhere useful beats a blank one, which reads as
+broken.
+
+### What was already there, before changing anything
+
+Worth recording because the brief assumed more existed than did:
+
+- **"Sections" was a dead nav item.** `StaffDashboard` rendered
+  `selectedManualId ? <StaffSections/> : <StaffManuals/>`, so clicking it
+  with nothing selected showed My Manuals. It was really "the selected
+  manual's sections". Cross-manual browsing did not exist, so this was
+  net-new rather than an extension.
+- **`StaffRevision.jsx` existed and was never imported** - 165 lines already
+  titled "My Revisions" with an all/pending/approved/rejected filter. Revived
+  and extended rather than replaced.
+- **`list_sections` already supported `search`** over subtitle and content,
+  and a `tag` filter - but only within one manual. The new endpoint reuses
+  the same predicate so a search means the same thing from either route.
+
+### Built
+
+`GET /api/staff/sections/` - every manual in the department, with `search`
+(title and content), `manual` and `tag`. `staff_my_revisions` gained
+`scope=mine|office`, `status=`, and the stored assessment fields
+(`ai_source`, `ai_verdict`, `ai_issues`, `ai_explanation_staff`,
+`ai_assessed_at`). Read-only: a test asserts that listing revisions never
+produces an assessment, because the snapshot is a record of what the
+submitter read and re-running it would manufacture a second verdict.
+
+Per-section revisions stay inside the section view for context, but no
+longer show `reviewer_notes` - two copies of feedback drift apart and
+neither is the record. Each row links across to the detail view instead.
+
+### Three decisions worth keeping
+
+**One write endpoint was added**, against the brief's "read-only" list:
+`POST /api/staff/revisions/<id>/seen/` setting `feedback_seen_at`. Without
+it the badge could only ever count upward, never clear, which trains people
+to ignore it. Only the submitter can mark their own, and nothing but a
+timestamp changes.
+
+**Status is filtered in the browser** so the counts on the filter row stay
+true for the whole scope; a filter whose numbers move as you filter cannot
+be read. Noted in the code that this stops paying at roughly a few hundred
+revisions in one scope, and that the endpoint already accepts `?status=`
+when it does.
+
+**`.stat-card.is-selected` was only a background tint** - identical to
+`:hover`, so the card under the cursor looked as chosen as the chosen one.
+Selected now takes the 3px gold underline (the system's active marker), an
+un-muted label, a distinct hover and `aria-pressed`.
+
+### Roadmap — "returned for changes" is not a state
+
+A revision sent back is `rejected` with notes; there is no separate state.
+My Revisions filters on "rejected and carrying notes" to tell *act on this*
+apart from *refused*, which is the question a submitter is actually asking,
+but that is a presentation trick over a workflow that cannot express it.
+
+The gap is worth naming: **the assessment is more expressive than the
+workflow it feeds.** Layer 3 distinguishes `needs_revision` from `reject` -
+send it back versus do not accept this - and the review flow collapses both
+into `rejected`. So the system can tell a submitter their change needs
+adjusting and then record the reviewer's identical judgement as a refusal.
+
+Adding a `returned` state means new transitions, a second review round, and
+deciding whether a returned revision is edited in place or resubmitted -
+which is the dispute flow the staff spec explicitly deferred. Recorded, not
+built.
+
+---
+
 ### Future work — PRECISE_RULE_LABELS serves two purposes
 
 `PRECISE_RULE_LABELS` does two unrelated jobs, and that is the underlying

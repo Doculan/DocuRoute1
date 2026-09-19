@@ -576,25 +576,151 @@ def staff_list_manuals(request):
     return Response(data)
 
 
+def _has_unread_feedback(revision) -> bool:
+    """Feedback the submitter has not looked at since it was written."""
+    if not (revision.reviewed_at and (revision.reviewer_notes or '').strip()):
+        return False
+    return (revision.feedback_seen_at is None
+            or revision.feedback_seen_at < revision.reviewed_at)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_my_revisions(request):
-    """Return all revisions submitted by the currently logged-in user."""
-    revisions = ManualRevision.objects.filter(
-        submitted_by=request.user
-    ).order_by('-submitted_at')
+    """Revisions this staff member submitted, or their whole office.
+
+    Scope and status are filters over one list rather than separate views, so
+    the columns stay comparable when the scope is widened - the point of
+    looking at the office is to compare it with your own.
+
+    Read-only, and the AI fields are the snapshot stored at submission. The
+    check is never re-run here: what the submitter read before submitting is
+    the record, and re-running it would produce a second, different verdict
+    for the same revision.
+    """
+    scope = (request.query_params.get('scope') or 'mine').strip().lower()
+    status_filter = (request.query_params.get('status') or 'all').strip().lower()
+
+    revisions = ManualRevision.objects.select_related(
+        'section', 'section__manual', 'submitted_by', 'reviewed_by'
+    )
+    if scope == 'office':
+        department = getattr(request.user, 'department', None)
+        if not department:
+            return Response(
+                {'error': 'You are not assigned to a department.'}, status=403
+            )
+        revisions = revisions.filter(section__manual__department=department)
+    else:
+        scope = 'mine'
+        revisions = revisions.filter(submitted_by=request.user)
+
+    # "Returned" is not a stored state - a revision sent back is rejected
+    # with notes, and that is what the submitter is asked to act on. Splitting
+    # it out here rather than adding a state keeps the review flow untouched.
+    if status_filter == 'returned':
+        revisions = revisions.filter(status='rejected').exclude(reviewer_notes='')
+    elif status_filter in ('pending', 'approved', 'rejected'):
+        revisions = revisions.filter(status=status_filter)
+
+    revisions = revisions.order_by('-submitted_at')
+
     data = [{
         'id': r.id,
         'section_id': r.section.id if r.section else None,
         'section': r.section.subtitle if r.section else 'N/A',
-        'manual': r.section.manual.title if r.section else 'N/A',
+        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
+        'manual_id': r.section.manual.id if r.section and r.section.manual else None,
+        'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
+        'is_mine': r.submitted_by_id == request.user.id,
         'submitted_at': r.submitted_at,
         'status': r.status,
         'reviewer_notes': r.reviewer_notes,
+        'reviewed_by': r.reviewed_by.username if r.reviewed_by else None,
         'reviewed_at': r.reviewed_at,
+        'has_unread_feedback': _has_unread_feedback(r),
         'diff_preview': preview_diff(r.diff_text),
+        'diff_text': r.diff_text,
+        'change_reason': r.change_reason,
+        # The stored snapshot, exactly as the submitter saw it.
+        'ai_source': r.ai_source,
+        'ai_verdict': r.ai_verdict,
+        'ai_issues': r.ai_issues,
+        'ai_explanation_staff': r.ai_explanation_staff,
+        'ai_assessed_at': r.ai_assessed_at,
     } for r in revisions]
     return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def staff_mark_feedback_seen(request, revision_id):
+    """Record that the submitter has read this revision's feedback.
+
+    The one write this portal adds. Without it the badge on My Revisions
+    could only ever count, never clear, which would train people to ignore
+    it. Only the submitter can mark their own, and it sets a timestamp -
+    nothing about the revision or its assessment changes.
+    """
+    try:
+        revision = ManualRevision.objects.get(
+            id=revision_id, submitted_by=request.user
+        )
+    except ManualRevision.DoesNotExist:
+        return Response({'error': 'Revision not found'}, status=404)
+
+    revision.feedback_seen_at = timezone.now()
+    revision.save(update_fields=['feedback_seen_at'])
+    return Response({'feedback_seen_at': revision.feedback_seen_at})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def staff_sections(request):
+    """Sections across every manual this staff member can reach.
+
+    My Manuals navigates by document; this is the route for someone who
+    knows the content but not which manual holds it, which is why search is
+    what justifies the tab existing at all.
+
+    Deliberately reuses the same filters list_sections already applies, so a
+    search means the same thing from either direction.
+    """
+    department = getattr(request.user, 'department', None)
+    if not department:
+        return Response({'error': 'You are not assigned to a department.'}, status=403)
+
+    sections = ManualSection.objects.select_related('manual').filter(
+        manual__department=department
+    )
+
+    manual_id = request.query_params.get('manual')
+    if manual_id:
+        sections = sections.filter(manual_id=manual_id)
+
+    tag = request.query_params.get('tag')
+    if tag:
+        sections = sections.filter(tag=tag)
+
+    search = (request.query_params.get('search') or '').strip()
+    if search:
+        sections = sections.filter(
+            Q(subtitle__icontains=search) | Q(content__icontains=search)
+        )
+
+    sections = sections.order_by('manual__title', 'order')[:400]
+
+    data = [{
+        'id': s.id,
+        'manual_id': s.manual.id if s.manual else None,
+        'manual': s.manual.title if s.manual else 'N/A',
+        'subtitle': s.subtitle,
+        'tag': s.tag,
+        'order': s.order,
+        'page_number': s.page_number,
+        'content_preview': (s.content or '')[:220],
+    } for s in sections]
+    return Response({'count': len(data), 'results': data})
 
 
 # ─── MANUALS ─────────────────────────────────────────────────
