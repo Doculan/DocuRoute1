@@ -3,6 +3,7 @@ import axios from "axios";
 import StaffManuals from "./StaffManuals";
 import StaffSections from "./StaffSections";
 import StaffSectionSearch from "./StaffSectionSearch";
+import StaffHome from "./StaffHome";
 import StaffRevisions from "./StaffRevision";
 import StaffHelp from "./StaffHelp";
 import Topbar from "../Topbar";
@@ -47,7 +48,7 @@ const CRUMBS = {
 };
 
 export default function StaffDashboard({ onLogout }) {
-  const [activePage, setActivePage] = useState("manuals");
+  const [activePage, setActivePage] = useState("dashboard");
   const [selectedManualId, setSelectedManualId] = useState(null);
   // A section reached from the Sections tab rather than by drilling into a
   // manual. Both routes land on the same view - that is the point of keeping
@@ -114,7 +115,15 @@ export default function StaffDashboard({ onLogout }) {
   const renderPage = () => {
     switch (activePage) {
       case "dashboard":
-        return <DashboardPlaceholder onGo={handleNav} />;
+        return (
+          <StaffHome
+            onGo={handleNav}
+            onOpenManual={openManual}
+            onOpenSection={(manualId, sectionId) =>
+              openSection({ manual_id: manualId, id: sectionId })}
+            onOpenRevision={openRevision}
+          />
+        );
       case "manuals":
         return <StaffManuals onSelectManual={openManual} />;
       case "sections":
@@ -199,37 +208,6 @@ export default function StaffDashboard({ onLogout }) {
             {renderPage()}
           </div>
         </main>
-      </div>
-    </div>
-  );
-}
-
-/** Phase 2 builds this. Saying so is better than an empty page that reads
- *  as something broken. */
-function DashboardPlaceholder({ onGo }) {
-  return (
-    <div>
-      <header className="page-head">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">
-            What needs your attention, and a way back to what you were reading.
-          </p>
-        </div>
-      </header>
-      <div className="empty-state">
-        <p className="empty-title">Not built yet</p>
-        <p className="empty-text">
-          This page is next. For now, open{" "}
-          <button type="button" className="link-btn" onClick={() => onGo("manuals")}>
-            My Manuals
-          </button>{" "}
-          to read a document, or{" "}
-          <button type="button" className="link-btn" onClick={() => onGo("revisions")}>
-            My Revisions
-          </button>{" "}
-          to see what you have submitted.
-        </p>
       </div>
     </div>
   );

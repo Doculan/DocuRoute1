@@ -10,8 +10,9 @@ from django.utils import timezone
 from django.db.models import Q
 from datetime import timedelta
 from .models import (
-    CustomUser, Department, Manual, ManualSection, ManualRevision,
-    RevisionPreAssessment, SectionHistory,
+    Announcement, AnnouncementDismissal, CustomUser, Department, Manual,
+    ManualSection, ManualRevision, RecentlyOpened, RevisionPreAssessment,
+    SectionHistory,
 )
 from ml.ocr_engine import extract_text
 from ml.revision_pipeline.change_reason import (
@@ -21,7 +22,10 @@ from ml.revision_pipeline.change_reason import (
 from api import pre_assessment
 from ml.svm_model import predict, predict_section
 import difflib
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 class IsAdminRole(BasePermission):
@@ -674,6 +678,145 @@ def staff_mark_feedback_seen(request, revision_id):
     return Response({'feedback_seen_at': revision.feedback_seen_at})
 
 
+# How many places to remember. Long enough to cover a morning's work,
+# short enough that the list is still a shortcut rather than a history.
+RECENTLY_OPENED_LIMIT = 6
+
+
+def _record_recently_opened(user, manual, section=None):
+    """Remember that this person opened this, and forget the oldest.
+
+    Called from the read endpoints rather than by the client, so it records
+    what was actually served. Failures are swallowed: not remembering where
+    someone was is never worth failing the page they asked for - but they are
+    logged, because a bookmark list that silently stopped working would look
+    identical to one nobody had used.
+    """
+    if not (user and getattr(user, 'is_authenticated', False) and manual):
+        return
+    try:
+        RecentlyOpened.objects.update_or_create(
+            user=user, manual=manual, section=section,
+        )
+        keep = list(
+            RecentlyOpened.objects.filter(user=user)
+            .order_by('-opened_at')
+            .values_list('id', flat=True)[:RECENTLY_OPENED_LIMIT]
+        )
+        RecentlyOpened.objects.filter(user=user).exclude(id__in=keep).delete()
+    except Exception:
+        logger.exception("could not record recently-opened for %s", user)
+
+
+def _visible_announcements(user):
+    """Active announcements for everyone, plus this user's department."""
+    return Announcement.objects.filter(active=True).filter(
+        Q(department__isnull=True) | Q(department=getattr(user, 'department', None))
+    ).select_related('department')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def staff_dashboard(request):
+    """Everything the dashboard shows, in one request.
+
+    One endpoint rather than six: the widgets are all small, they all read
+    the same two or three tables, and six round trips would make the landing
+    page the slowest screen in the portal for no benefit.
+    """
+    user = request.user
+    department = getattr(user, 'department', None)
+    today = timezone.localdate()
+
+    mine = ManualRevision.objects.filter(submitted_by=user).select_related(
+        'section', 'section__manual', 'reviewed_by'
+    )
+
+    # -- needs your attention ------------------------------------
+    returned = [r for r in mine if r.status == 'rejected'
+                and (r.reviewer_notes or '').strip()]
+    attention = {
+        'awaiting_review': mine.filter(status='pending').count(),
+        'new_feedback': sum(1 for r in mine if _has_unread_feedback(r)),
+        'returned': len(returned),
+    }
+
+    # -- recent activity: what happened to your submissions ------
+    activity = [{
+        'revision_id': r.id,
+        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
+        'section': r.section.subtitle if r.section else 'N/A',
+        'status': r.status,
+        'returned': bool(r.status == 'rejected' and (r.reviewer_notes or '').strip()),
+        'at': r.reviewed_at,
+    } for r in mine.exclude(reviewed_at=None).order_by('-reviewed_at')[:5]]
+
+    # -- recently opened -----------------------------------------
+    recent = [{
+        'manual_id': row.manual_id,
+        'manual': row.manual.title,
+        'section_id': row.section_id,
+        'section': row.section.subtitle if row.section else None,
+        'opened_at': row.opened_at,
+    } for row in RecentlyOpened.objects.filter(user=user)
+        .select_related('manual', 'section')[:RECENTLY_OPENED_LIMIT]]
+
+    # -- announcements and upcoming ------------------------------
+    visible = _visible_announcements(user)
+    dismissed = set(
+        AnnouncementDismissal.objects.filter(user=user)
+        .values_list('announcement_id', flat=True)
+    )
+    banner = next(
+        (a for a in visible.filter(date__isnull=True).order_by('-created_at')
+         if a.id not in dismissed),
+        None,
+    )
+    upcoming = [{
+        'id': a.id,
+        'title': a.title,
+        'body': a.body,
+        'date': a.date,
+        'is_today': a.date == today,
+    } for a in visible.filter(date__gte=today).order_by('date')[:5]]
+
+    return Response({
+        'attention': attention,
+        'activity': activity,
+        'recently_opened': recent,
+        'announcement': None if banner is None else {
+            'id': banner.id, 'title': banner.title, 'body': banner.body,
+        },
+        'upcoming': upcoming,
+        'upcoming_total': visible.filter(date__gte=today).count(),
+        'stats': {
+            'manuals_total': Manual.objects.count(),
+            'manuals_mine': Manual.objects.filter(department=department).count() if department else 0,
+            'revisions_mine': mine.count(),
+            'department': department.name if department else None,
+        },
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def staff_dismiss_announcement(request, announcement_id):
+    """Close the banner for this person only.
+
+    Recorded against the announcement's id rather than as a single flag, so
+    the next announcement still appears for someone who dismissed the last.
+    """
+    try:
+        announcement = Announcement.objects.get(id=announcement_id)
+    except Announcement.DoesNotExist:
+        return Response({'error': 'Announcement not found'}, status=404)
+
+    AnnouncementDismissal.objects.get_or_create(
+        announcement=announcement, user=request.user
+    )
+    return Response({'dismissed': True})
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_sections(request):
@@ -1109,6 +1252,10 @@ def list_sections(request, manual_id):
     if not request.user.is_staff:
         if manual.department != request.user.department:
             return Response({'error': 'Access denied'}, status=403)
+
+    # Remembering here rather than in the client records what was actually
+    # served, and survives moving to another device.
+    _record_recently_opened(request.user, manual)
 
     sections_qs = manual.sections.all().order_by('order')
 

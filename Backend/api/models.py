@@ -217,6 +217,96 @@ class ManualRevision(models.Model):
         return f"Revision by {self.submitted_by} on {self.section.subtitle}"
 
 
+class Announcement(models.Model):
+    """Something the admin wants staff to see.
+
+    One model for two widgets, because they are the same thing at different
+    distances: an item with a date is upcoming, an item without one is an
+    announcement. Splitting them would mean two models, two endpoints and a
+    decision at the point of writing about which kind a message is - when
+    the only real difference is whether it happens on a day.
+
+    A null department means everyone; otherwise only that department sees it.
+    """
+
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    # Dated items appear under Upcoming and drop off after their day.
+    # Undated items are the banner.
+    date = models.DateField(null=True, blank=True)
+    department = models.ForeignKey(
+        Department, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='announcements',
+        help_text="Leave empty to show this to every department.",
+    )
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='announcements',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    active = models.BooleanField(
+        default=True,
+        help_text="Uncheck to hide without deleting.",
+    )
+
+    class Meta:
+        ordering = ['date', '-created_at']
+
+    def __str__(self):
+        when = self.date.isoformat() if self.date else 'announcement'
+        return f"{self.title} ({when})"
+
+
+class AnnouncementDismissal(models.Model):
+    """One person has closed one banner.
+
+    Per user and per announcement rather than a single "dismissed" flag, so
+    a new announcement reappears for someone who dismissed the last one.
+    """
+
+    announcement = models.ForeignKey(
+        Announcement, on_delete=models.CASCADE, related_name='dismissals'
+    )
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='dismissed_announcements'
+    )
+    dismissed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('announcement', 'user')
+
+
+class RecentlyOpened(models.Model):
+    """What this person last looked at, for getting back to it.
+
+    Server-side on purpose: browser storage would lose the list on a
+    different device, which is exactly when someone most wants to pick up
+    where they left off. Capped per user - see views._record_recently_opened.
+    """
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='recently_opened'
+    )
+    manual = models.ForeignKey(
+        Manual, on_delete=models.CASCADE, related_name='recently_opened'
+    )
+    # Null when a whole manual was opened rather than one section.
+    section = models.ForeignKey(
+        ManualSection, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='recently_opened',
+    )
+    opened_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-opened_at']
+        # Re-opening something moves it up the list rather than adding a
+        # second row, so the list stays a set of places, not a log.
+        unique_together = ('user', 'manual', 'section')
+
+    def __str__(self):
+        return f"{self.user} -> {self.section or self.manual}"
+
+
 class RevisionPreAssessment(models.Model):
     """One assessment of content that has not been submitted yet.
 

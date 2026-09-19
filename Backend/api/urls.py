@@ -5,6 +5,7 @@ from .views import (
     pending_users, approved_users, approve_user, reject_user,
     list_departments, create_department, delete_department,
     staff_list_manuals, staff_my_revisions, staff_sections, staff_mark_feedback_seen,
+    staff_dashboard, staff_dismiss_announcement,
     list_manuals, upload_manual, preview_manual_sections, confirm_manual_sections, delete_manual, ocr_extract_manual,
     list_sections, create_section, update_section, delete_section, review_section, merge_sections, review_delete_section,
     section_history,
@@ -52,6 +53,10 @@ urlpatterns = [
 
     # Staff endpoints
     path('staff/manuals/', staff_list_manuals),
+    # One request for the whole landing page - six widgets reading the
+    # same few tables do not need six round trips.
+    path('staff/dashboard/', staff_dashboard),
+    path('staff/announcements/<int:announcement_id>/dismiss/', staff_dismiss_announcement),
     path('staff/revisions/', staff_my_revisions),
     # Sections across every manual the staff member can reach - the
     # route for someone who knows the content, not the document.

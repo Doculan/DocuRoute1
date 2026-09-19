@@ -2524,3 +2524,25 @@ a:hover { color: var(--brand-500); }
 }
 
 .content-box-scroll { max-height: 340px; overflow-y: auto; }
+
+/* ============================================================
+   Staff dashboard
+   ============================================================ */
+
+/* Wide left column for your own work, narrow right column for reference
+   and re-entry. One column when there is not room for two, in the same
+   order — attention first, because it is the only part that asks you to
+   do something. */
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+}
