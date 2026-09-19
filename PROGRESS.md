@@ -1474,6 +1474,90 @@ staff member mid-task, on their first submission of the day.
 
 ---
 
+## Staff portal — phase 3 (Help, and the visual pass)
+
+The manuals themselves are the aesthetic. Everything below answers one
+question: would it look right printed and filed in an office?
+
+### The type split
+
+There was no serif in the system at all - Instrument Sans did display and
+body both. Added `--font-doc: "Source Serif 4"`. Chosen over Spectral and
+the bookish faces because it was drawn for screen text and reads as
+*official* rather than *literary*: a more characterful face would have read
+as a design layer on top of the manuals instead of a continuation of them.
+
+The rule, applied across all five staff screens:
+
+| voice | face | where |
+|---|---|---|
+| the application talking | sans | buttons, labels, navigation, filters |
+| the manual talking | serif | clause text, section and document names, excerpts, diffs, the change reason |
+| an identifier | mono | document numbers, version tags, header-block values |
+
+### Editing inks, and the one channel that must not depend on colour
+
+Deliberately not the semantic `--danger` / `--success`, which are interface
+states in a saturated register. These are pen and stamp colours: struck
+`#8c3a2e`, inserted `#1f6b4f`.
+
+**Colour cannot carry the diff, and was never going to.** In greyscale the
+two inks collapse to `0x54` and `0x5f` - eleven values apart, effectively
+identical. What actually distinguishes them is geometry: `line-through` for
+a deletion, `underline` for an insertion, a rule in the margin for a
+touched line, and semantic `<del>` / `<ins>` so a screen reader says which
+is which. Colour is the redundant channel here, not the primary one.
+
+**The margin rule was therefore raised from `#c7c3b5` to `#8a8474`:
+1.69:1 to 3.57:1 against paper.** It is the only signal in the diff that
+carries no colour information at all, so it has to be visible on its own -
+and at 1.69:1 it was faint enough to miss entirely. 3.57:1 clears the 3:1 a
+non-text marker needs while still reading as a pencil line rather than a
+border. **Do not lighten it back**: it will look tidier and will quietly
+remove the one channel that survives colour being taken away.
+
+### Stamps where there is a decision, marks where there is a list
+
+A decision on a controlled document is a rubber stamp: outline, letter-spaced
+caps, muted ink, one to one and a half degrees off square, `opacity: 0.82`.
+Rotation is dropped under `prefers-reduced-motion`.
+
+But only in the **detail view**, where there is one decision and it is the
+point of the page. Repeated down a list a stamp stops reading as a stamp and
+becomes a badge at an odd angle, so rows use `.status-mark` - the same inks
+set as a quiet label with a dot, no border, no rotation.
+
+**Status pills survive where they report interface state** - an upload
+result, an AI check verdict, a filter chip. Stamps mark a decision about a
+document; pills report what the application is doing. Fourteen of them
+remain on the staff side on purpose.
+
+### Header-block motif
+
+Every page of a real manual carries a bordered header: document no.,
+revision no., effectivity date. A simplified version now sits above section
+content and above a revision's detail, values in mono. It is what makes a
+section on screen read as part of a controlled document rather than a record
+in an application.
+
+### Reading measure
+
+Prose capped near 68ch - past that the eye loses its place returning to the
+left margin, and a manual is read rather than skimmed. **Tables are
+deliberately exempt**: a responsibility table is a grid, and squeezing it
+into a reading column only makes it wrap.
+
+### Help
+
+Static, no backend. Leads with the thing people most need to hear - running
+the check is required, passing it is not - because a check people believe is
+a gate becomes something they try to game rather than read. Also states that
+the reason for change is never an input to the model, so a well-written
+reason cannot talk the check into approving something and a plain one cannot
+count against them.
+
+---
+
 ## Staff portal — phase 1 (navigation, Sections, My Revisions)
 
 Five tabs: Dashboard, My Manuals, Sections, My Revisions, Help. Dashboard and

@@ -69,12 +69,17 @@ export default function StaffManuals({ onSelectManual }) {
               style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}
               onClick={() => onSelectManual(manual.id, manual.title)}
             >
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <span style={{ fontSize: "1.6rem", lineHeight: 1 }}>📋</span>
-                <span className="badge badge-id">v{manual.version}</span>
+              {/* No emoji: this is a controlled document, and a clipboard
+                  glyph is the sort of thing that would look wrong printed.
+                  The version tag carries the same "this is a record" signal
+                  and is true information. */}
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <span className="doc-kicker">Manual</span>
+                <span className="badge badge-id">v{manual.version} rev{manual.revision}</span>
               </div>
 
-              <h3 className="card-title" style={{ lineHeight: 1.4 }}>{manual.title}</h3>
+              {/* The document's own name, set as the document. */}
+              <h3 className="doc-name">{manual.title}</h3>
 
               <dl className="col" style={{ gap: "0.35rem", margin: 0 }}>
                 <MetaRow label="Department" value={manual.department} />

@@ -169,8 +169,9 @@ export default function StaffSectionSearch({ onOpenSection }) {
                       style={{ textAlign: "left", width: "100%" }}
                       onClick={() => onOpenSection(section)}
                     >
-                      <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "center", marginBottom: "0.3rem" }}>
-                        <span className="strong">{section.subtitle}</span>
+                      <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "baseline", marginBottom: "0.3rem" }}>
+                        {/* A section heading is the document speaking. */}
+                        <span className="doc-name">{section.subtitle}</span>
                         {section.tag && section.tag !== "UNTAGGED" && (
                           <span className="badge badge-neutral">{section.tag.toLowerCase()}</span>
                         )}
@@ -179,7 +180,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
                         )}
                       </div>
                       {section.content_preview && (
-                        <p className="text-sm" style={{ color: "var(--n-700)", margin: 0 }}>
+                        <p className="doc-excerpt">
                           {section.content_preview}
                           {section.content_preview.length >= 220 ? "…" : ""}
                         </p>

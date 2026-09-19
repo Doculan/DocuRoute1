@@ -97,9 +97,9 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenRev
         <div className="alert alert-warning" style={{ marginBottom: "1.5rem" }}>
           <div className="row" style={{ justifyContent: "space-between", gap: "1rem", alignItems: "flex-start" }}>
             <div style={{ minWidth: 0 }}>
-              <div className="strong">{announcement.title}</div>
+              <div className="doc-name" style={{ fontSize: "1rem" }}>{announcement.title}</div>
               {announcement.body && (
-                <p className="text-sm" style={{ margin: "0.25rem 0 0" }}>{announcement.body}</p>
+                <p className="doc-excerpt" style={{ marginTop: "0.25rem" }}>{announcement.body}</p>
               )}
             </div>
             <button
@@ -203,7 +203,8 @@ function Activity({ rows, onOpenRevision }) {
               onClick={() => onOpenRevision(row.revision_id)}
             >
               <span className="text-sm">
-                Your revision to <strong>{row.manual}</strong> {row.section} was{" "}
+                Your revision to <span className="doc-ref">{row.manual}</span>{" "}
+                <span className="doc-ref">{row.section}</span> was{" "}
                 {row.returned ? "returned for changes" : row.status}
               </span>
               <span className="subtle text-xs">— {timeAgo(row.at)}</span>
@@ -238,10 +239,8 @@ function Upcoming({ rows, total }) {
                 {row.is_today ? "today" : formatDay(row.date)}
               </span>
               <div style={{ minWidth: 0 }}>
-                <div className="text-sm strong">{row.title}</div>
-                {row.body && (
-                  <div className="subtle text-xs">{row.body}</div>
-                )}
+                <div className="doc-name" style={{ fontSize: "0.95rem" }}>{row.title}</div>
+                {row.body && <div className="doc-excerpt">{row.body}</div>}
               </div>
             </div>
           ))}
@@ -274,7 +273,7 @@ function RecentlyOpened({ rows, onOpenSection, onOpenManual }) {
                 ? onOpenSection(row.manual_id, row.section_id)
                 : onOpenManual(row.manual_id))}
             >
-              <span className="text-sm">{row.section || row.manual}</span>
+              <span className="doc-ref">{row.section || row.manual}</span>
               {row.section && <span className="subtle text-xs"> · {row.manual}</span>}
             </button>
           ))}

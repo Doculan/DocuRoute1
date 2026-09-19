@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import DiffView from "../DiffView";
+import DocDiff from "../DocDiff";
 
 // Empty on purpose: every request goes out as a relative path, so the
 // browser sends it to whatever host served the page and Vite's proxy
@@ -13,10 +13,23 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
+// A decision on a controlled document is a stamp, not a pill - but only
+// where there is one decision and it is the point of the page. Down a list
+// a stamp on every row stops reading as a stamp and becomes a badge at an
+// odd angle, so rows carry `mark` and the detail view carries `stamp`.
 const STATUS = {
-  pending:  { badge: "badge-warning", alert: "alert-warning", label: "Pending review", tone: "is-warning" },
-  approved: { badge: "badge-success", alert: "alert-success", label: "Approved",       tone: "is-success" },
-  rejected: { badge: "badge-danger",  alert: "alert-danger",  label: "Not approved",   tone: "is-danger" },
+  pending: {
+    stamp: "stamp-pending", mark: "is-pending", alert: "alert-warning",
+    label: "Pending", tone: "is-warning",
+  },
+  approved: {
+    stamp: "stamp-approved", mark: "is-approved", alert: "alert-success",
+    label: "Approved", tone: "is-success",
+  },
+  rejected: {
+    stamp: "stamp-rejected", mark: "is-rejected", alert: "alert-danger",
+    label: "Not approved", tone: "is-danger",
+  },
 };
 
 // "Returned" is not a stored state: a revision sent back is rejected with
@@ -205,8 +218,10 @@ export default function StaffRevisions({
                       <span className="badge badge-info">new feedback</span>
                     )}
                     <div style={{ textAlign: "right" }}>
-                      <span className={`badge ${st.badge}`}>
-                        {returned ? "Returned for changes" : st.label}
+                      <span
+                        className={`status-mark ${returned ? "is-returned" : st.mark}`}
+                      >
+                        {returned ? "Returned" : st.label}
                       </span>
                       <div className="subtle text-xs" style={{ marginTop: "0.3rem" }}>
                         {formatWhen(r.submitted_at)}
@@ -238,9 +253,33 @@ export default function StaffRevisions({
 function RevisionDetail({ revision: r, onOpenSection }) {
   const st = STATUS[r.status] || STATUS.pending;
   const hasNotes = Boolean((r.reviewer_notes || "").trim());
+  const returned = r.status === "rejected" && hasNotes;
 
   return (
     <div className="col" style={{ gap: "1rem" }}>
+      {/* The bordered header every page of a real manual carries. It is what
+          makes this read as one controlled document rather than a database
+          row with a diff attached. */}
+      <div className="doc-header">
+        <div className="doc-header-field">
+          <span className="doc-header-label">Document</span>
+          <span className="doc-header-value">{r.manual}</span>
+        </div>
+        <div className="doc-header-field">
+          <span className="doc-header-label">Section</span>
+          <span className="doc-header-value">{r.section}</span>
+        </div>
+        <div className="doc-header-field">
+          <span className="doc-header-label">Submitted</span>
+          <span className="doc-header-value">{formatWhen(r.submitted_at)}</span>
+        </div>
+        <div className="doc-header-field">
+          <span className="doc-header-label">Status</span>
+          <span className={`stamp ${returned ? "stamp-returned" : st.stamp}`}>
+            {returned ? "Returned" : st.label}
+          </span>
+        </div>
+      </div>
       {/* 1. Reviewer feedback - the actionable part, so it leads. */}
       {hasNotes ? (
         <div className={`alert ${st.alert}`}>
@@ -268,7 +307,7 @@ function RevisionDetail({ revision: r, onOpenSection }) {
         <div className="diff-wrap">
           <div className="diff-wrap-head">What you proposed</div>
           <div className="diff-scroll">
-            <DiffView diffText={r.diff_text || r.diff_preview} />
+            <DocDiff diffText={r.diff_text || r.diff_preview} />
           </div>
         </div>
       )}
@@ -279,7 +318,9 @@ function RevisionDetail({ revision: r, onOpenSection }) {
           <p className="label" style={{ marginBottom: "0.3rem" }}>
             Reason for change · clause 6.3
           </p>
-          <div className="content-box">{r.change_reason}</div>
+          <div className="content-box" style={{ fontFamily: "var(--font-doc)" }}>
+            {r.change_reason}
+          </div>
         </div>
       )}
 

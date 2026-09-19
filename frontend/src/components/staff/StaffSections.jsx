@@ -33,9 +33,9 @@ const TAG_CLASS = {
 const tagClass = (tag) => TAG_CLASS[tag] || "badge-neutral";
 
 const STATUS_CLASS = {
-  pending:  { badge: "badge-warning", tone: "is-warning" },
-  approved: { badge: "badge-success", tone: "is-success" },
-  rejected: { badge: "badge-danger",  tone: "is-danger" },
+  pending:  { mark: "is-pending",  tone: "is-warning" },
+  approved: { mark: "is-approved", tone: "is-success" },
+  rejected: { mark: "is-rejected", tone: "is-danger" },
 };
 
 const getAuth = () => ({
@@ -667,15 +667,42 @@ export default function StaffSections({
             </div>
           ) : (
             <div className="anim-fade-up" key={activeSection.id}>
+              {/* The bordered block every page of the printed manual carries.
+                  Reproducing a simplified version here is what makes a
+                  section on screen read as part of a controlled document
+                  rather than a record in an application. */}
+              <div className="doc-header">
+                <div className="doc-header-field">
+                  <span className="doc-header-label">Section</span>
+                  <span className="doc-header-value">{activeSection.subtitle}</span>
+                </div>
+                {activeSection.version != null && (
+                  <div className="doc-header-field">
+                    <span className="doc-header-label">Revision no.</span>
+                    <span className="doc-header-value">{activeSection.version}</span>
+                  </div>
+                )}
+                {manual?.version != null && (
+                  <div className="doc-header-field">
+                    <span className="doc-header-label">Manual version</span>
+                    <span className="doc-header-value">v{manual.version}</span>
+                  </div>
+                )}
+                {activeSection.page_number && (
+                  <div className="doc-header-field">
+                    <span className="doc-header-label">Page</span>
+                    <span className="doc-header-value">{activeSection.page_number}</span>
+                  </div>
+                )}
+                <div className="doc-header-field">
+                  <span className="doc-header-label">Type</span>
+                  <span className="doc-header-value">{(activeTag || "").toLowerCase()}</span>
+                </div>
+              </div>
+
               <div className="page-head" style={{ marginBottom: "1.25rem" }}>
                 <div>
-                  <h2 className="page-title" style={{ fontSize: "1.35rem" }}>{activeSection.subtitle}</h2>
-                  <div className="row" style={{ gap: "0.6rem", marginTop: "0.45rem" }}>
-                    <span className={`badge ${tagClass(activeTag)}`}>{activeTag}</span>
-                    {activeSection.page_number && (
-                      <span className="subtle text-xs">Page {activeSection.page_number}</span>
-                    )}
-                  </div>
+                  <h2 className="doc-title">{activeSection.subtitle}</h2>
                 </div>
 
                 <div className="row-wrap" style={{ gap: "0.5rem" }}>
@@ -926,7 +953,9 @@ export default function StaffSections({
                     </div>
                   </div>
                 ) : (
-                  <SectionContent content={formatOCRContent(activeSection.content)} />
+                  <div className="doc-body">
+                    <SectionContent content={formatOCRContent(activeSection.content)} />
+                  </div>
                 )
               ) : sectionRevisions.length === 0 ? (
                 <div className="empty-state">
@@ -948,7 +977,9 @@ export default function StaffSections({
                     return (
                       <div key={r.id} className={`card card-pad accordion ${st.tone}`}>
                         <div className="row" style={{ justifyContent: "space-between", marginBottom: "0.6rem" }}>
-                          <span className={`badge ${st.badge}`}>{r.status.toUpperCase()}</span>
+                          <span className={`status-mark ${st.mark || ""}`}>
+                            {r.status}
+                          </span>
                           <span className="subtle text-xs">{new Date(r.submitted_at).toLocaleString()}</span>
                         </div>
                         {r.diff_preview && (
