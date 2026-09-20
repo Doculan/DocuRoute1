@@ -8,7 +8,7 @@ import axios from "axios";
 // keeps the browser on one origin, so CORS never enters into it.
 const BACKEND_BASE_URL = "";
 
-export default function Manuals({ initialSearch = "" }) {
+export default function Manuals({ initialSearch = "", onOpenSections }) {
   const [manuals, setManuals] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [form, setForm] = useState({ title: "", department_id: "", file: null });
@@ -794,7 +794,21 @@ export default function Manuals({ initialSearch = "" }) {
                       </div>
 
                       <span className="badge">{m.department}</span>
-                      <span className="badge badge-neutral">{m.section_count} sections</span>
+                      {/* The section count is the obvious way into a
+                          manual's sections, so it is the thing you click.
+                          stopPropagation because the row itself expands. */}
+                      {onOpenSections ? (
+                        <button
+                          className="badge badge-neutral"
+                          style={{ cursor: "pointer", border: "none" }}
+                          title={`Open the ${m.section_count} sections of ${m.title}`}
+                          onClick={(e) => { e.stopPropagation(); onOpenSections(m.id); }}
+                        >
+                          {m.section_count} sections →
+                        </button>
+                      ) : (
+                        <span className="badge badge-neutral">{m.section_count} sections</span>
+                      )}
                       <span className="badge badge-id">v{m.version} · rev {m.revision || 0}</span>
                     </div>
 
@@ -832,6 +846,14 @@ export default function Manuals({ initialSearch = "" }) {
                         </dl>
 
                         <div className="row" style={{ gap: "0.5rem", paddingTop: "0.9rem", borderTop: "1px solid var(--border-soft)" }}>
+                          {onOpenSections && (
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => onOpenSections(m.id)}
+                            >
+                              Open sections →
+                            </button>
+                          )}
                           <button className="btn btn-ghost btn-sm" onClick={() => toggleExpandRow(m.id)}>
                             ◀ Collapse
                           </button>

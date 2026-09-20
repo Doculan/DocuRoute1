@@ -6,6 +6,7 @@ import Manuals from "./Manuals";
 import Sections from "./Sections";
 import RevisionReview from "./RevisionReview";
 import SVMEvaluation from "./SVMEvaluation";
+import Announcements from "./Announcements";
 import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
@@ -34,6 +35,14 @@ const NAV_GROUPS = [
     ],
   },
   {
+    // Notices posted to the portal, not messaging. A calendar or a staff
+    // help page would belong here too.
+    label: "Content",
+    items: [
+      { key: "announcements", icon: reviewIcon, label: "Announcements" },
+    ],
+  },
+  {
     label: "System",
     items: [
       { key: "evaluation", icon: reviewIcon, label: "Model health" },
@@ -47,6 +56,7 @@ const CRUMBS = {
   manuals: "Manuals",
   sections: "Sections",
   review: "Revisions",
+  announcements: "Announcements",
   evaluation: "Model health",
 };
 
@@ -54,6 +64,10 @@ export default function AdminDashboard({ onLogout }) {
   const [activePage, setActivePage] = useState("users");
   const [search, setSearch] = useState("");
   const [manualQuery, setManualQuery] = useState("");
+  // Set when Sections is reached by clicking a manual rather than by the
+  // nav. Sections keeps its own picker either way - it should behave the
+  // same however you arrive - this only says which manual to open on.
+  const [drillManual, setDrillManual] = useState(null);
   const [pending, setPending] = useState({ users: 0, revisions: 0 });
   const username = localStorage.getItem("username") || "Admin";
 
@@ -83,8 +97,11 @@ export default function AdminDashboard({ onLogout }) {
     switch (activePage) {
       case "users": return <UserManagement />;
       case "departments": return <Departments />;
-      case "manuals": return <Manuals initialSearch={manualQuery} />;
-      case "sections": return <Sections />;
+      case "manuals":
+        return <Manuals initialSearch={manualQuery} onOpenSections={openSections} />;
+      case "sections":
+        return <Sections openManualId={drillManual} />;
+      case "announcements": return <Announcements />;
       case "review": return <RevisionReview />;
       case "evaluation": return <SVMEvaluation />;
       default: return <UserManagement />;
@@ -96,6 +113,37 @@ export default function AdminDashboard({ onLogout }) {
     setManualQuery(query);
     setActivePage("manuals");
   };
+
+  // Drilling from a manual into its sections is the one place a Back is
+  // genuinely expected, because it reads as going *into* something rather
+  // than switching tabs. This app has no router - navigation is state - so
+  // the History API is used directly rather than pulling one in for a
+  // single transition.
+  const openSections = (manualId) => {
+    setDrillManual(manualId);
+    setActivePage("sections");
+    window.history.pushState(
+      { adminPage: "sections", manualId }, "", window.location.href
+    );
+  };
+
+  useEffect(() => {
+    const onPop = (event) => {
+      // Anything that is not our own drill-down entry means the user has
+      // gone back past it; returning to Manuals is the honest answer, since
+      // that is where they came from.
+      const state = event.state;
+      if (state && state.adminPage === "sections") {
+        setDrillManual(state.manualId ?? null);
+        setActivePage("sections");
+      } else {
+        setDrillManual(null);
+        setActivePage("manuals");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   return (
     <div className="app-shell">
@@ -116,7 +164,13 @@ export default function AdminDashboard({ onLogout }) {
                   <button
                     key={item.key}
                     className={`nav-item${activePage === item.key ? " is-active" : ""}`}
-                    onClick={() => setActivePage(item.key)}
+                    onClick={() => {
+                      // Reaching Sections from the nav is not a drill-down,
+                      // so it opens on whatever the picker last had rather
+                      // than on a manual chosen three clicks ago.
+                      if (item.key !== "sections") setDrillManual(null);
+                      setActivePage(item.key);
+                    }}
                   >
                     <img className="nav-icon" src={item.icon} alt="" />
                     <span>{item.label}</span>

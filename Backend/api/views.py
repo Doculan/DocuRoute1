@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.db.models import Q
 from datetime import timedelta
 from .models import (
@@ -713,6 +714,144 @@ def _visible_announcements(user):
     return Announcement.objects.filter(active=True).filter(
         Q(department__isnull=True) | Q(department=getattr(user, 'department', None))
     ).select_related('department')
+
+
+def _announcement_payload(announcement):
+    """One announcement, plus who can actually see it.
+
+    `shows_as` is computed rather than stored: a dated item is Upcoming and
+    an undated one is the banner, and deriving it here means the admin list
+    and the staff dashboard can never disagree about which a row is.
+    """
+    audience = CustomUser.objects.filter(role='staff', is_approved=True)
+    if announcement.department_id:
+        audience = audience.filter(department_id=announcement.department_id)
+
+    return {
+        'id': announcement.id,
+        'title': announcement.title,
+        'body': announcement.body,
+        'date': announcement.date,
+        'shows_as': 'upcoming' if announcement.date else 'banner',
+        'department_id': announcement.department_id,
+        'department': announcement.department.name if announcement.department else None,
+        'active': announcement.active,
+        'created_by': announcement.created_by.username if announcement.created_by else None,
+        'created_at': announcement.created_at,
+        'reach': audience.count(),
+        'dismissals': announcement.dismissals.count(),
+    }
+
+
+def _clean_announcement_fields(data, partial=False):
+    """Validate and coerce what the form sent.
+
+    Returns ``(fields, error)``. An empty date is meaningful here - it is
+    what makes something a banner - so "" and None both mean "no date"
+    rather than "leave it alone".
+    """
+    fields = {}
+
+    if 'title' in data or not partial:
+        title = (data.get('title') or '').strip()
+        if not title:
+            return None, Response(
+                {'error': 'A title is required.', 'field': 'title'}, status=400
+            )
+        fields['title'] = title
+
+    if 'body' in data or not partial:
+        fields['body'] = (data.get('body') or '').strip()
+
+    if 'date' in data or not partial:
+        raw = data.get('date')
+        if raw in (None, '', 'null'):
+            fields['date'] = None
+        else:
+            parsed = parse_date(str(raw))
+            if parsed is None:
+                return None, Response(
+                    {'error': 'Use a date like 2026-10-06.', 'field': 'date'},
+                    status=400,
+                )
+            fields['date'] = parsed
+
+    if 'department_id' in data or not partial:
+        raw = data.get('department_id')
+        if raw in (None, '', 'null', 'all'):
+            fields['department'] = None
+        else:
+            try:
+                fields['department'] = Department.objects.get(id=raw)
+            except (Department.DoesNotExist, ValueError, TypeError):
+                return None, Response(
+                    {'error': 'That department does not exist.',
+                     'field': 'department_id'},
+                    status=400,
+                )
+
+    if 'active' in data:
+        value = data.get('active')
+        fields['active'] = (value if isinstance(value, bool)
+                            else str(value).strip().lower() in ('1', 'true', 'yes', 'on'))
+
+    return fields, None
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminRole])
+def admin_announcements(request):
+    """List every announcement, or create one.
+
+    Active items first, then by date - the list is a work queue more than a
+    log, and something switched off is not what anyone came to look at.
+    """
+    if request.method == 'GET':
+        rows = Announcement.objects.select_related(
+            'department', 'created_by'
+        ).order_by('-active', 'date', '-created_at')
+        return Response([_announcement_payload(a) for a in rows])
+
+    fields, error = _clean_announcement_fields(request.data)
+    if error:
+        return error
+
+    announcement = Announcement.objects.create(
+        created_by=request.user, **fields
+    )
+    return Response(_announcement_payload(announcement), status=201)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAdminRole])
+def admin_announcement_detail(request, announcement_id):
+    """Read, edit, or delete one announcement.
+
+    Deleting is allowed because a mistyped notice should not linger forever,
+    but deactivating is the usual move: it keeps the record of what was
+    posted, and the staff side already hides inactive rows.
+    """
+    try:
+        announcement = Announcement.objects.select_related(
+            'department', 'created_by'
+        ).get(id=announcement_id)
+    except Announcement.DoesNotExist:
+        return Response({'error': 'Announcement not found'}, status=404)
+
+    if request.method == 'GET':
+        return Response(_announcement_payload(announcement))
+
+    if request.method == 'DELETE':
+        announcement.delete()
+        return Response(status=204)
+
+    fields, error = _clean_announcement_fields(request.data, partial=True)
+    if error:
+        return error
+    for name, value in fields.items():
+        setattr(announcement, name, value)
+    announcement.save()
+    return Response(_announcement_payload(announcement))
 
 
 @api_view(['GET'])

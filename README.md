@@ -19,66 +19,112 @@ There is **no** database server to install — the project uses SQLite.
 
 ---
 
-## 2. Backend setup
+## 2. Setting up on a new machine
+
+**Read this if you have just cloned, or if you pulled and everything now
+fails with `no such table: api_customuser`.**
+
+`db.sqlite3` is **not** in version control. It holds the extracted text of
+every manual, it is a binary file two people cannot merge, and the repository
+is public. It used to be committed; when it was removed from tracking, `git
+pull` deleted the local copy on machines that already had one - which is what
+that error means. Nothing is broken and nothing is lost: the database is
+rebuilt from the master copy PDFs, which *are* committed.
+
+The whole sequence, from a fresh clone to a working system:
 
 ```bash
 git clone https://github.com/Doculan/DocuRoute1.git
 cd DocuRoute1
 
-# Install Python dependencies (from the repo root — requirements.txt lives there)
+# Roughly 1 GB - torch and transformers are the bulk of it.
 py -m pip install -r requirements.txt
-```
 
-> The first install is large: `torch` and `transformers` pull roughly 1 GB.
-
-Then apply migrations:
-
-```bash
 cd Backend
 py manage.py migrate
 ```
 
-A populated `db.sqlite3` is committed to the repo, so after cloning you already
-have the manuals and departments. `migrate` is only needed if the schema has
-moved on since that snapshot.
+### Create an admin account
 
----
-
-## 3. Create an admin account
-
-**This is the step people get stuck on.** `createsuperuser` is not enough on its
-own: the login endpoint rejects any account where `is_approved` is false, and the
-admin UI is only shown when `role == 'admin'`. A fresh superuser defaults to
-`role='staff'`, `is_approved=False` — so it cannot log in.
-
-Create the user:
+Two steps, and the second is the one people miss.
 
 ```bash
 py manage.py createsuperuser
+py manage.py make_admin YOUR_USERNAME
 ```
 
-Then promote it:
+`createsuperuser` alone is **not enough**. It grants Django-admin access,
+which is a different thing from this application's admin role: the login
+endpoint refuses any account with `is_approved` false, and the admin screens
+check `role == 'admin'`. A fresh superuser is `role='staff'`,
+`is_approved=False`, so it can reach `/admin/` and nothing else - which looks
+like a broken login rather than a missing flag. `make_admin` sets both.
+
+### Import the manuals
 
 ```bash
-py manage.py shell
+py manage.py import_mastercopies
+py manage.py reextract_manuals --apply
 ```
 
-```python
-from django.contrib.auth import get_user_model
-u = get_user_model().objects.get(username="YOUR_USERNAME")
-u.role = "admin"
-u.is_approved = True
-u.save()
-exit()
+The first reads every PDF in `Backend/media/mastercopies/`, creates a manual
+for each, splits it into sections and tags them - the same extraction the
+upload screen runs, so your checkout matches everyone else's. It derives the
+department from the filename prefix (`FAM_6.02.pdf` → FAM) and creates the
+departments as it goes. Expect **19 manuals and roughly 210 sections**, and
+about a minute of work.
+
+The second cleans extraction artefacts out of the stored text. It is a dry run
+without `--apply`.
+
+`import_mastercopies --dry-run` lists what it would do; `--replace`
+re-imports a manual that is already there.
+
+### Create test staff accounts
+
+```bash
+py manage.py seed_test_users
 ```
 
-Staff accounts registered through the signup page also start unapproved — an
-admin approves them from **User Management**.
+One approved staff account per department - `staff.fam`, `staff.hrm` and so
+on - all with the password it prints. Registering through the signup page
+leaves an account unapproved, so without this the first thing anyone does on
+a new machine is approve themselves before they can test anything.
+
+**Test credentials only.** Do not run this on a server.
+
+### Check it worked
+
+```bash
+py ml/revision_pipeline/scripts/check_setup.py
+```
+
+Then start both servers (section 6) and sign in. If the staff side shows no
+manuals, the account is in a department that has none - see the note at the
+end of section 3.
+
+> **The model weights are separate.** `Backend/ml/saved_models/` is also
+> gitignored, and unlike the database it cannot be rebuilt from anything in
+> the repository - it needs a GPU. See section 5. Without it the app still
+> runs and the rule layer still answers; it just says less.
+
+---
+
+## 3. Accounts and departments
+
+Staff accounts registered through the signup page start unapproved - an admin
+approves them from **User Management**.
 
 Every staff account must belong to a department. Staff only ever see manuals in
 their own department (`staff_list_manuals` filters on it, and revision uploads
 return 403 across departments), so an account with no department, or one in an
 empty department, will see nothing.
+
+To promote someone later, or to attach them to a department:
+
+```bash
+py manage.py make_admin someone --department FAM
+```
 
 ---
 

@@ -239,7 +239,7 @@ function renderSectionContent(content) {
   });
 }
 
-export default function Sections() {
+export default function Sections({ openManualId = null }) {
   const [manuals, setManuals] = useState([]);
   const [selectedManual, setSelectedManual] = useState(null);
   const [sections, setSections] = useState([]);
@@ -286,6 +286,18 @@ export default function Sections() {
       .then((res) => setManuals(res.data))
       .catch(console.error);
   }, []);
+
+  // Arriving by clicking a manual rather than by the nav. The picker stays
+  // on screen showing this manual as the selected one, so the screen behaves
+  // identically however it was reached - the only difference is that one
+  // choice has been made for you.
+  useEffect(() => {
+    if (!openManualId || !manuals.length) return;
+    if (selectedManual?.id === openManualId) return;
+    const manual = manuals.find((m) => m.id === openManualId);
+    if (manual) selectManual(manual);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openManualId, manuals]);
 
   // Empty on purpose: every request goes out as a relative path, so the
   // browser sends it to whatever host served the page and Vite's proxy
@@ -341,24 +353,32 @@ export default function Sections() {
     }
   };
 
-  const handleManualChange = (e) => {
-    const id = e.target.value;
-    if (!id) {
-      setSelectedManual(null);
-      setSections([]);
-      setManualVersion(1);
-      setManualFileUrl(null);
-      setActiveSection(null);
-      setIsFullDoc(false);
-      return;
-    }
-    const manual = manuals.find((m) => m.id === parseInt(id));
+  const clearManual = () => {
+    setSelectedManual(null);
+    setSections([]);
+    setManualVersion(1);
+    setManualFileUrl(null);
+    setActiveSection(null);
+    setIsFullDoc(false);
+  };
+
+  // One path for choosing a manual, whether the picker or a drill-down did
+  // the choosing. Two paths would drift, and the drill-down would quietly
+  // skip whichever reset the picker happened to do.
+  const selectManual = (manual) => {
+    if (!manual) return clearManual();
     setSelectedManual(manual);
-    fetchSections(id);
+    fetchSections(manual.id);
     setShowForm(false);
     setEditingSection(null);
     setMergeSource(null);
     setMergeTarget(null);
+  };
+
+  const handleManualChange = (e) => {
+    const id = e.target.value;
+    if (!id) return clearManual();
+    selectManual(manuals.find((m) => m.id === parseInt(id)));
   };
 
   const handleSectionClick = (s) => {

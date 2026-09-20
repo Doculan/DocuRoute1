@@ -7,8 +7,10 @@ that content back with the result - assessing text nobody has seen would be
 worse than not assessing at all.
 """
 
+import tempfile
+
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from api.models import (
@@ -18,6 +20,11 @@ from api.models import (
 REASON = "Consolidated after the August 2026 management review."
 
 
+# Uploads land in MEDIA_ROOT, and MEDIA_ROOT in tests is the real media
+# directory - so every run left a revision*.txt behind in the working tree
+# and git slowly filled with test debris. A temporary root per run keeps the
+# repository clean.
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="docuroute-tests-"))
 class UploadPathTests(TestCase):
 
     UPLOADED = (

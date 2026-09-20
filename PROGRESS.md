@@ -1474,6 +1474,115 @@ staff member mid-task, on their first submission of the day.
 
 ---
 
+## Rebuilding the database on a new machine
+
+Untracking `db.sqlite3` had a consequence nobody had thought through: `git
+pull` **deletes** a file that has stopped being tracked, so a teammate who
+already had a working copy lost it and every request started failing with
+`no such table: api_customuser`. The README still said the database was
+committed, which sent them looking in the wrong place.
+
+Three management commands now cover the rebuild, and README section 2 is
+written around them:
+
+- **`import_mastercopies`** - reads every PDF in `media/mastercopies/`,
+  creates a manual, splits it into sections and tags them. Reuses
+  `upload_manual`'s extraction path rather than reimplementing it, so a
+  rebuilt checkout matches everyone else's instead of quietly diverging.
+  Department comes from the filename prefix, which is reproducible; the
+  mapping in one person's database is not. 19 manuals, ~210 sections.
+- **`make_admin <username>`** - sets `role='admin'` and `is_approved`.
+  `createsuperuser` grants Django-admin access, which is a different thing:
+  a fresh superuser can reach `/admin/` and nothing else, and that reads as
+  a broken login rather than a missing flag.
+- **`seed_test_users`** - one approved staff account per department, so the
+  first thing on a new machine is not approving yourself.
+
+### Two bugs found by actually running it
+
+**The importer polluted the directory it read from.** `Manual.file` has
+`upload_to='mastercopies/'` - the same directory being scanned - so handing
+Django a `File` object wrote a second copy beside each original, and because
+the name was taken it appended a random suffix. Twenty PDFs became
+forty-eight, and the mangled names (`FAM_4_2s7frgp.01.pdf`) then parsed as
+different documents: 24 manuals from 20 files, with titles like "FAM 4". The
+bytes were already in the right place; only the reference was missing, so it
+now sets `manual.file.name` directly and writes nothing.
+
+**Title parsing split on the wrong thing.** `HRM_4_MoGMsSE.02.pdf` has its
+number broken across underscores, so taking the second part gave "HRM 4" - a
+different document. The number now has to contain a dot.
+
+Both were only visible by running the command against a throwaway database
+and looking at the result; neither would have shown up in a dry run.
+
+### Also fixed: tests were writing into the working tree
+
+`MEDIA_ROOT` is the real media directory during tests, so every run of the
+upload tests left a `revision*.txt` behind and git slowly filled with
+debris. The upload tests now override `MEDIA_ROOT` to a temporary directory.
+
+---
+
+## Admin portal — phase 1 (announcements and navigation)
+
+### What was already there
+
+- The admin had **six** nav items and no Dashboard, Announcements or
+  Calendar. It lands on Users.
+- **Manual cards had no click handler at all**, so the drill-down was
+  net-new, exactly as "Sections" had been on the staff side. `Sections` has
+  its own manual picker and is otherwise self-contained.
+- Announcements had the model and a Django-admin form but **no API**: the
+  staff banner could be read and never written.
+
+### Announcements
+
+Full CRUD under `/api/admin/announcements/`, admin only. `shows_as` is
+**computed, not stored** - dated is Upcoming, undated is the banner - so the
+admin list and the staff dashboard cannot disagree about which a row is.
+
+The form says which it will be *as you type*, because an optional date field
+silently deciding between two very different placements is invisible
+otherwise. It also shows reach ("visible to 2 staff in CAS"), counting only
+**approved** staff, since someone who cannot sign in cannot read it.
+
+Deleting confirms and offers "deactivate instead": deactivating keeps the
+record of what was posted, and the staff side already hides inactive rows.
+
+Tests cover the round trip end to end - post a banner here and it appears on
+the staff dashboard; post a dated one and it lands under Upcoming and not as
+a banner; target a department and the others do not see it.
+
+### Navigation
+
+A fourth nav group, **Content** rather than Communication: these are notices
+posted to a portal, not messaging, and a calendar or a staff help page would
+belong in the same group later.
+
+The drill-down makes the section count a button. `Sections` keeps its picker
+with the arriving manual selected, so the screen behaves identically however
+it was reached - the only difference is that one choice has been made for
+you. `handleManualChange` was split into `clearManual` / `selectManual` so
+the picker and the drill-down share one path; two paths would drift and the
+drill-down would quietly skip whichever reset the picker does.
+
+### Future work — there is no router
+
+Navigation in **both** portals is `useState`, not routing. Consequences:
+
+- The browser back button only works for the manual → sections drill-down,
+  where it is wired with the History API (`pushState` plus a `popstate`
+  listener). Back from anywhere else leaves the application.
+- **URLs are not shareable or bookmarkable.** Every screen is the same URL,
+  so "look at this revision" cannot be sent to anyone.
+- Reloading always returns to the default page for the role.
+
+Adding a router touches both portals and every navigation path already
+tested, which is why it was not done here. Recorded rather than attempted.
+
+---
+
 ## Staff portal — phase 3 (Help, and the visual pass)
 
 The manuals themselves are the aesthetic. Everything below answers one
