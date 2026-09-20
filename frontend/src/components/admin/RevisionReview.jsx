@@ -414,9 +414,21 @@ function AiPanel({ result }) {
   );
 }
 
-export default function RevisionReview() {
+/**
+ * @param openRevision  `{ id, status }` when the queue was opened by clicking
+ *   a specific revision on the dashboard, otherwise null. The status comes
+ *   with it because the queue opens on Pending and a decided revision is by
+ *   definition not in that list - an id alone would land on a tab that
+ *   cannot show it.
+ */
+export default function RevisionReview({ openRevision = null }) {
   const [revisions, setRevisions] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("pending");
+  const [statusFilter, setStatusFilter] = useState(
+    openRevision?.status || "pending"
+  );
+  // Cleared once it has been used, so changing tabs afterwards does not drag
+  // the highlight around with you.
+  const [highlighted, setHighlighted] = useState(openRevision?.id ?? null);
   const [selectedRevision, setSelectedRevision] = useState(null);
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
@@ -448,6 +460,17 @@ export default function RevisionReview() {
   }, [statusFilter, token]);
 
   useEffect(() => { fetchRevisions(); }, [fetchRevisions]);
+
+  // Scroll the requested revision into view once its list has arrived.
+  // Highlight rather than auto-expand: the reviewer asked to look at this
+  // one, not to have a panel opened on their behalf.
+  useEffect(() => {
+    if (highlighted == null || loading) return;
+    const card = document.getElementById(`revision-${highlighted}`);
+    if (card) card.scrollIntoView({ block: "center", behavior: "smooth" });
+    const timer = setTimeout(() => setHighlighted(null), 2200);
+    return () => clearTimeout(timer);
+  }, [highlighted, loading, revisions]);
 
   const showMessage = (msg) => {
     setMessage(msg);
@@ -527,7 +550,7 @@ export default function RevisionReview() {
           <button
             key={s}
             className={`tab${statusFilter === s ? " is-active" : ""}`}
-            onClick={() => setStatusFilter(s)}
+            onClick={() => { setHighlighted(null); setStatusFilter(s); }}
           >
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
@@ -547,7 +570,12 @@ export default function RevisionReview() {
       ) : (
         <div className="col stagger" style={{ gap: "1.15rem" }}>
           {revisions.map((r) => (
-            <article key={r.id} className={`card card-pad rev-card ${STATUS_TONE[r.status] || ""}`}>
+            <article
+              key={r.id}
+              id={`revision-${r.id}`}
+              className={`card card-pad rev-card ${STATUS_TONE[r.status] || ""}`
+                + (highlighted === r.id ? " is-highlighted" : "")}
+            >
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
                 <div className="col" style={{ gap: "0.35rem", minWidth: 0 }}>
                   <div className="row-wrap" style={{ gap: "0.5rem" }}>

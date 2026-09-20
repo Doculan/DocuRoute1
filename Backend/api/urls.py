@@ -6,7 +6,7 @@ from .views import (
     list_departments, create_department, delete_department,
     staff_list_manuals, staff_my_revisions, staff_sections, staff_mark_feedback_seen,
     staff_dashboard, staff_dismiss_announcement,
-    admin_announcements, admin_announcement_detail,
+    admin_announcements, admin_announcement_detail, admin_dashboard,
     list_manuals, upload_manual, preview_manual_sections, confirm_manual_sections, delete_manual, ocr_extract_manual,
     list_sections, create_section, update_section, delete_section, review_section, merge_sections, review_delete_section,
     section_history,
@@ -75,6 +75,7 @@ urlpatterns = [
     path('manuals/<int:manual_id>/set-version/', set_manual_version),
     # The staff banner and Upcoming list read these rows; this is the
     # half that lets anyone put something in them.
+    path('admin/dashboard/', admin_dashboard),
     path('admin/announcements/', admin_announcements),
     path('admin/announcements/<int:announcement_id>/', admin_announcement_detail),
     path('admin/revisions/', list_revisions),

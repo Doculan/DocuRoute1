@@ -7,6 +7,7 @@ import Sections from "./Sections";
 import RevisionReview from "./RevisionReview";
 import SVMEvaluation from "./SVMEvaluation";
 import Announcements from "./Announcements";
+import AdminHome from "./AdminHome";
 import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
@@ -14,11 +15,20 @@ import departmentsIcon from '../../assets/nav/departments.svg';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
 import reviewIcon from '../../assets/nav/review.svg';
+import dashboardIcon from '../../assets/nav/dashboard.svg';
 
 // Six flat items is a list you read top to bottom every time. Three short
 // groups is a structure you learn once — and the group label tells you what
 // kind of work the items underneath do.
 const NAV_GROUPS = [
+  {
+    // Ungrouped, because it is not one kind of work among others - it is
+    // the way in, and the thing every other item is reached from.
+    label: null,
+    items: [
+      { key: "home", icon: dashboardIcon, label: "Dashboard" },
+    ],
+  },
   {
     label: "Access",
     items: [
@@ -51,6 +61,7 @@ const NAV_GROUPS = [
 ];
 
 const CRUMBS = {
+  home: "Dashboard",
   users: "Users",
   departments: "Departments",
   manuals: "Manuals",
@@ -61,33 +72,40 @@ const CRUMBS = {
 };
 
 export default function AdminDashboard({ onLogout }) {
-  const [activePage, setActivePage] = useState("users");
+  const [activePage, setActivePage] = useState("home");
   const [search, setSearch] = useState("");
   const [manualQuery, setManualQuery] = useState("");
   // Set when Sections is reached by clicking a manual rather than by the
   // nav. Sections keeps its own picker either way - it should behave the
   // same however you arrive - this only says which manual to open on.
   const [drillManual, setDrillManual] = useState(null);
+  // Set when Revisions is opened from a dashboard row rather than the nav,
+  // so the queue can scroll to the one that was clicked.
+  const [revisionToOpen, setRevisionToOpen] = useState(null);
   const [pending, setPending] = useState({ users: 0, revisions: 0 });
   const username = localStorage.getItem("username") || "Admin";
 
   // Counts ride along on the nav so waiting work is visible without opening
-  // the page. Re-read on every tab change, and best-effort only: a failed
-  // count must never block the shell.
+  // the page. They come from the dashboard summary rather than from two
+  // list endpoints fetched for their length: the badge and the dashboard
+  // are the same claim, and two sources for it will eventually disagree.
+  // Re-read on every tab change, and best-effort only: a failed count must
+  // never block the shell.
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       const auth = { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } };
-      const [users, revisions] = await Promise.allSettled([
-        axios.get("/api/admin/pending-users/", auth),
-        axios.get("/api/admin/revisions/?status=pending", auth),
-      ]);
-      if (cancelled) return;
-      setPending({
-        users: users.status === "fulfilled" ? users.value.data.length : 0,
-        revisions: revisions.status === "fulfilled" ? revisions.value.data.length : 0,
-      });
+      try {
+        const { data } = await axios.get("/api/admin/dashboard/", auth);
+        if (cancelled) return;
+        setPending({
+          users: data.attention.pending_users,
+          revisions: data.attention.pending_revisions,
+        });
+      } catch {
+        // No badge is better than a wrong one.
+      }
     })();
 
     return () => { cancelled = true; };
@@ -95,6 +113,8 @@ export default function AdminDashboard({ onLogout }) {
 
   const renderPage = () => {
     switch (activePage) {
+      case "home":
+        return <AdminHome onGo={goTo} onOpenRevision={openRevision} />;
       case "users": return <UserManagement />;
       case "departments": return <Departments />;
       case "manuals":
@@ -102,10 +122,28 @@ export default function AdminDashboard({ onLogout }) {
       case "sections":
         return <Sections openManualId={drillManual} />;
       case "announcements": return <Announcements />;
-      case "review": return <RevisionReview />;
+      case "review": return <RevisionReview openRevision={revisionToOpen} />;
       case "evaluation": return <SVMEvaluation />;
-      default: return <UserManagement />;
+      default: return <AdminHome onGo={goTo} onOpenRevision={openRevision} />;
     }
+  };
+
+  // The dashboard is a set of pointers at other screens, so it needs a way
+  // to hand navigation back. Same reset the nav buttons do, for the same
+  // reason: arriving at Sections from here is not a drill-down.
+  const goTo = (page) => {
+    if (page !== "sections") setDrillManual(null);
+    setRevisionToOpen(null);
+    setActivePage(page);
+  };
+
+  // Carries the status as well as the id: the queue opens on Pending, and
+  // a decided revision is by definition not in that list, so sending only
+  // an id would land on a tab that cannot show it.
+  const openRevision = (revisionId, status) => {
+    setDrillManual(null);
+    setRevisionToOpen({ id: revisionId, status: status || "pending" });
+    setActivePage("review");
   };
 
   // Global search hands the query to the one page that can answer it.
@@ -156,8 +194,8 @@ export default function AdminDashboard({ onLogout }) {
 
         <nav className="sidebar-nav">
           {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              <div className="nav-group">{group.label}</div>
+            <div key={group.label ?? "top"}>
+              {group.label && <div className="nav-group">{group.label}</div>}
               {group.items.map((item) => {
                 const count = item.badge ? pending[item.badge] : 0;
                 return (
@@ -169,6 +207,7 @@ export default function AdminDashboard({ onLogout }) {
                       // so it opens on whatever the picker last had rather
                       // than on a manual chosen three clicks ago.
                       if (item.key !== "sections") setDrillManual(null);
+                      setRevisionToOpen(null);
                       setActivePage(item.key);
                     }}
                   >

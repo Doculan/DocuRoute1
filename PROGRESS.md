@@ -1583,6 +1583,120 @@ tested, which is why it was not done here. Recorded rather than attempted.
 
 ---
 
+## Admin portal — phase 2 (the dashboard)
+
+### What was already there
+
+- **No dashboard and no endpoint for one.** The admin landed on Users.
+- The shell was firing **two list requests on every tab change** purely for
+  their `.length` - `pending-users/` and `revisions/?status=pending` - to
+  put counts on the nav badges.
+- `RevisionReview` opens on the Pending tab and takes no props.
+- The real database has **6 revisions across 4 distinct days**, which is
+  the whole reason the chart needs a fallback: the fallback is what that
+  database actually renders.
+
+### One endpoint
+
+`/api/admin/dashboard/` returns all six areas. Same reasoning as the staff
+dashboard - the widgets read the same few tables and the first screen after
+signing in is the worst one to make slow - plus one the staff side did not
+have: the nav badges now come from it too. A badge and a dashboard that
+claim the same thing from two sources will eventually disagree.
+
+**Nothing on this screen re-runs an assessment.** The verdicts beside recent
+decisions are the ones stored at submission, which are the ones the reviewer
+acted on. A test patches the pipeline to raise and expects the dashboard not
+to notice.
+
+### The six areas
+
+1. **Needs attention** - full width above everything else, and only rows
+   that are not zero. Pending revisions (with the oldest wait, mentioned
+   only once it is two days or more, so it is a fact about the queue rather
+   than about today), accounts awaiting approval, revisions whose section
+   was edited after the assessment, untagged sections. When all four are
+   zero the strip says so in one line instead of showing four zeroes.
+2. **Activity** - submissions and decisions per day over 30 days.
+3. **By department** - grouped through the *document's* department, not the
+   submitter's: people move between departments and the document is the
+   thing being changed.
+4. **Recent decisions** - and whether each matched the stored assessment.
+   Worth showing because a run of overrules is worth noticing; it says
+   nothing about who was right, which is the one thing it cannot say.
+5. **Upcoming** - unfiltered, unlike the staff version. This is the desk the
+   notices are posted from.
+6. **System** - what is installed, and how the assessments on file were
+   produced. A non-zero `none` count explains why some review screens show
+   less: those revisions predate the pre-check.
+
+### The chart, and when not to draw one
+
+A line through four points spread over a month invites the reader to see a
+slope that is really the gaps between submissions. So the endpoint counts
+**days that carry activity** and reports `enough_for_chart`; below five, the
+same numbers are printed as a table with the empty days dropped, which
+claims nothing about shape.
+
+Deciding it in the endpoint rather than the component puts the rule in one
+place and makes it testable, which it now is in both directions - including
+the case that looks like plenty of data and is not: twenty submissions in
+one afternoon is still one day.
+
+The chart is hand-drawn SVG. Three series over thirty points does not
+justify a charting library and a second set of theme rules, and SVG text
+inherits nothing, so every colour is named from the tokens or it renders
+browser-default black on a paper ground. The three series are distinguished
+by dash pattern as well as hue - same lesson as the diff marks: colour that
+collapses in greyscale is not carrying the distinction.
+
+### Looking at the chart, and what that changed
+
+The chart could not be seen: the real database takes the table path, which
+is the point of the fallback but leaves the other branch unexamined until a
+presentation. `seed_activity` writes demonstration revisions across a
+fortnight and `--clear` removes exactly them - every row it creates is
+tagged in `change_reason`, so the undo is exact rather than a guess at which
+revisions were real. It touches nothing else, so clearing returns the
+database to what it was.
+
+Rendering it showed something the numbers could not. **Three lines of equal
+weight overlap exactly at the zero baseline**, which is most of a quiet
+fortnight, so the only series visible there is whichever was drawn last.
+Submitted is now a filled area: it differs in *form*, which survives both
+the overlap and a greyscale printout, and the two decision lines read
+clearly on top of it.
+
+One thing that pass got wrong first time round: the dashes looked solid in
+the rasterised image, and the obvious conclusion - "too fine to read" - was
+about the renderer, not the chart. PyMuPDF ignores `stroke-dasharray`
+altogether. The patterns were coarsened anyway, since that costs nothing,
+but the lesson is that a rasteriser is not a browser and only the browser
+settles how a dash renders.
+
+### The wording on a decision that differs from the assessment
+
+First draft said **"overruled the assessment"**. Wrong: "overruled" casts
+the assessment as a ruling that was struck down, which frames the reviewer
+and the pipeline as a contest with a right answer. It reads as a scorecard.
+
+It now states what the assessment said - **"assessment said reject"** - with
+"the reviewer's decision stands" on hover. No verb is applied to the person
+at all. The reviewer has context the pipeline does not, disagreeing is a
+normal part of the job, and the only reason to surface it is that a run of
+differences is worth a second look at *the model*.
+
+### Opening one revision from the dashboard
+
+A decision row jumps to `RevisionReview`, which needed a prop it never had.
+It carries the **status as well as the id**: the queue opens on Pending, and
+a decided revision is by definition not in that list, so an id alone would
+land on a tab that cannot show it. The card is highlighted and scrolled to,
+not expanded - the reviewer asked to look at it, not to have a panel opened
+on their behalf.
+
+---
+
 ## Staff portal — phase 3 (Help, and the visual pass)
 
 The manuals themselves are the aesthetic. Everything below answers one

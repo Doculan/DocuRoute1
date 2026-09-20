@@ -2838,3 +2838,220 @@ a:hover { color: var(--brand-500); }
   text-transform: uppercase;
   color: var(--text-muted);
 }
+
+
+/* ============================================================
+   Admin dashboard
+   ------------------------------------------------------------
+   A dashboard is scanned, not read, so the work here is in what
+   reads at a glance: the shape of a bar, the weight of a figure,
+   the one row that is a different colour. Everything keeps the
+   paper-and-ink palette - a chart is still a document.
+   ============================================================ */
+
+.chart-frame {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 0.9rem 1rem 0.7rem;
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-grid {
+  stroke: var(--rule-soft);
+  stroke-width: 1;
+}
+
+/* Chart text is drawn, not laid out, so it does not inherit anything -
+   every colour has to be named here or it renders browser-default black
+   on a paper ground. */
+.chart-tick {
+  fill: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Three series, and the palette has to survive being printed in grey -
+   same lesson as the diff marks. Weight and dash carry the distinction;
+   colour only reinforces it. */
+.chart-line.is-submitted { stroke: var(--brand-600); }
+/* Coarse enough to read at the size this actually renders. The first pass
+   used 4/3 and 1.5/3, which rasterised as two solid lines - the dash was
+   carrying the distinction in greyscale and was not there. */
+.chart-line.is-approved  { stroke: var(--success); stroke-dasharray: 7 4; }
+.chart-line.is-rejected  { stroke: var(--danger); stroke-dasharray: 1 4; stroke-width: 2; }
+
+/* The fill is what separates submitted from the two decision lines, so it
+   has to be visible without competing with them for attention. */
+.chart-area {
+  fill: var(--brand-600);
+  fill-opacity: 0.09;
+  stroke: none;
+}
+
+.chart-dot.is-submitted { fill: var(--brand-600); }
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 0.5rem;
+  padding-left: 1.75rem;
+}
+
+.chart-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.chart-key::before {
+  content: "";
+  width: 14px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+}
+.chart-key.is-submitted::before {
+  border-color: var(--brand-600);
+  height: 7px;
+  background: color-mix(in srgb, var(--brand-600) 9%, transparent);
+}
+.chart-key.is-approved::before  { border-color: var(--success); border-top-style: dashed; }
+.chart-key.is-rejected::before  { border-color: var(--danger); border-top-style: dotted; border-top-width: 3px; }
+
+/* ---- Revisions by department ---- */
+
+.dept-row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.3rem 0.2rem;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background-color var(--t) var(--ease-quart);
+}
+.dept-row:hover { background: var(--paper-3); }
+
+.dept-name {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.dept-bar {
+  display: flex;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+
+.dept-seg { display: block; height: 100%; }
+.dept-seg.is-pending  { background: var(--gold-400); }
+.dept-seg.is-approved { background: var(--success); }
+.dept-seg.is-rejected { background: var(--danger); }
+
+.dept-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Recent decisions ---- */
+
+.decision-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.2rem;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: left;
+  transition: background-color var(--t) var(--ease-quart);
+}
+.decision-row:last-child { border-bottom: 0; }
+.decision-row:hover { background: var(--paper-3); }
+
+.decision-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.decision-who  { white-space: nowrap; }
+.decision-when { white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .decision-row {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    row-gap: 0.15rem;
+  }
+  .decision-who, .decision-when { grid-column: 2; }
+}
+
+/* ---- System figures ---- */
+
+.figure-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.25rem 0.2rem;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background-color var(--t) var(--ease-quart);
+}
+.figure-row:hover { background: var(--paper-3); }
+
+.figure-value {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+.figure-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Arriving at one revision from the dashboard. A brief ring rather than an
+   opened panel: the reviewer asked to look at this one, not to have it
+   acted on for them. */
+.rev-card.is-highlighted {
+  box-shadow: 0 0 0 2px var(--gold-400);
+  animation: revision-found 2.2s var(--ease-quart);
+}
+
+@keyframes revision-found {
+  0%, 70% { box-shadow: 0 0 0 2px var(--gold-400); }
+  100%    { box-shadow: 0 0 0 2px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rev-card.is-highlighted { animation: none; }
+}

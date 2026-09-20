@@ -854,6 +854,216 @@ def admin_announcement_detail(request, announcement_id):
     return Response(_announcement_payload(announcement))
 
 
+# How many separate days must carry activity before a line through them
+# means anything. Four points over four months is not a trend, and drawing
+# it as one invites the reader to see a slope that is really just the gaps
+# between submissions. Below this the same numbers are shown as a table,
+# which makes no claim about the shape.
+ACTIVITY_CHART_MINIMUM_DAYS = 5
+
+# Far enough back to show a term's worth of work, short enough that the
+# series stays readable at dashboard width.
+ACTIVITY_WINDOW_DAYS = 30
+
+
+def _activity_series(window_start, today):
+    """Submissions and decisions per day, oldest first.
+
+    Decisions are counted on the day they were *made*, not the day the
+    revision arrived: the question this answers is how much reviewing is
+    happening, and a decision taken today about a month-old submission is
+    today's work.
+    """
+    submitted = {}
+    for value in ManualRevision.objects.filter(
+        submitted_at__date__gte=window_start
+    ).values_list('submitted_at', flat=True):
+        day = timezone.localtime(value).date()
+        submitted[day] = submitted.get(day, 0) + 1
+
+    approved, rejected = {}, {}
+    for value, outcome in ManualRevision.objects.filter(
+        reviewed_at__isnull=False, reviewed_at__date__gte=window_start
+    ).values_list('reviewed_at', 'status'):
+        day = timezone.localtime(value).date()
+        bucket = approved if outcome == 'approved' else rejected
+        bucket[day] = bucket.get(day, 0) + 1
+
+    days = []
+    cursor = window_start
+    while cursor <= today:
+        days.append({
+            'date': cursor,
+            'submitted': submitted.get(cursor, 0),
+            'approved': approved.get(cursor, 0),
+            'rejected': rejected.get(cursor, 0),
+        })
+        cursor += timedelta(days=1)
+
+    active = sum(1 for d in days
+                 if d['submitted'] or d['approved'] or d['rejected'])
+    return days, active
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def admin_dashboard(request):
+    """Everything the admin landing page shows, in one request.
+
+    Same reasoning as the staff dashboard: the widgets all read the same
+    handful of tables, and the landing page is the worst screen to make
+    slow. It also replaces the two separate count requests the shell was
+    firing on every tab change, so the nav badges and the dashboard can no
+    longer disagree with each other.
+
+    Reads stored assessment fields only. Nothing here re-runs an assessment
+    - a dashboard that quietly reassessed six revisions on every load would
+    be both slow and dishonest, since the figure shown would not be the one
+    the reviewer acted on.
+    """
+    today = timezone.localdate()
+    window_start = today - timedelta(days=ACTIVITY_WINDOW_DAYS - 1)
+
+    pending_revisions = ManualRevision.objects.filter(
+        status='pending'
+    ).select_related('section', 'section__manual', 'submitted_by')
+
+    # -- 1. needs attention --------------------------------------
+    # Only the rows that are not zero reach the screen, but the endpoint
+    # reports all of them: "nothing is waiting" is a real answer and the
+    # client should not have to infer it from a missing key.
+    oldest = pending_revisions.order_by('submitted_at').first()
+    stale = sum(1 for r in pending_revisions if _section_moved_since(r))
+    attention = {
+        'pending_users': CustomUser.objects.filter(
+            is_approved=False, role='staff'
+        ).count(),
+        'pending_revisions': pending_revisions.count(),
+        # A revision whose section was edited after the assessment was made:
+        # the advice on the review screen is about text that has moved, and
+        # the reviewer needs to know before acting on it.
+        'stale_assessments': stale,
+        'oldest_pending_days': (
+            (today - timezone.localtime(oldest.submitted_at).date()).days
+            if oldest else None
+        ),
+        'untagged_sections': ManualSection.objects.filter(
+            Q(tag='') | Q(tag='UNTAGGED')
+        ).count(),
+    }
+
+    # -- 2. activity over time -----------------------------------
+    days, active_days = _activity_series(window_start, today)
+    activity = {
+        'days': [{
+            'date': d['date'].isoformat(),
+            'submitted': d['submitted'],
+            'approved': d['approved'],
+            'rejected': d['rejected'],
+        } for d in days],
+        'active_days': active_days,
+        'window_days': ACTIVITY_WINDOW_DAYS,
+        # Decided here rather than in the component so the rule lives in one
+        # place and can be tested.
+        'enough_for_chart': active_days >= ACTIVITY_CHART_MINIMUM_DAYS,
+        'minimum_days': ACTIVITY_CHART_MINIMUM_DAYS,
+        'totals': {
+            'submitted': sum(d['submitted'] for d in days),
+            'approved': sum(d['approved'] for d in days),
+            'rejected': sum(d['rejected'] for d in days),
+        },
+    }
+
+    # -- 3. revisions by department ------------------------------
+    # Grouped through the section's manual, which is where a revision's
+    # department actually comes from - the submitter's own department can
+    # differ after a transfer, and the document is the thing being changed.
+    by_department = {}
+    for name, outcome in ManualRevision.objects.values_list(
+        'section__manual__department__name', 'status'
+    ):
+        row = by_department.setdefault(
+            name or 'Unassigned',
+            {'department': name or 'Unassigned',
+             'pending': 0, 'approved': 0, 'rejected': 0, 'total': 0},
+        )
+        if outcome in row:
+            row[outcome] += 1
+        row['total'] += 1
+    departments = sorted(
+        by_department.values(),
+        key=lambda r: (-r['pending'], -r['total'], r['department']),
+    )
+
+    # -- 4. recent decisions -------------------------------------
+    decisions = [{
+        'revision_id': r.id,
+        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
+        'section': r.section.subtitle if r.section else 'N/A',
+        'status': r.status,
+        'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
+        'reviewed_by': r.reviewed_by.username if r.reviewed_by else None,
+        'at': r.reviewed_at,
+        # What the pipeline had said, so a pattern of overruling it is
+        # visible. Stored, never recomputed.
+        'ai_verdict': r.ai_verdict or None,
+        'agreed': (
+            None if not r.ai_verdict else
+            (r.status == 'approved') == (r.ai_verdict == 'approve')
+        ),
+    } for r in ManualRevision.objects.filter(reviewed_at__isnull=False)
+        .select_related('section', 'section__manual', 'submitted_by', 'reviewed_by')
+        .order_by('-reviewed_at')[:6]]
+
+    # -- 5. upcoming ---------------------------------------------
+    # The admin sees every department's notices, not only their own: this is
+    # the posting desk, and the point is to see what has been scheduled.
+    scheduled = Announcement.objects.filter(
+        active=True, date__gte=today
+    ).select_related('department').order_by('date')
+    upcoming = [{
+        'id': a.id,
+        'title': a.title,
+        'date': a.date,
+        'is_today': a.date == today,
+        'department': a.department.name if a.department else None,
+    } for a in scheduled[:5]]
+
+    # -- 6. system state -----------------------------------------
+    # How the assessments on file were produced. "none" is the legacy
+    # fallback and a count above zero means old revisions predate the
+    # pre-check, which explains why their review screens look different.
+    sources = {'staff_precheck': 0, 'admin_legacy': 0, 'none': 0}
+    for source in ManualRevision.objects.values_list('ai_source', flat=True):
+        key = source or 'none'
+        if key in sources:
+            sources[key] += 1
+
+    system = {
+        'manuals': Manual.objects.count(),
+        'sections': ManualSection.objects.count(),
+        'departments': Department.objects.count(),
+        'staff': CustomUser.objects.filter(role='staff', is_approved=True).count(),
+        'admins': CustomUser.objects.filter(role='admin').count(),
+        'empty_departments': Department.objects.filter(manuals__isnull=True).count(),
+        'revisions_total': ManualRevision.objects.count(),
+        'assessment_sources': sources,
+        'banners_live': Announcement.objects.filter(
+            active=True, date__isnull=True
+        ).count(),
+    }
+
+    return Response({
+        'attention': attention,
+        'activity': activity,
+        'departments': departments,
+        'decisions': decisions,
+        'upcoming': upcoming,
+        'upcoming_total': scheduled.count(),
+        'system': system,
+    })
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_dashboard(request):
