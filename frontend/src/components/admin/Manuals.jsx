@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
 // Empty on purpose: every request goes out as a relative path, so the
 // browser sends it to whatever host served the page and Vite's proxy
@@ -228,19 +229,37 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
     }
   };
 
-  const handleDelete = async (id, title) => {
-    if (!confirm(`Delete "${title}"? All its sections and revisions will be deleted too.`)) return;
+  // Single and bulk share one prompt: they destroy the same thing, and a
+  // bulk delete is exactly the case a token is for - one confirmation
+  // covering the whole set rather than a password per manual.
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  const runDelete = async (reauthToken) => {
+    const target = pendingDelete;
+    setPendingDelete(null);
+
     const token = localStorage.getItem("access_token");
     if (!token) {
       showMessage("❌ Please log in first.");
       return;
     }
-    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
+    const headers = {
+      Authorization: `Bearer ${token}`, ...reauthHeader(reauthToken),
+    };
+
     try {
-      await axios.delete(`/api/manuals/${id}/delete/`, authHeaders);
-      showMessage(`🗑️ "${title}" deleted.`);
+      await Promise.all(
+        target.ids.map((id) => axios.delete(`/api/manuals/${id}/delete/`, { headers }))
+      );
+      showMessage(target.ids.length === 1
+        ? `🗑️ "${target.label}" deleted.`
+        : `🗑️ Deleted ${target.ids.length} manuals.`);
+      setSelectedManualIds([]);
       fetchData();
-    } catch { showMessage("❌ Failed to delete."); }
+    } catch (err) {
+      console.error(err);
+      showMessage(err.response?.data?.error || "❌ Failed to delete.");
+    }
   };
 
   const toggleManualSelection = (manualId) => {
@@ -259,30 +278,15 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedManualIds.length === 0) {
       showMessage("❌ Select at least one manual first.");
       return;
     }
-    if (!confirm(`Delete ${selectedManualIds.length} selected manual(s)? This cannot be undone.`)) return;
-    const token = localStorage.getItem("access_token");
-    if (!token) {
-      showMessage("❌ Please log in first.");
-      return;
-    }
-    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
-
-    try {
-      await Promise.all(
-        selectedManualIds.map((id) => axios.delete(`/api/manuals/${id}/delete/`, authHeaders))
-      );
-      showMessage(`🗑️ Deleted ${selectedManualIds.length} manuals.`);
-      setSelectedManualIds([]);
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      showMessage("❌ Failed to delete selected manuals.");
-    }
+    setPendingDelete({
+      ids: [...selectedManualIds],
+      label: `${selectedManualIds.length} manuals`,
+    });
   };
 
   const getDepth = (index) => {
@@ -857,7 +861,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                           <button className="btn btn-ghost btn-sm" onClick={() => toggleExpandRow(m.id)}>
                             ◀ Collapse
                           </button>
-                          <button className="btn btn-danger-soft btn-sm" onClick={() => handleDelete(m.id, m.title)}>
+                          <button className="btn btn-danger-soft btn-sm" onClick={() => setPendingDelete({ ids: [m.id], label: m.title })}>
                             Delete
                           </button>
                         </div>
@@ -901,6 +905,21 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
             </div>
           )}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDestructive
+          title={pendingDelete.ids.length === 1
+            ? `Delete ${pendingDelete.label}?`
+            : `Delete ${pendingDelete.ids.length} manuals?`}
+          body={pendingDelete.ids.length === 1
+            ? "Its sections and every revision proposed against them are deleted with it. The master copy PDF stays on disk, so the document can be imported again - the extracted text, the tagging and the history cannot."
+            : `Their sections and every revision proposed against them are deleted too. The master copy PDFs stay on disk; the extracted text and history do not.`}
+          confirmLabel={pendingDelete.ids.length === 1
+            ? "Delete manual" : `Delete ${pendingDelete.ids.length} manuals`}
+          onConfirm={runDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </div>
   );

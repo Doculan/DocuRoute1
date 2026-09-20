@@ -1697,6 +1697,91 @@ on their behalf.
 
 ---
 
+## Admin portal — phase 3 (safeguards and attribution)
+
+Three changes that look unrelated and answer one question: afterwards, can
+anyone tell what happened and on whose authority?
+
+### What was already there
+
+- **Every destructive action had `window.confirm` and nothing else** - seven
+  of them, across Departments, Manuals (single and bulk), Sections and
+  Users. `confirm` asks whether you meant it, which is the wrong question
+  when the laptop has been signed in and left open in a shared office.
+- **Section edits were already snapshotted.** Both `update_section` and
+  `review_revision` wrote `SectionHistory`, so "log direct edits" was not
+  the gap it sounded like.
+- Reviewer notes were a **placeholder**, not a label, and the staff side
+  already called the same text "the reviewer's feedback".
+
+### Re-authentication
+
+`POST /api/auth/confirm-password/` exchanges the account's password for a
+short-lived signed token; the destructive endpoints require it in
+`X-Reauth-Token`.
+
+A token rather than the password itself, for three reasons. The password
+never travels with the destructive request. One confirmation covers a bulk
+delete instead of a password per manual. And `TimestampSigner` keeps the
+expiry in the signature, so there is no session or cache row to go stale -
+a token still verifies after a restart, which matters because one that
+silently died on deploy would read to the admin as a rejected password.
+
+The three failures are told apart on purpose. **Expired has to be
+distinguishable from wrong**, or someone who took five minutes over a
+confirmation is told their own password is incorrect, and the next thing
+they do is try to reset it.
+
+### The guard that would not have guarded anything
+
+`delete_section` was the obvious route to protect. But the admin Sections
+screen called **`review-delete` first** and only fell back to it - so
+guarding the admin route alone would have secured the path nothing took,
+and every deletion would have gone through the other one unchallenged.
+
+Both are guarded now, and the screen calls the admin route directly. The
+stale comment on the fallback said "so staff can delete during review";
+no staff screen calls that endpoint, and its permission was left as it was
+rather than narrowed on a guess about who it was for.
+
+### What is *not* guarded, deliberately
+
+Approving a user, reviewing a revision, deactivating an announcement.
+Asking for a password on a reversible action is not extra safety - it is
+what teaches people to type the password without reading the prompt. On
+announcements the prompt still offers "deactivate instead", because that
+keeps the record of what was posted.
+
+### Attribution: why a version exists
+
+`SectionHistory` gains `source`, `change_reason` and a link back to the
+revision. An approved revision and an admin typing into the edit box used
+to produce identical rows.
+
+- **`source`** is set at the write, not inferred from whether a revision
+  happens to exist - a revision can be deleted, and the history has to
+  stay true afterwards.
+- **The reason is copied, not referenced**, for the same reason. The link
+  is kept too, for as long as it resolves.
+- **Old rows default to `unknown`, not `direct`.** Defaulting them would
+  record a guess as a fact, and an honest gap is better in an audit trail.
+
+The direct edit is the only path with no submission behind it - no
+submitter, no reason, no review - so it is the only place a reason can be
+asked for, and the edit form now asks. **Recorded, not enforced**: an admin
+fixing a typo mid-audit should not be blocked by a form, and a required
+field would be full of "." within a week.
+
+### Reviewer notes are feedback to the submitter
+
+Renamed, and promoted from a placeholder to a real label - a placeholder
+disappears the moment you start typing, which is exactly when it matters
+that the person who submitted will read this. The hint says where it
+appears and that returning a revision without one leaves them nothing to
+act on.
+
+---
+
 ## Staff portal — phase 3 (Help, and the visual pass)
 
 The manuals themselves are the aesthetic. Everything below answers one

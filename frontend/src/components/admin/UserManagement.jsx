@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
 export default function UserManagement() {
   const [pendingUsers, setPendingUsers] = useState([]);
@@ -7,6 +8,9 @@ export default function UserManagement() {
   const [activeTab, setActiveTab] = useState("pending");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  // Rejecting deletes the account. It sits next to Approve, which is
+  // exactly why it should not be a single click.
+  const [pendingReject, setPendingReject] = useState(null);
 
   const token = localStorage.getItem("access_token");
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
@@ -46,16 +50,18 @@ export default function UserManagement() {
     } catch { showMessage("❌ Failed to approve."); }
   };
 
-  const handleReject = async (userId, username) => {
-    if (!confirm(`Reject and delete ${username}?`)) return;
+  const handleReject = async (token) => {
+    const { id, username } = pendingReject;
+    setPendingReject(null);
     try {
-      await axios.delete(
-        `/api/admin/reject-user/${userId}/`,
-        authHeaders
-      );
+      await axios.delete(`/api/admin/reject-user/${id}/`, {
+        headers: { ...authHeaders.headers, ...reauthHeader(token) },
+      });
       showMessage(`🗑️ ${username} rejected.`);
       fetchUsers();
-    } catch { showMessage("❌ Failed to reject."); }
+    } catch (err) {
+      showMessage(err.response?.data?.error || "❌ Failed to reject.");
+    }
   };
 
   return (
@@ -127,7 +133,7 @@ export default function UserManagement() {
                           <button className="btn btn-success btn-sm" onClick={() => handleApprove(user.id, user.username)}>
                             Approve
                           </button>
-                          <button className="btn btn-danger-soft btn-sm" onClick={() => handleReject(user.id, user.username)}>
+                          <button className="btn btn-danger-soft btn-sm" onClick={() => setPendingReject({ id: user.id, username: user.username })}>
                             Reject
                           </button>
                         </div>
@@ -170,6 +176,16 @@ export default function UserManagement() {
             </table>
           </div>
         </div>
+      )}
+
+      {pendingReject && (
+        <ConfirmDestructive
+          title={`Reject ${pendingReject.username}?`}
+          body={`The account is deleted, not just refused. ${pendingReject.username} would have to register again, and anything they had submitted goes with it.`}
+          confirmLabel="Reject and delete"
+          onConfirm={handleReject}
+          onCancel={() => setPendingReject(null)}
+        />
       )}
     </div>
   );

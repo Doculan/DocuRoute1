@@ -103,7 +103,26 @@ class ManualSection(models.Model):
 
 
 class SectionHistory(models.Model):
-    """Snapshot of a section before each edit."""
+    """Snapshot of a section before each edit.
+
+    Every version was already recorded, but no version could say *why* it
+    existed: an approved revision and an admin typing into the edit box
+    produced identical rows. For a controlled document that is the part
+    that matters - clause 7.5.3 is about knowing what changed, who changed
+    it and on what authority, and the first two were the only ones here.
+    """
+
+    # How this version came about. Deliberately not inferred from whether a
+    # revision happens to exist: a revision can be deleted, and the history
+    # has to stay true afterwards.
+    SOURCE_CHOICES = [
+        ('revision', 'Approved revision'),
+        ('direct', 'Direct edit by an admin'),
+        ('merge', 'Merged with another section'),
+        ('extraction', 'Re-extracted from the master copy'),
+        ('unknown', 'Recorded before edits were attributed'),
+    ]
+
     section = models.ForeignKey(
         ManualSection,
         on_delete=models.CASCADE,
@@ -119,6 +138,31 @@ class SectionHistory(models.Model):
         null=True, blank=True
     )
     edited_at = models.DateTimeField(auto_now_add=True)
+
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        # Rows written before this field existed genuinely are unknown.
+        # Defaulting them to 'direct' would be a guess recorded as a fact,
+        # which is worse than an honest gap in an audit trail.
+        default='unknown',
+    )
+    change_reason = models.TextField(
+        blank=True,
+        help_text="Why this change was made. Carried over from the "
+                  "submitter's reason on an approved revision, typed by "
+                  "the admin on a direct edit.",
+    )
+    # Set when this version came from a revision, so the history can point
+    # back at the submission and its assessment. SET_NULL rather than
+    # CASCADE: deleting a revision must not delete the record that the
+    # document changed.
+    revision = models.ForeignKey(
+        'ManualRevision',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='section_versions',
+    )
 
     class Meta:
         ordering = ['version']

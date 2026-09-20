@@ -743,12 +743,26 @@ export default function RevisionReview({ openRevision = null }) {
                 <div style={{ marginTop: "1rem" }}>
                   {selectedRevision === r.id ? (
                     <div className="col anim-fade-up">
-                      <textarea
-                        className="textarea"
-                        placeholder="Reviewer notes (optional)"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                      />
+                      {/* A real label, not just a placeholder: the
+                          placeholder disappears the moment you start
+                          typing, which is exactly when it matters that
+                          this is read by the person who submitted. */}
+                      <div className="field">
+                        <label className="label" htmlFor={`feedback-${r.id}`}>
+                          Feedback to the submitter
+                        </label>
+                        <textarea
+                          id={`feedback-${r.id}`}
+                          className="textarea"
+                          placeholder="What they should change, or why this was approved as it stands"
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                        />
+                        <p className="subtle text-xs" style={{ margin: 0 }}>
+                          Shown to them on My Revisions. Returning a revision
+                          without a note leaves them nothing to act on.
+                        </p>
+                      </div>
                       <div className="row-wrap" style={{ gap: "0.5rem" }}>
                         <button className="btn btn-success" onClick={() => handleReview(r.id, "approved")}>
                           Approve

@@ -12,6 +12,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import Announcement, CustomUser, Department
+from api.views import issue_reauth_token
 
 
 class AdminAnnouncementTests(TestCase):
@@ -130,10 +131,21 @@ class AdminAnnouncementTests(TestCase):
     def test_deleting_removes_it(self):
         created = self.post(title="Mistyped")
         response = self.client.delete(
-            f"/api/admin/announcements/{created.data['id']}/"
+            f"/api/admin/announcements/{created.data['id']}/",
+            HTTP_X_REAUTH_TOKEN=issue_reauth_token(self.admin),
         )
         self.assertEqual(response.status_code, 204)
         self.assertEqual(Announcement.objects.count(), 0)
+
+    def test_deleting_without_confirming_a_password_is_refused(self):
+        """Deleting destroys the record of what was posted. Deactivating,
+        which keeps it, is the one-click move and stays that way."""
+        created = self.post(title="Mistyped")
+        response = self.client.delete(
+            f"/api/admin/announcements/{created.data['id']}/"
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Announcement.objects.count(), 1)
 
     # -- it actually reaches the staff dashboard ----------------
 

@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
-    register, login,
+    register, login, confirm_password,
     pending_users, approved_users, approve_user, reject_user,
     list_departments, create_department, delete_department,
     staff_list_manuals, staff_my_revisions, staff_sections, staff_mark_feedback_seen,
@@ -18,6 +18,7 @@ from .views import (
 urlpatterns = [
     # Auth
     path('auth/register/', register),
+    path('auth/confirm-password/', confirm_password),
     path('auth/login/', login),
     # Exchanges the refresh token for a new access token, so a session does not
     # die after ACCESS_TOKEN_LIFETIME while the user is still working.

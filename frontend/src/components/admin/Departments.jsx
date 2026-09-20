@@ -1,11 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
 export default function Departments() {
   const [departments, setDepartments] = useState([]);
   const [newDeptName, setNewDeptName] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  // Holds what was chosen until the password prompt comes back with a
+  // token. The widest blast radius in the application: deleting a
+  // department takes every manual in it.
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const token = localStorage.getItem("access_token");
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
@@ -46,16 +51,18 @@ export default function Departments() {
     }
   };
 
-  const handleDelete = async (id, name) => {
-    if (!confirm(`Delete "${name}"? This will also delete all its manuals.`)) return;
+  const handleDelete = async (token) => {
+    const { id, name } = pendingDelete;
+    setPendingDelete(null);
     try {
-      await axios.delete(
-        `/api/departments/${id}/delete/`,
-        authHeaders
-      );
+      await axios.delete(`/api/departments/${id}/delete/`, {
+        headers: { ...authHeaders.headers, ...reauthHeader(token) },
+      });
       showMessage(`🗑️ "${name}" deleted.`);
       fetchDepartments();
-    } catch { showMessage("❌ Failed to delete."); }
+    } catch (err) {
+      showMessage(err.response?.data?.error || "❌ Failed to delete.");
+    }
   };
 
   return (
@@ -112,7 +119,10 @@ export default function Departments() {
                       <span className="table-actions on-hover">
                         <button
                           className="btn btn-danger-soft btn-sm"
-                          onClick={() => handleDelete(dept.id, dept.name)}
+                          onClick={() => setPendingDelete({
+                            id: dept.id, name: dept.name,
+                            manuals: dept.manual_count,
+                          })}
                         >
                           Delete
                         </button>
@@ -124,6 +134,16 @@ export default function Departments() {
             </table>
           </div>
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDestructive
+          title={`Delete ${pendingDelete.name}?`}
+          body={`Every manual in ${pendingDelete.name} is deleted with it, along with their sections and every revision proposed against them. The master copy PDFs stay on disk, but the extracted text and all of its history do not.`}
+          confirmLabel="Delete department"
+          onConfirm={handleDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </div>
   );

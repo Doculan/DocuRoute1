@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 import DocTable from "../DocTable";
 import { parseTableRow, isTableSeparator } from "../../docTable";
 
@@ -252,6 +253,10 @@ export default function Sections({ openManualId = null }) {
   const [form, setForm] = useState({ subtitle: "", content: "", page_number: "", order: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingSection, setEditingSection] = useState(null);
+  // Why this edit is being made. Its own state, not part of editForm,
+  // so opening the next section does not arrive prefilled with the
+  // last reason typed - which would get saved unread.
+  const [editReason, setEditReason] = useState("");
   const [editForm, setEditForm] = useState({ subtitle: "", content: "", page_number: "", order: "", tag: "" });
   const [mergeSource, setMergeSource] = useState(null);
   const [mergeTarget, setMergeTarget] = useState(null);
@@ -451,6 +456,7 @@ export default function Sections({ openManualId = null }) {
       order: section.order,
       tag: section.tag,
     });
+    setEditReason("");
     setShowForm(false);
     setShowDiff(false);
     setIsFullDoc(false);
@@ -467,35 +473,37 @@ export default function Sections({ openManualId = null }) {
           page_number: editForm.page_number || null,
           order: editForm.order,
           tag: editForm.tag,
+          change_reason: editReason,
         },
         getAuth()
       );
       showMsg(`✅ Section updated — Section v${res.data.version} · Document v${res.data.manual_version} — Tag: ${res.data.tag}`);
       setEditingSection(null);
+      setEditReason("");
       await fetchSections(selectedManual.id);
     } catch (err) {
       showMsg(err.response?.data?.error || "❌ Failed to update section.");
     }
   };
 
-  const handleDeleteSection = async (id, subtitle) => {
-    if (!confirm(`Delete section "${subtitle}"?`)) return;
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  const handleDeleteSection = async (reauthToken) => {
+    const { id } = pendingDelete;
+    setPendingDelete(null);
+    const auth = getAuth();
     try {
-      // Prefer review-delete endpoint so staff can delete during review.
-      await axios.delete(`/api/sections/${id}/review-delete/`, getAuth());
+      // The admin route, and only it. This screen used to try
+      // review-delete first and fall back here, which would have left the
+      // guarded route as the one nothing ever took.
+      await axios.delete(`/api/sections/${id}/delete/`, {
+        headers: { ...auth.headers, ...reauthHeader(reauthToken) },
+      });
       showMsg("🗑️ Section deleted.");
       if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
       await fetchSections(selectedManual.id);
-    } catch {
-      try {
-        // Fallback to admin delete endpoint
-        await axios.delete(`/api/sections/${id}/delete/`, getAuth());
-        showMsg("🗑️ Section deleted.");
-        if (activeSection?.id === id) { setActiveSection(null); setIsFullDoc(true); }
-        await fetchSections(selectedManual.id);
-      } catch {
-        showMsg("❌ Failed to delete.");
-      }
+    } catch (err) {
+      showMsg(err.response?.data?.error || "❌ Failed to delete.");
     }
   };
 
@@ -570,7 +578,7 @@ export default function Sections({ openManualId = null }) {
           <button
             className="icon-btn"
             title="Delete"
-            onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id, section.subtitle); }}
+            onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: section.id, subtitle: section.subtitle }); }}
           >
             🗑️
           </button>
@@ -885,6 +893,23 @@ export default function Sections({ openManualId = null }) {
                       <option value="UNTAGGED">UNTAGGED</option>
                     </select>
                   </div>
+                  <div className="field">
+                    <label className="label" htmlFor="direct-edit-reason">
+                      Why this change is being made
+                    </label>
+                    <input
+                      id="direct-edit-reason"
+                      className="input"
+                      value={editReason}
+                      onChange={(e) => setEditReason(e.target.value)}
+                      placeholder="e.g. Corrected the office named in the approval step"
+                    />
+                    <p className="subtle text-xs" style={{ margin: 0 }}>
+                      Recorded in the section&apos;s history. A staff revision
+                      carries the submitter&apos;s reason; this is the only
+                      place an edit made here can be given one.
+                    </p>
+                  </div>
                   <p className="subtle text-xs">
                     💡 Leave the tag auto-assigned, or select one manually to override.
                   </p>
@@ -1002,6 +1027,16 @@ export default function Sections({ openManualId = null }) {
             )}
           </section>
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDestructive
+          title="Delete this section?"
+          body={`"${pendingDelete.subtitle}" and its version history are deleted. Revisions submitted against it go too, including any still waiting for review.`}
+          confirmLabel="Delete section"
+          onConfirm={handleDeleteSection}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </div>
   );

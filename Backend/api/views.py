@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db.models import Q
@@ -35,6 +36,102 @@ class IsAdminRole(BasePermission):
     """
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.role == 'admin'
+
+
+# ─── RE-AUTHENTICATION ───────────────────────────────────────
+#
+# A JWT says who is holding the laptop, not who is sitting at it. For
+# actions that cannot be undone - deleting a department takes every manual
+# in it with it - that is the wrong question, so those endpoints ask for
+# the password again.
+#
+# The password buys a short-lived signed token rather than travelling with
+# every delete: one confirmation can then cover a bulk operation without
+# the browser holding a password across several requests, and nothing has
+# to be stored server-side. TimestampSigner enforces the expiry, so there
+# is no session or cache row to go stale, and a token from a restarted
+# process is still valid - which matters, because a token that silently
+# expired on deploy would read to the admin as a rejected password.
+
+REAUTH_SALT = 'api.reauth'
+
+# Long enough to read a confirmation and decide, short enough that a token
+# left in a tab is not a standing permission to delete things.
+REAUTH_MAX_AGE_SECONDS = 300
+
+REAUTH_HEADER = 'HTTP_X_REAUTH_TOKEN'
+
+
+def issue_reauth_token(user):
+    return TimestampSigner(salt=REAUTH_SALT).sign(str(user.pk))
+
+
+def reauth_failure(request):
+    """``None`` when the caller has confirmed their password recently, or a
+    response explaining what is missing.
+
+    The three failures are told apart deliberately. "Expired" has to be
+    distinguishable from "wrong", or an admin who took five minutes over a
+    confirmation is told their own password is wrong, and the next thing
+    they do is try to reset it.
+    """
+    token = request.META.get(REAUTH_HEADER, '')
+    if not token:
+        return Response(
+            {'error': 'Confirm your password to continue.',
+             'reason': 'reauth_required'},
+            status=403,
+        )
+
+    try:
+        signed_pk = TimestampSigner(salt=REAUTH_SALT).unsign(
+            token, max_age=REAUTH_MAX_AGE_SECONDS
+        )
+    except SignatureExpired:
+        return Response(
+            {'error': 'That confirmation has expired. Please confirm again.',
+             'reason': 'reauth_expired'},
+            status=403,
+        )
+    except BadSignature:
+        return Response(
+            {'error': 'That confirmation could not be verified.',
+             'reason': 'reauth_invalid'},
+            status=403,
+        )
+
+    # A token proves a password was entered; it must also be *this*
+    # account's, or one admin's confirmation would authorise another's
+    # deletions on a shared browser.
+    if signed_pk != str(request.user.pk):
+        return Response(
+            {'error': 'That confirmation belongs to a different account.',
+             'reason': 'reauth_invalid'},
+            status=403,
+        )
+    return None
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confirm_password(request):
+    """Exchange the current account's password for a short-lived token.
+
+    Separate from login on purpose: this issues nothing that can be used to
+    sign in, and a failure here must not look like a session problem or the
+    client will send the admin back to the login screen mid-delete.
+    """
+    password = request.data.get('password', '')
+    if not password:
+        return Response({'error': 'Enter your password.'}, status=400)
+
+    if not request.user.check_password(password):
+        return Response({'error': 'That password is not correct.'}, status=403)
+
+    return Response({
+        'token': issue_reauth_token(request.user),
+        'expires_in': REAUTH_MAX_AGE_SECONDS,
+    })
 
 
 # ─── HELPERS ─────────────────────────────────────────────────
@@ -516,6 +613,16 @@ def approve_user(request, user_id):
 @api_view(['DELETE'])
 @permission_classes([IsAdminRole])
 def reject_user(request, user_id):
+    """Rejecting a registration deletes the account, so it re-authenticates.
+
+    Not because rejecting is a grave act, but because it is indistinguishable
+    from approving by position on screen, and the undo is "ask them to
+    register again".
+    """
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         user = CustomUser.objects.get(id=user_id)
     except CustomUser.DoesNotExist:
@@ -549,6 +656,12 @@ def create_department(request):
 @api_view(['DELETE'])
 @permission_classes([IsAdminRole])
 def delete_department(request, dept_id):
+    """The widest blast radius in the application: every manual in the
+    department goes with it, and every section and revision under those."""
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         dept = Department.objects.get(id=dept_id)
     except Department.DoesNotExist:
@@ -842,6 +955,11 @@ def admin_announcement_detail(request, announcement_id):
         return Response(_announcement_payload(announcement))
 
     if request.method == 'DELETE':
+        # Deactivating is the reversible move and stays a single click;
+        # deleting destroys the record of what was posted, so it asks.
+        failure = reauth_failure(request)
+        if failure:
+            return failure
         announcement.delete()
         return Response(status=204)
 
@@ -1555,6 +1673,13 @@ def confirm_manual_sections(request, manual_id):
 @api_view(['DELETE'])
 @permission_classes([IsAdminRole])
 def delete_manual(request, manual_id):
+    """Takes the manual's sections and their revision history with it. The
+    PDF on disk survives, so it can be imported again - the extracted text,
+    the tagging and every proposed change to it cannot."""
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         manual = Manual.objects.get(id=manual_id)
     except Manual.DoesNotExist:
@@ -1775,6 +1900,16 @@ def update_section(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
+    # A direct edit is the only way a controlled document changes without
+    # a revision behind it: no submitter, no reason, no review. The reason
+    # is asked for here because this is the only place it can be asked -
+    # every other path inherits one from the submission.
+    #
+    # It is recorded rather than enforced. An admin fixing a typo mid-audit
+    # should not be blocked by a form, and a required field would be filled
+    # with "." within a week, which is worse than an honest blank.
+    reason = (request.data.get('change_reason') or '').strip()
+
     SectionHistory.objects.create(
         section=section,
         version=section.version,
@@ -1782,6 +1917,8 @@ def update_section(request, section_id):
         content=section.content,
         tag=section.tag,
         edited_by=request.user,
+        source='direct',
+        change_reason=reason,
     )
 
     section.subtitle = request.data.get('subtitle', section.subtitle)
@@ -1829,6 +1966,11 @@ def update_section(request, section_id):
 @api_view(['DELETE'])
 @permission_classes([IsAdminRole])
 def delete_section(request, section_id):
+    """A section carries its own version history, which goes with it."""
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         section = ManualSection.objects.get(id=section_id)
     except ManualSection.DoesNotExist:
@@ -1840,7 +1982,20 @@ def delete_section(request, section_id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def review_delete_section(request, section_id):
-    """Delete a section during review (staff can delete within their department)."""
+    """Delete a section during review (staff can delete within their department).
+
+    Guarded like the admin route, because it deletes the same row. The admin
+    Sections screen used to call this one *first* and fall back to
+    `delete_section`, so asking for a password on the admin route alone
+    would have secured a path nothing took - the deletion would simply have
+    gone through here. No staff screen calls this endpoint today; the
+    permission is left as it was rather than narrowed on a guess about who
+    it was for.
+    """
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         section = ManualSection.objects.get(id=section_id)
     except ManualSection.DoesNotExist:
@@ -1894,6 +2049,8 @@ def merge_sections(request, section_id):
         content=target.content,
         tag=target.tag,
         edited_by=request.user,
+        source='merge',
+        change_reason=f'Merged with "{source.subtitle}".',
     )
 
     # Merge: append source subtitle + content to target (keep source title as part of merged section)
@@ -1928,7 +2085,7 @@ def section_history(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    history = section.history.all().order_by('version')
+    history = section.history.select_related('edited_by').order_by('version')
     data = [{
         'version': h.version,
         'subtitle': h.subtitle,
@@ -1936,8 +2093,15 @@ def section_history(request, section_id):
         'tag': h.tag,
         'edited_by': h.edited_by.username if h.edited_by else 'N/A',
         'edited_at': h.edited_at,
+        'source': h.source,
+        'source_label': h.get_source_display(),
+        'change_reason': h.change_reason,
+        'revision_id': h.revision_id,
     } for h in history]
 
+    # The live section, appended as the last row. It has no source of its
+    # own: a snapshot records the state *before* an edit, so what produced
+    # the current text is recorded on whichever row comes next.
     data.append({
         'version': section.version,
         'subtitle': section.subtitle,
@@ -1945,6 +2109,10 @@ def section_history(request, section_id):
         'tag': section.tag,
         'edited_by': 'Current',
         'edited_at': None,
+        'source': 'current',
+        'source_label': 'Current version',
+        'change_reason': '',
+        'revision_id': None,
     })
 
     return Response(data)
@@ -2538,6 +2706,9 @@ def review_revision(request, revision_id):
     if new_status == 'approved':
         section = revision.section
 
+        # The reason is the submitter's own, copied rather than referenced:
+        # a revision can be deleted later and the document's history has to
+        # survive that. The link is kept too, for as long as it resolves.
         SectionHistory.objects.create(
             section=section,
             version=section.version,
@@ -2545,6 +2716,9 @@ def review_revision(request, revision_id):
             content=section.content,
             tag=section.tag,
             edited_by=revision.submitted_by,
+            source='revision',
+            change_reason=revision.change_reason or '',
+            revision=revision,
         )
 
         if revision.merge_type == 'merge' and revision.merge_section_ids:
