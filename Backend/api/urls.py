@@ -1,6 +1,7 @@
 from django.urls import path
 from . import organisation_views as org
 from . import series_views as series
+from . import people_views as people
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -37,6 +38,16 @@ urlpatterns = [
     path('org/documents/', series.documents_list),
     path('org/documents/<int:document_id>/', series.document_detail),
     path('org/documents/<int:document_id>/offices/', series.document_offices),
+
+    # People are deactivated, never deleted; assignments are ended with a
+    # date, never removed.
+    path('org/people/', people.people),
+    path('org/people/<int:person_id>/approve/', people.approve_person),
+    path('org/people/<int:person_id>/deactivate/', people.deactivate_person),
+    path('org/people/<int:person_id>/reactivate/', people.reactivate_person),
+    path('org/people/<int:person_id>/assign/', people.assign_position),
+    path('org/assignments/<int:assignment_id>/end/', people.end_assignment),
+    path('org/positions/', people.positions_by_office),
 
     # Auth
     path('auth/register/', register),

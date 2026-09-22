@@ -228,6 +228,18 @@ class PositionAssignment(models.Model):
     # Null while current. Ending an assignment sets this; nothing is deleted.
     ends_on = models.DateField(null=True, blank=True)
 
+    # Acting or officer-in-charge. The form has one signature block for
+    # the Department/Unit Head, and somebody signs it while a post is
+    # vacant - so the system has to be able to say the appointment was
+    # temporary rather than pretend it was permanent or refuse to record
+    # it at all.
+    #
+    # It does not change what the holder may do. An OIC concurs for the
+    # office exactly as a substantive head does; the difference is what
+    # the record says afterwards, which is the whole reason for keeping
+    # dated assignments.
+    is_acting = models.BooleanField(default=False)
+
     assigned_by = models.ForeignKey(
         'CustomUser', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='assignments_made',
@@ -279,7 +291,8 @@ class PositionAssignment(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.user} — {self.position}"
+        acting = " (acting)" if self.is_acting else ""
+        return f"{self.user} — {self.position}{acting}"
 
     @property
     def is_current(self):

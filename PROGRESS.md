@@ -348,6 +348,166 @@ asserts the message rather than the status.
 
 ---
 
+## Phase 1b-iii — what was built (awaiting Checkpoint B3)
+
+### The three things this phase was asked to confirm
+
+**One home for the QMS positions, by data.** IMR and Document Custodian
+are positions like any other, attached to whichever office the system
+admin chooses. The two QMS offices on the 2022 chart having merged means
+both are entered against one office - and **nothing in the code says so**.
+Tested in all three shapes: both in one office, both held by one person,
+and split across two offices again.
+
+Per series resolution is **not built and not prevented**. There is one set
+of QMS positions and whoever currently holds them acts on everything;
+routing per series would be a field on `ManualSeries` pointing at an
+office, and nothing in `people_views.py` would have to change.
+
+`SOLE_HOLDER_KINDS` stays `(HEAD,)`, so two people may currently hold the
+IMR post - the permissive choice until question A is answered.
+
+**Acting / officer-in-charge** is a flag on the assignment. Somebody signs
+the Head's block while a post is vacant, so the system has to record that
+without either pretending the appointment was permanent or refusing it.
+
+It changes **nothing about what the holder may do** - an OIC concurs for
+the office exactly as a substantive head does, and still blocks a second
+current head, or it would be a way around the rule. The difference is what
+the record says afterwards, which is the point of dated assignments.
+
+**Concurrent heads work.** One person can hold two offices' Head posts at
+once: the constraint is per *position*, and each office has its own. The
+same office still cannot have two current Heads, and the refusal now
+**names who holds it** and what to do - a constraint reported as a
+database error is something nobody can act on.
+
+### Deactivating a person
+
+Ends every current post with today's date and keeps the record. The same
+shape as the merge fix: an assignment left open is a standing claim that
+someone still holds a post.
+
+Reactivating **does not restore the posts**. They ended on a date, and
+re-opening them would rewrite what the record says happened - so the admin
+assigns again and the gap stays visible.
+
+The system admin cannot deactivate themselves: nobody would be left who
+could configure anything, and the recovery is a shell.
+
+### Two defects found while testing
+
+**An `IntegrityError` poisoned the transaction.** `assign_position` catches
+the one-current-holder constraint to turn it into a readable message - but
+the follow-up query that names the current holder could not run, because
+the failed insert had broken the surrounding transaction. The handler
+failed on exactly the case it exists for. Fixed with a savepoint around
+the insert; it would have failed the same way inside any atomic block in
+production, not only under `TestCase`.
+
+**A date from JSON is a string.** `ends_on < starts_on` raised `TypeError`
+rather than comparing, because one side came from the request body and the
+other from the model. Both are parsed before anything is compared.
+
+### Personal data
+
+Sign-up now asks for a full name, with the purpose statement beside it:
+why it is collected, who can see the list, and that people who leave are
+deactivated rather than deleted. Stated once, where the data is collected,
+rather than repeated on every screen.
+
+The full people list is system-admin only.
+
+### Test state
+
+**295 API tests pass**, 34 of them new. Migration 0022 adds one column and
+changes no row.
+
+**Not run against the real database.**
+
+---
+
+## Reset report — requested, nothing reset
+
+### 1. Every extraction fix is in the pipeline
+
+Tested by re-extracting **all nineteen documents** from their PDFs through
+the real upload path (`extract_text` then `_split_into_sections`) and
+comparing subtitle and content against what is stored:
+
+```
+198 sections compared
+198 identical
+  0 differing
+  0 documents whose section count changed
+```
+
+Including the ASM table reassembly, header stripping, glue-word repair,
+merged-step splitting and subtitle cleaning. **A reset re-uploading the
+same PDFs reproduces today's text byte for byte.**
+
+`reextract_manuals` and `clean_section_content` both call the same
+pipeline functions rather than carrying their own rules, which is why
+this holds. Title normalisation is the exception — it is **not** in the
+pipeline: `_title_for` derives a title from the filename, which is why
+`ASM_3.0.pdf` had to be renamed to `ASM_3.00.pdf` for that correction to
+survive an import.
+
+### 2. What a reset removes, and what it keeps
+
+Everything hangs off `ManualSection` by CASCADE:
+
+| Removed with the sections | Now |
+|---|---|
+| `ManualRevision` | 6 |
+| `SectionHistory` | 3 |
+| `RevisionPreAssessment` | 1 |
+| `RecentlyOpened` | 3 |
+
+Untouched, because none of it hangs off a manual: `Office`, `Position`,
+`PositionAssignment`, `CustomUser`, `ManualSeries`, `ManualSeriesOffice`.
+
+**The decisive point: reset *sections*, not manuals.** `Manual.series`,
+`Manual.owning_office`, `offices_overridden` and the per-document
+`ManualOffice` rows all live on the `Manual` row. Delete and recreate the
+manuals and every series link goes with them; replace only their sections
+and the whole organisation survives untouched.
+
+So the command should, per document: delete its sections, re-extract from
+the PDF, and write new ones against the **same** `Manual` row.
+
+The six revisions are development data (3 pending, 3 rejected) and go
+either way, since they hang off the sections. **Worth confirming before
+the run.**
+
+### 3. How v4 upload should assign series and document number
+
+Today `_title_for` parses the filename. That is why `ASM 3.0` and
+`FAM 8.02 Evaluation of External Providers` were wrong, and why a rename
+was needed to fix one of them.
+
+**The document's own header carries the answer**, and it is the controlled
+identifier:
+
+```
+MANUAL TITLE   ACADEMIC SERVICES MANUAL
+DOCUMENT NO.   ASM 3.00
+DOCUMENT NAME  CURRICULUM DEVELOPMENT, REVIEW AND VALIDATION
+```
+
+Proposed: upload reads the header, **shows what it found and asks the
+uploader to confirm** - matching the series by code, offering to create
+one if it does not exist. The filename becomes a fallback for a header
+that cannot be read, and is never authoritative.
+
+That also removes the divergence class entirely: the database and the PDF
+would agree because both came from the same place.
+
+**Series links survive a reset** provided the `Manual` rows do - see
+section 2. They are not re-derived and do not need to be.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

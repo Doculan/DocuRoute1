@@ -18,6 +18,7 @@ function BrandPanel() {
 
 export default function Signup({ onBackToLogin }) {
   const [formData, setFormData] = useState({
+    full_name: "",
     username: "",
     email: "",
     password: "",
@@ -58,6 +59,7 @@ export default function Signup({ onBackToLogin }) {
     setLoading(true);
     try {
       await axios.post("/api/auth/register/", {
+        full_name: formData.full_name,
         username: formData.username,
         email: formData.email,
         password: formData.password,
@@ -102,7 +104,37 @@ export default function Signup({ onBackToLogin }) {
           <h2 className="auth-title">Create account</h2>
           <p className="auth-subtitle">Fill in your details to request access</p>
 
+          {/* Names are personal data under RA 10173, which the university's
+              own manuals cite. Stated once, here, where it is collected —
+              not repeated on every screen afterwards. */}
+          <p className="subtle text-xs" style={{ marginBottom: "1.1rem" }}>
+            Your name, office and email are used to route document change
+            requests and to record who acted on them. The full list of people
+            is visible only to the system administrator. Accounts of people
+            who leave are deactivated, not deleted, so the record of past
+            requests stays correct.
+          </p>
+
           <form onSubmit={handleSignup} className="auth-form">
+            <div className="field">
+              <label className="label" htmlFor="su-fullname">Full name</label>
+              <input
+                id="su-fullname"
+                className="input"
+                type="text"
+                name="full_name"
+                value={formData.full_name}
+                onChange={handleChange}
+                placeholder="As you would sign it"
+                autoComplete="name"
+                required
+              />
+              <p className="subtle text-xs" style={{ margin: 0 }}>
+                The system administrator needs it to know who is asking for
+                access. Documents print position titles, never names.
+              </p>
+            </div>
+
             <div className="field">
               <label className="label" htmlFor="su-username">Username</label>
               <input

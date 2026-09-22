@@ -586,6 +586,9 @@ def register(request):
     username = request.data.get('username')
     password = request.data.get('password')
     email = request.data.get('email', '')
+    # v4. The process prints position titles and never names, but the
+    # system admin approving a request has to know who is asking.
+    full_name = (request.data.get('full_name') or '').strip()
     department_id = request.data.get('department_id', None)
 
     if CustomUser.objects.filter(username=username).exists():
@@ -595,6 +598,7 @@ def register(request):
         username=username,
         password=password,
         email=email,
+        full_name=full_name,
         is_approved=False
     )
 
