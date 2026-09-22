@@ -258,6 +258,86 @@ walk.
 
 ---
 
+## Phase 1b-ii — what was built (awaiting Checkpoint B2)
+
+### Office links are set as a whole set
+
+`PUT`, not add-and-remove. The relationship being edited **is** a set -
+`offices_overridden` means "this document's set replaces the series' set"
+- and a row-at-a-time editor would let the screen sit half-way through a
+change describing a set nobody chose. One call, one state, and the editor
+puts every office on screen with its relationship or none.
+
+A refused call writes nothing: the office ids are checked before the
+transaction opens, so a typo in one row does not leave the other rows
+applied.
+
+### The cost of replace-all is reported where it is incurred
+
+Changing a series' offices returns `did_not_reach` - **the documents that
+override, by title**. The admin is told at the moment of the change, not
+left to discover it. The series list and the series page carry the same
+list.
+
+Handing a document back to its series **deletes its own rows**. Leaving
+them would mean the next person to switch the override on silently
+inherits a set somebody chose months ago.
+
+> Worth knowing: handing back gives the series' **current** offices, not
+> the ones the document had before it overrode. That is the right
+> behaviour - the series is the source of truth - but it is the kind of
+> thing someone may expect to work the other way.
+
+### An orphan document cannot be left with nobody
+
+A document with no series has nothing to fall back on, so an empty
+override set would mean nobody could ever change it. Refused as a
+mistake rather than accepted as a choice.
+
+### A rehearsal on a copy, with the real nineteen documents
+
+Not a test - the tests prove the rules hold. This asked whether the
+screens can do the job:
+
+```
+8 offices entered (OP > VPA, VPAA > ASO, BO, HRO, REG, SAO)
+4 series, owners set, office links set
+19 of 19 documents placed          unassigned: 0
+
+FAM 6.02  owner VPA (inherited)  concurring ASO, BO  readers REG
+          route VPA -> OP        proposable: yes
+
+override FAM 6.02 to BO only     -> series change reports
+                                    did not reach: ['FAM 6.02']
+hand it back                     -> concurring ASO, BO again
+```
+
+Every document placed on its prefix, which the earlier title cleanups are
+what made possible.
+
+### A v3 field that could not be validated
+
+`Manual.uploaded_by` was `null=True` **without `blank=True`**, so the
+database accepted a manual with no uploader while `full_clean()` refused
+one. Nothing had validated a Manual before, so nothing had hit it. Fixed
+to match (migration 0021, no schema change).
+
+It surfaced through a second defect: the validation errors were being
+joined **without their field names**, so the message read "This field
+cannot be blank" and named no field. That is a message nobody can act on,
+and it hid this bug for a test run - and one new test was passing on it,
+expecting a 400 for the approving-level rule and getting a 400 for the
+blank field instead. The handler now names the field, and that test
+asserts the message rather than the status.
+
+### Test state
+
+**261 API tests pass**, 27 of them new in `tests_series_api.py`.
+
+**Nothing has been run against the real database** since migration 0020.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

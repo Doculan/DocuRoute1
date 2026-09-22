@@ -1,5 +1,6 @@
 from django.urls import path
 from . import organisation_views as org
+from . import series_views as series
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -26,6 +27,16 @@ urlpatterns = [
     path('org/offices/<int:office_id>/deactivate/', org.deactivate_office),
     path('org/offices/<int:office_id>/reactivate/', org.reactivate_office),
     path('org/offices/<int:office_id>/merge/', org.merge_office),
+
+    # Office links are set as a whole set, with PUT: the relationship
+    # being edited *is* a set, and an add/remove pair would let a screen
+    # sit half-way through a change with a set nobody chose.
+    path('org/series/', series.series_list),
+    path('org/series/<int:series_id>/', series.series_detail),
+    path('org/series/<int:series_id>/offices/', series.series_offices),
+    path('org/documents/', series.documents_list),
+    path('org/documents/<int:document_id>/', series.document_detail),
+    path('org/documents/<int:document_id>/offices/', series.document_offices),
 
     # Auth
     path('auth/register/', register),

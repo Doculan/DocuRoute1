@@ -476,10 +476,16 @@ class Manual(models.Model):
         on_delete=models.PROTECT,
         related_name='manuals'
     )
+    # `blank=True` to match `null=True`. Without it the database accepts a
+    # manual with no uploader while `full_clean()` refuses one, so any code
+    # that validates before saving fails on rows the ORM created happily -
+    # which is exactly what happened the first time the organisation
+    # screens tried to validate a document.
     uploaded_by = models.ForeignKey(
         CustomUser,
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name='uploaded_manuals'
     )
     # v4. The document's series - "FAM 6.02" belongs to "FAM". Null means
