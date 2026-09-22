@@ -13,8 +13,16 @@ diverges from everyone else's.
     py manage.py import_mastercopies
     py manage.py import_mastercopies --dry-run
     py manage.py import_mastercopies --replace
+
+Refuses to import the same bytes twice. One master copy was once uploaded
+under two names, which produced a second document with a different title,
+a worse extraction of the same text, and no sign that the two were
+related - the kind of thing nobody notices until a revision is proposed
+against the wrong one. Titles and filenames are not a reliable identity
+for a PDF; its contents are.
 """
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -44,6 +52,36 @@ def _department_for(filename: str) -> str:
     match = _PREFIX_RE.match(filename)
     prefix = (match.group(1).upper() if match else "")
     return DEPARTMENT_NAMES.get(prefix, "Unassigned")
+
+def _digest(data: bytes) -> str:
+    """MD5, and only for spotting an identical file.
+
+    Not a security claim - nobody is defending against a crafted
+    collision here. The question is whether these are literally the same
+    bytes as something already imported, and for that it is fast and
+    sufficient.
+    """
+    return hashlib.md5(data).hexdigest()
+
+
+def _existing_digests():
+    """Every document already in the database, by the digest of its file.
+
+    Built from what is on disk rather than from a stored hash: there is no
+    hash column, and adding one to solve a problem an import-time read
+    already solves would be a migration for nothing.
+    """
+    seen = {}
+    for manual in Manual.objects.exclude(file=''):
+        try:
+            with manual.file.open('rb') as handle:
+                seen[_digest(handle.read())] = manual
+        except (FileNotFoundError, OSError, ValueError):
+            # A manual whose file has gone is a separate problem, and not
+            # one an importer should fail on.
+            continue
+    return seen
+
 
 def _title_for(filename: str) -> str:
     """ASM_3.0.pdf -> "ASM 3.0"; the trailing description is dropped, since
@@ -94,11 +132,46 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(f"{len(pdfs)} master copies in {source}\n")
-        imported = skipped = 0
+        imported = skipped = duplicates = 0
+
+        # Two lookups, because a duplicate can arrive from either
+        # direction: the same bytes already in the database, or the same
+        # bytes twice in this directory under different names. The second
+        # matters on a fresh clone, where the first has nothing to say.
+        by_digest = _existing_digests()
+        seen_this_run = {}
 
         for path in pdfs:
             title = _title_for(path.name)
             department_name = _department_for(path.name)
+
+            file_bytes = path.read_bytes()
+            digest = _digest(file_bytes)
+
+            already = by_digest.get(digest)
+            if already is not None and not options["replace"]:
+                # Same bytes under the same title is an ordinary re-run.
+                # Same bytes under a *different* title is the thing worth
+                # naming - two documents that are secretly one.
+                if already.title == title:
+                    self.stdout.write(
+                        f"  skip    {title:<34} already imported"
+                    )
+                    skipped += 1
+                else:
+                    self.stdout.write(
+                        f"  dup     {title:<34} same file as \"{already.title}\""
+                    )
+                    duplicates += 1
+                continue
+
+            twin = seen_this_run.get(digest)
+            if twin is not None:
+                self.stdout.write(
+                    f"  dup     {title:<34} same file as {twin}"
+                )
+                duplicates += 1
+                continue
 
             existing = Manual.objects.filter(title=title).first()
             if existing and not options["replace"]:
@@ -107,6 +180,10 @@ class Command(BaseCommand):
                 continue
 
             if options["dry_run"]:
+                # Recorded here too, or a dry run would report two
+                # identical files as two imports and the real run would
+                # then disagree with its own preview.
+                seen_this_run[digest] = path.name
                 self.stdout.write(
                     f"  would   {title:<34} -> {department_name}"
                 )
@@ -116,7 +193,6 @@ class Command(BaseCommand):
                 existing.delete()
 
             department, _ = Department.objects.get_or_create(name=department_name)
-            file_bytes = path.read_bytes()
 
             # Point at the file already on disk instead of saving a copy.
             # `Manual.file` has upload_to='mastercopies/', which is the very
@@ -163,8 +239,15 @@ class Command(BaseCommand):
                     count += 1
 
             imported += 1
+            seen_this_run[digest] = path.name
             self.stdout.write(
                 f"  ok      {title:<34} {department_name:<6} {count} sections"
+            )
+
+        if duplicates:
+            self.stdout.write(
+                f"\nskipped {duplicates} file(s) whose contents already exist. "
+                f"A PDF is identified by its bytes here, not its name."
             )
 
         if options["dry_run"]:

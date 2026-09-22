@@ -97,6 +97,42 @@ STUDENT DEVELOPMENT MANUAL.
 
 ---
 
+## The duplicate cannot return — 2026-09-22
+
+`HRM_4_MoGMsSE.02.pdf` deleted from disk (19 tracked files, 19 on disk).
+
+`import_mastercopies` now **identifies a PDF by its bytes, not its name**.
+Two lookups, because a duplicate arrives from either direction: the same
+contents already in the database, or the same contents twice in the
+directory under different names. The second is what matters on a fresh
+clone, where the first has nothing to say.
+
+Verified against the real case — restoring the duplicate and running a dry
+run reports:
+
+```
+dup     HRM 4 MoGMsSE.02    same file as "HRM 4.02"
+```
+
+Same bytes under the *same* title stays "already imported": calling an
+ordinary re-run a duplicate would make the word meaningless on the run
+where it matters.
+
+### Open — the ASM correction is not reproducible
+
+The database says `ASM 3.00`, taken from the document's own header. The
+file on disk is still `ASM_3.0.pdf`, and `_title_for` derives the title
+from the filename — so **a fresh clone would import it as `ASM 3.0`**, and
+the correction would not survive a rebuild.
+
+That defeats the purpose of the importer, which exists so a rebuilt
+checkout matches everyone else's. The fix is to rename the master copy to
+`ASM_3.00.pdf` and repoint `Manual.file`; not done, because renaming a
+tracked controlled document is a decision rather than a cleanup. **Decide
+before 1b-ii finishes**, or the divergence gets entered into series links.
+
+---
+
 ## Phase 1b-i — what was built (awaiting Checkpoint B1)
 
 ### Models
