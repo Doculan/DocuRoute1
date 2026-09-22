@@ -427,6 +427,51 @@ changes no row.
 
 ---
 
+## No reset. Test data cleared instead — 2026-09-22
+
+The comparison settled it: 198 of 198 sections already match a fresh
+extraction, so a reset would have replaced the content with the same
+content. Decided against, and the development data cleared instead so v4
+starts clean.
+
+Backup at `Backend/db.sqlite3.bak-20260922-pre-clear-testdata`.
+
+```
+ManualRevision           6 -> 0
+SectionHistory           3 -> 0
+RevisionPreAssessment    1 -> 0
+RecentlyOpened           3 -> 0
+
+kept: 19 manuals, 198 sections, 7 departments, 6 users, 3 announcements
+      and the whole (still empty) organisation
+```
+
+Worth naming: **the three history rows were not dependents of the
+revisions.** They came from direct admin edits to two `SDM 3.06` sections,
+on a document none of the revisions touched. Clearing them was still
+right - they are development data - but it means those two sections no
+longer carry the text they held before those edits.
+
+The **three announcements were left**, not being on the list. They are
+probably test data too.
+
+### Approved for the upload work — not built yet
+
+Upload reads the document's own header:
+
+```
+MANUAL TITLE   ACADEMIC SERVICES MANUAL
+DOCUMENT NO.   ASM 3.00
+DOCUMENT NAME  CURRICULUM DEVELOPMENT, REVIEW AND VALIDATION
+```
+
+shows what it found, the uploader confirms, and the series is matched by
+code. **The filename is a fallback only, never authoritative** - which is
+the whole divergence class that produced `ASM 3.0` and
+`FAM 8.02 Evaluation of External Providers`, removed at the root.
+
+---
+
 ## Reset report — requested, nothing reset
 
 ### 1. Every extraction fix is in the pipeline
