@@ -13,6 +13,7 @@ import datetime
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
@@ -483,7 +484,7 @@ class OfficeApiTests(TestCase):
     # reader asking "who holds this now" would believe it.
 
     def _two_offices_with_heads(self):
-        today = datetime.date.today()
+        today = timezone.localdate()
         budget = Office.objects.create(name="Budget Office", parent=self.vp)
 
         theirs = Position.objects.create(office=self.accounting, kind=Position.HEAD)
@@ -530,7 +531,7 @@ class OfficeApiTests(TestCase):
         )
 
         held.refresh_from_db()
-        self.assertEqual(held.ends_on, datetime.date.today())
+        self.assertEqual(held.ends_on, timezone.localdate())
         self.assertFalse(held.is_current)
         # Ended, never deleted - the record of who held it stands.
         self.assertTrue(PositionAssignment.objects.filter(pk=held.pk).exists())
@@ -568,7 +569,7 @@ class OfficeApiTests(TestCase):
         """IMR and Custodian are positions like any other here. Carol
         stops being QMS staff because her assignment ended, not because
         one query happens to filter on the position's active flag."""
-        today = datetime.date.today()
+        today = timezone.localdate()
         budget = Office.objects.create(name="Budget Office", parent=self.vp)
         theirs = Position.objects.create(office=self.accounting, kind=Position.IMR)
         Position.objects.create(office=budget, kind=Position.IMR)
@@ -587,7 +588,7 @@ class OfficeApiTests(TestCase):
         self.assertFalse(holds_current_qms_position(carol))
 
     def test_a_custodian_conflict_ends_the_same_way(self):
-        today = datetime.date.today()
+        today = timezone.localdate()
         budget = Office.objects.create(name="Budget Office", parent=self.vp)
         theirs = Position.objects.create(
             office=self.accounting, kind=Position.DOCUMENT_CUSTODIAN,
@@ -610,7 +611,7 @@ class OfficeApiTests(TestCase):
         """Only the positions that cannot move are ended. An Encoder the
         surviving office does not have moves across, and the person goes
         on holding it at the office that now exists."""
-        today = datetime.date.today()
+        today = timezone.localdate()
         budget = Office.objects.create(name="Budget Office", parent=self.vp)
         encoder = Position.objects.create(
             office=self.accounting, kind=Position.ENCODER,
@@ -632,7 +633,7 @@ class OfficeApiTests(TestCase):
     def test_an_already_ended_assignment_is_not_re_dated(self):
         """Someone who left the post last year keeps the date they left,
         not the date of the merge."""
-        today = datetime.date.today()
+        today = timezone.localdate()
         last_year = today - datetime.timedelta(days=300)
         budget = Office.objects.create(name="Budget Office", parent=self.vp)
         theirs = Position.objects.create(office=self.accounting, kind=Position.HEAD)

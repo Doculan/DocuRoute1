@@ -25,6 +25,7 @@ Every test that expects an error asserts the reason, not only the status.
 import datetime
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import access
@@ -43,7 +44,11 @@ class SwitchoverFixture(TestCase):
     working office under each, and a document owned by each VP."""
 
     def setUp(self):
-        self.today = datetime.date.today()
+        # `timezone.localdate()`, not `date.today()`. The application
+        # works in the project's timezone and the machine may be a day
+        # ahead of it - which made every assignment here start
+        # tomorrow, and every test that needed one fail.
+        self.today = timezone.localdate()
         self.cas = Department.objects.create(name="CAS")
         self.cme = Department.objects.create(name="CME")
 

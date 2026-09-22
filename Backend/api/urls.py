@@ -4,6 +4,7 @@ from . import series_views as series
 from . import people_views as people
 from . import switchover_views as switchover
 from . import proposal_views as proposals
+from . import concurrence_views as concurrence
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -64,6 +65,14 @@ urlpatterns = [
          proposals.proposal_section),
     path('proposals/<int:proposal_id>/sections/<int:section_id>/check/',
          proposals.check_section),
+
+    # Submission through to agreement. Participants freeze at submission;
+    # any return makes a new version and resets every concurrence.
+    path('proposals/<int:proposal_id>/full/', concurrence.proposal_full),
+    path('proposals/<int:proposal_id>/submit/', concurrence.submit),
+    path('proposals/<int:proposal_id>/decide/', concurrence.decide),
+    path('proposals/<int:proposal_id>/withdraw/', concurrence.withdraw),
+    path('proposals/awaiting/', concurrence.awaiting_my_office),
 
     # Auth
     path('auth/register/', register),

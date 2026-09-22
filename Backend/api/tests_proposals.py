@@ -22,6 +22,7 @@ import datetime
 
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
@@ -38,7 +39,11 @@ class ProposalFixture(TestCase):
     """One document, two offices that concur, one that only reads."""
 
     def setUp(self):
-        self.today = datetime.date.today()
+        # `timezone.localdate()`, not `date.today()`. The application
+        # works in the project's timezone and the machine may be a day
+        # ahead of it - which made every assignment here start
+        # tomorrow, and every test that needed one fail.
+        self.today = timezone.localdate()
         self.department = Department.objects.create(name="CAS")
 
         self.president = Office.objects.create(

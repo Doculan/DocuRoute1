@@ -21,6 +21,7 @@ this file, and check that `tests_qms_review.py` still passes.
 import datetime
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
@@ -91,7 +92,11 @@ class QmsPositionReviewTests(TestCase):
     review rights on its own. These assertions survive 1c."""
 
     def setUp(self):
-        self.today = datetime.date.today()
+        # `timezone.localdate()`, not `date.today()`. The application
+        # works in the project's timezone and the machine may be a day
+        # ahead of it - which made every assignment here start
+        # tomorrow, and every test that needed one fail.
+        self.today = timezone.localdate()
         self.qms_office = Office.objects.create(name="Quality Management")
         self.imr = Position.objects.create(
             office=self.qms_office, kind=Position.IMR,

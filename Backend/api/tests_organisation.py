@@ -19,6 +19,7 @@ import datetime
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import access
@@ -105,7 +106,11 @@ class OfficeHierarchyTests(TestCase):
 class PositionTests(TestCase):
 
     def setUp(self):
-        self.today = datetime.date.today()
+        # `timezone.localdate()`, not `date.today()`. The application
+        # works in the project's timezone and the machine may be a day
+        # ahead of it - which made every assignment here start
+        # tomorrow, and every test that needed one fail.
+        self.today = timezone.localdate()
         self.office = Office.objects.create(name="Accounting Services Office")
         self.head = Position.objects.create(office=self.office, kind=Position.HEAD)
         self.encoder = Position.objects.create(

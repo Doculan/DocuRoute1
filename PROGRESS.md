@@ -847,6 +847,114 @@ it works on no documents - it reaches them through the QMS role in P4.
 
 ---
 
+## Phase 2b — submission through to agreement (awaiting Checkpoint 2B)
+
+Draft → submit → concurrence → locked, with returns making new versions.
+No new migration: 2a modelled all of it.
+
+### Submission
+
+Only the initiating office's **Head**, with re-authentication - on the DCR
+the Head signs alongside the requester. It refuses on anything unready and
+says which section: an unchanged proposal, a missing reason, a section
+edited after it was checked.
+
+Clause 6.3 runs on the one overall reason through the **existing** two
+tiers, and returns the submitter's own message rather than a generic one.
+
+**With no other concurring office it locks immediately.** There is nobody
+to ask, and a concurrence stage with an empty list is a stage that means
+nothing.
+
+### Participants freeze for the *request*, not the version
+
+Concurring offices minus the initiator, then the approval route in order,
+each with `office_name_at_time`.
+
+> **Found in rehearsal, not by a unit test.** The first version re-froze
+> the list on every submission. A test proved a mid-request reorganisation
+> changed nothing - but it never resubmitted. Running the whole flow
+> against the demo organisation, an office added halfway through became a
+> participant on **resubmission** and silently blocked a proposal every
+> original participant had already concurred with: both offices agreed and
+> it sat in concurrence for ever.
+>
+> Frozen once now, at the first submission. A redraft after a return is a
+> new version of the same request, and the spec is explicit - *later
+> changes to the organisation never alter a submitted proposal*. Two tests
+> cover it: the list after a resubmission, and that a redrafted proposal
+> still locks.
+
+### Concurrence
+
+Only an office's **Head** decides, with re-authentication; an Encoder can
+prepare the feedback for the Head to confirm. Read from the **frozen**
+list, so somebody moved into a new office mid-request does not acquire a
+say in it.
+
+A return **requires feedback** - returning without it leaves the office
+nothing to act on - and may point at a section.
+
+**Any return makes a new version and resets every concurrence.** An office
+agreed to particular text, and that text no longer exists. The new version
+**carries the text but not the checks**: the office is amending its own
+work, but a check that survived would be about text nobody submitted. The
+old version keeps its decisions - that is history, not a mistake.
+
+Feedback is visible to the initiator and every participating office,
+because offices object for the same reasons and seeing each other's
+avoids repeated rounds and contradictory demands.
+
+### A constraint collision in the redraft
+
+Copying the changes into the new version before closing the old one left
+**both versions holding the same section open** for the length of the
+loop, and the one-open-change index refused the copy. The old version is
+closed first now.
+
+### Withdrawal, audit, and the awaiting list
+
+Withdrawal needs the initiating Head, re-authentication and a reason; the
+record stays and the sections are released.
+
+Every transition is recorded with the actor, the position they held, the
+office and its name at the time. The redraft event names the returning
+office in full, because *"BUD_Jose redrafted for Accounting"* reads as
+though Budget did the drafting.
+
+**"Awaiting your office"** is derived, not notified - notifications are
+P5. Per office rather than per position, so an Encoder sees it too.
+
+### The rehearsal, against the demo organisation
+
+```
+draft by ACC_Juan (Encoder), 2 sections checked
+Encoder submits         403 not_head
+ACC_Maria submits       200  concurrence
+  approving  VPAF #0, OP #1     concurring  Budget, Cash Management
+Library added as concurring mid-request -> frozen list unchanged
+BUD_Jose returns        200  draft, version 2, 0 concurrences, 0 checks
+redraft, resubmit       200  concurrence
+BUD, CMO concur         200  locked
+
+manual unchanged (P4 applies it)    sections released
+created / submitted / returned / redrafted / submitted / concurred x2 / locked
+```
+
+### Test state
+
+**44 new tests**, 83 across 2a and 2b. Both switch states: everything in
+2b refuses with `switch_off` while access is scoped by department.
+
+**A timezone bug the tests exposed.** `TIME_ZONE = 'UTC'` while the
+machine runs in Manila, so `timezone.localdate()` was **a day behind**
+`date.today()`. Every fixture assignment started "tomorrow" and no
+position counted as current. The tests now use `timezone.localdate()`
+throughout - but see the open question below, because this is not only a
+test problem.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
@@ -857,6 +965,7 @@ provisional choice and its reason stay next to the work.*
 |---|---|---|
 | **A** | **May a university have more than one IMR, or more than one Document Custodian, at once?** | Unrestricted. `Position.SOLE_HOLDER_KINDS` is `(HEAD,)` only. The permissive choice on purpose: a wrong restriction blocks real work, a missing one can be added later. |
 | **B** | Does the approval route always continue upward from the owner, or stop at the owner for some manuals? *(plan section 8, question 5)* | Continues upward by default; `Manual.approval_stops_at_owner` overrides per manual. |
+| **D** | **Should `TIME_ZONE` be `Asia/Manila` rather than `UTC`?** The application's "today" is currently a day behind the users' from 08:00 Manila time. A position assigned from the UI in the afternoon does not take effect until the next day, and a proposal dated today is filed as yesterday. Not changed, because it shifts every displayed date at once. | Left as `UTC`. |
 | **C** | Is multi-office concurrence actual practice? The DCR has no section for it. *(question 1 — the largest one)* | Built as designed, with the concurrence record printed as an annex. |
 
 ---
