@@ -939,6 +939,443 @@ class ManualRevision(models.Model):
         return f"Revision by {self.submitted_by} on {self.section.subtitle}"
 
 
+# ─── PROPOSALS (v4 phase 2) ──────────────────────────────────
+#
+# The university's actual process, up to agreement. An office drafts a
+# proposal for a **whole document**, each changed section carries its own
+# AI check, every concurring office agrees or sends it back, and full
+# agreement locks the content.
+#
+# `ManualRevision` above is the v3 shape: one section, one submitter, one
+# reviewer, one decision. It stays and keeps working while the access
+# switch is off. Nothing here migrates from it - the development data was
+# cleared, so there is nothing to carry across.
+#
+# **Until P4, a locked proposal does not change the manual.** Locking
+# freezes the text that was agreed; applying it is the custodian's act.
+
+
+class Proposal(models.Model):
+    """One office's proposed change to one document."""
+
+    DRAFT = 'draft'
+    CONCURRENCE = 'concurrence'
+    LOCKED = 'locked'
+    WITHDRAWN = 'withdrawn'
+
+    STATUS_CHOICES = [
+        (DRAFT, 'Draft'),
+        (CONCURRENCE, 'Out for concurrence'),
+        (LOCKED, 'Locked'),
+        (WITHDRAWN, 'Withdrawn'),
+    ]
+
+    # Still being worked on or decided. A section may be in only one of
+    # these at a time - see `SectionChange.is_open`.
+    OPEN_STATUSES = (DRAFT, CONCURRENCE)
+
+    manual = models.ForeignKey(
+        Manual, on_delete=models.PROTECT, related_name='proposals',
+    )
+    # The office acting, not the person. Someone holding positions in two
+    # offices chooses which one they are drafting for, and the record has
+    # to say which - the DCR is signed by an office.
+    initiating_office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='proposals_initiated',
+    )
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=DRAFT,
+    )
+
+    created_by = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='proposals_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    locked_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_by = models.ForeignKey(
+        'CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='proposals_withdrawn',
+    )
+    withdrawn_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.manual.title} — {self.get_status_display()}"
+
+    @property
+    def is_open(self):
+        return self.status in self.OPEN_STATUSES
+
+    def current_version(self):
+        """The version being worked on or decided.
+
+        Derived from the rows rather than stored as a pointer: a stored
+        "current" that disagreed with the highest number would be a bug
+        nobody could see, and there is no cheaper question than max().
+        """
+        return self.versions.order_by('-number').first()
+
+    def refresh_open_changes(self):
+        """Keep `SectionChange.is_open` true to this proposal's state.
+
+        A change is open when its proposal is open **and** it belongs to
+        the current version. Superseded versions are history: the office
+        agreed to text that no longer exists, and their sections are free
+        for somebody else.
+
+        Called whenever the status changes or a version is added. It is a
+        denormalisation, so every path that could invalidate it has to say
+        so - a stale True blocks a section nobody is working on, and a
+        stale False lets two proposals edit the same section at once.
+        """
+        current = self.current_version()
+        open_now = self.is_open and current is not None
+
+        SectionChange.objects.filter(version__proposal=self).exclude(
+            version=current
+        ).update(is_open=False)
+        if current is not None:
+            SectionChange.objects.filter(version=current).update(
+                is_open=open_now
+            )
+
+
+class ProposalVersion(models.Model):
+    """One draft of the whole proposal.
+
+    Every redraft is a new version, because an office concurred with
+    particular text and that text no longer exists.
+    """
+
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.CASCADE, related_name='versions',
+    )
+    number = models.PositiveIntegerField()
+
+    # The DCR's single "reason for the change" field. Required to submit,
+    # and checked by the existing clause 6.3 tiers.
+    overall_reason = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_by = models.ForeignKey(
+        'CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='proposal_versions_submitted',
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['proposal', 'number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['proposal', 'number'], name='one_row_per_proposal_version',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.proposal.manual.title} v{self.number}"
+
+
+class SectionChangeQuerySet(models.QuerySet):
+    """Keeps `is_open` true on the paths that skip `save()`.
+
+    Same shape as `PositionAssignmentQuerySet`, and for the same reason: a
+    partial unique index cannot cross a join to `Proposal.status`, so the
+    fact is copied onto the row - and a copied fact that some writer
+    forgets to maintain does not raise, it silently switches the
+    constraint off.
+
+    Here that would mean two offices editing the same section at once and
+    neither knowing.
+    """
+
+    def _open_for(self, version_id):
+        version = ProposalVersion.objects.select_related('proposal').filter(
+            pk=version_id
+        ).first()
+        if version is None:
+            return False
+        proposal = version.proposal
+        current = proposal.current_version()
+        return proposal.is_open and current is not None and current.pk == version.pk
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.is_open = self._open_for(obj.version_id)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def update(self, **kwargs):
+        # Moving a change to a different version can change the answer;
+        # `is_open` passed explicitly is the recompute itself, and is left
+        # alone so `refresh_open_changes` can do its job.
+        version = kwargs.get('version_id', kwargs.get('version'))
+        if version is not None and 'is_open' not in kwargs:
+            kwargs['is_open'] = self._open_for(getattr(version, 'pk', version))
+        return super().update(**kwargs)
+
+
+class SectionChange(models.Model):
+    """One changed section inside one version of a proposal.
+
+    **Existing sections only in P2.** There is no `action` field, because
+    adding and deleting sections is later work and a field nothing sets
+    would be an invitation to half-implement it.
+    """
+
+    version = models.ForeignKey(
+        ProposalVersion, on_delete=models.CASCADE, related_name='changes',
+    )
+    section = models.ForeignKey(
+        ManualSection, on_delete=models.PROTECT, related_name='proposed_changes',
+    )
+
+    # The section's text when this version was drafted, stored rather than
+    # read live: the diff a reviewer sees has to be the diff the drafter
+    # saw, and the section can move underneath both of them.
+    old_text = models.TextField(blank=True)
+    new_text = models.TextField(blank=True)
+    note = models.TextField(blank=True)
+
+    # The check for *this* section. One assessment per changed section,
+    # made once and displayed thereafter - never recomputed.
+    assessment = models.OneToOneField(
+        'RevisionPreAssessment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='section_change',
+    )
+    # Bound to the text that was checked. Editing the section clears the
+    # check by leaving this behind.
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    section_content_hash = models.CharField(max_length=64, blank=True)
+
+    # Copied from the proposal so the constraint below can see it. See
+    # `SectionChangeQuerySet`.
+    is_open = models.BooleanField(default=False, editable=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = SectionChangeQuerySet.as_manager()
+
+    class Meta:
+        ordering = ['version', 'section__order']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['version', 'section'],
+                name='one_change_per_section_per_version',
+            ),
+            # One open proposal per section. A real index rather than a
+            # check in a view, because two people submitting at the same
+            # moment is exactly when a view-level check fails.
+            models.UniqueConstraint(
+                fields=['section'],
+                condition=Q(is_open=True),
+                name='one_open_change_per_section',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.section.subtitle} @ {self.version}"
+
+    def save(self, *args, **kwargs):
+        self.is_open = SectionChange.objects.all()._open_for(self.version_id)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'is_open' not in update_fields:
+            kwargs['update_fields'] = list(update_fields) + ['is_open']
+        super().save(*args, **kwargs)
+
+    @property
+    def has_changed(self):
+        return (self.new_text or '').strip() != (self.old_text or '').strip()
+
+    def text_hash(self):
+        """A fingerprint of the two texts this change is about.
+
+        Over the section's text and the proposed text only - **not** the
+        overall reason. Editing one box must clear only that box's check,
+        and folding the shared reason in would mean changing it cleared
+        every section at once. The reason is still checked, at submission,
+        by the existing clause 6.3 tiers.
+        """
+        from api import pre_assessment
+        return pre_assessment.content_hash(
+            self.section_id, self.old_text or '', self.new_text or '', '',
+        )
+
+    @property
+    def check_is_current(self):
+        """Is the stored check still about this text?
+
+        Compares a fingerprint of the text **as it is now** against the
+        one taken when the check ran. Comparing two stored values would
+        compare the check with itself, which is always true and says
+        nothing - the first version of this did exactly that and reported
+        every edited section as checked.
+        """
+        return bool(
+            self.assessment_id and self.content_hash
+            and self.content_hash == self.text_hash()
+        )
+
+
+class ProposalParticipant(models.Model):
+    """An office that must agree, or that signs. **Frozen at submission.**
+
+    A reorganisation mid-request must never change who has to agree to it,
+    so the list is written once when the proposal is submitted and read
+    afterwards - including `office_name_at_time`, because an office that
+    is renamed later must still read correctly on an old request.
+    """
+
+    CONCURRING = 'concurring'
+    APPROVING = 'approving'
+
+    ROLE_CHOICES = [
+        (CONCURRING, 'Must concur'),
+        (APPROVING, 'Signs'),
+    ]
+
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.CASCADE, related_name='participants',
+    )
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='proposal_participations',
+    )
+    office_name_at_time = models.CharField(max_length=255)
+    role = models.CharField(max_length=16, choices=ROLE_CHOICES)
+    # Position in the approval route; null for concurring offices, which
+    # have no order among themselves.
+    route_order = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['proposal', 'role', 'route_order', 'office_name_at_time']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['proposal', 'office', 'role'],
+                name='one_participation_per_office_and_role',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.office_name_at_time} — {self.get_role_display()}"
+
+
+class Concurrence(models.Model):
+    """One office's decision on one version.
+
+    Against a **version**, not the proposal: an office agreed to
+    particular text, so a redraft resets every decision rather than
+    carrying agreement forward to something nobody read.
+    """
+
+    CONCUR = 'concur'
+    RETURN = 'return'
+
+    DECISION_CHOICES = [
+        (CONCUR, 'Concurs'),
+        (RETURN, 'Returned with feedback'),
+    ]
+
+    version = models.ForeignKey(
+        ProposalVersion, on_delete=models.CASCADE, related_name='concurrences',
+    )
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='concurrences',
+    )
+    decision = models.CharField(max_length=16, choices=DECISION_CHOICES)
+    feedback = models.TextField(blank=True)
+    # Feedback may point at one section without being about only that one.
+    section = models.ForeignKey(
+        ManualSection, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='concurrence_feedback',
+    )
+
+    # Both the person and the position they held, because the position is
+    # what the process refers to and the person is who to ask.
+    recorded_by = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='concurrences_recorded',
+    )
+    recorded_by_position = models.ForeignKey(
+        Position, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='concurrences_recorded',
+    )
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['version', 'office__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['version', 'office'],
+                name='one_decision_per_office_per_version',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.office} — {self.get_decision_display()}"
+
+
+class AuditEvent(models.Model):
+    """Every transition, with who did it and on whose behalf.
+
+    Append-only by intent: nothing in the application updates or deletes
+    one. It is the answer to "what happened to this request", and a record
+    that can be edited answers nothing.
+    """
+
+    CREATED = 'created'
+    SUBMITTED = 'submitted'
+    CONCURRED = 'concurred'
+    RETURNED = 'returned'
+    REDRAFTED = 'redrafted'
+    LOCKED = 'locked'
+    WITHDRAWN = 'withdrawn'
+
+    EVENT_CHOICES = [
+        (CREATED, 'Created'),
+        (SUBMITTED, 'Submitted for concurrence'),
+        (CONCURRED, 'Concurred'),
+        (RETURNED, 'Returned with feedback'),
+        (REDRAFTED, 'Redrafted'),
+        (LOCKED, 'Locked'),
+        (WITHDRAWN, 'Withdrawn'),
+    ]
+
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.CASCADE, related_name='events',
+    )
+    version = models.ForeignKey(
+        ProposalVersion, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='events',
+    )
+    event = models.CharField(max_length=16, choices=EVENT_CHOICES)
+
+    actor = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='proposal_events',
+    )
+    position = models.ForeignKey(
+        Position, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='proposal_events',
+    )
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='proposal_events',
+    )
+    office_name_at_time = models.CharField(max_length=255, blank=True)
+
+    detail = models.TextField(blank=True)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['proposal', 'at']
+
+    def __str__(self):
+        return f"{self.get_event_display()} — {self.office_name_at_time}"
+
+
 class Announcement(models.Model):
     """Something the admin wants staff to see.
 
@@ -1091,6 +1528,16 @@ class RevisionPreAssessment(models.Model):
     model_fingerprint = models.CharField(max_length=64, blank=True)
     pipeline_version = models.CharField(max_length=8, blank=True)
     assessed_at = models.DateTimeField(auto_now_add=True)
+    # Which sections retrieval pulled in when this check ran.
+    #
+    # Recorded because the coordinated-change advisory has to know whether
+    # a `contradicts_manual` concern points at a section that is *also*
+    # being changed in the same proposal - and the pipeline's trace does
+    # not keep it. Written by the view, which already has the retrieved
+    # sections in hand, so nothing under `ml/` changes and Layer 2
+    # receives exactly what it received before.
+    retrieved_section_ids = models.JSONField(default=list, blank=True)
+
     consumed_by = models.OneToOneField(
         ManualRevision, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='pre_assessment',

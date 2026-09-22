@@ -2579,6 +2579,40 @@ def _base_texts(section, sources=()):
     return [section.content or ''] + [s.content or '' for s in sources]
 
 
+def _retrieved_section_ids(section, proposed_content):
+    """Which sections retrieval pulls in for this check.
+
+    Recorded so the coordinated-change advisory can read stored output
+    rather than recomputing anything at display time. The pipeline's trace
+    keeps layer1, layer2, layer3, the version and the fingerprint - but
+    not what retrieval returned, and `related_texts` hands back raw text
+    with the ids already discarded.
+
+    So this asks the index directly, with the same arguments
+    `_assess_unsaved` uses. **Nothing under `ml/` changes**: `build_index`
+    and `top_k` are read-only and already public, and Layer 2 receives
+    exactly what it received before. The cost is one extra index lookup
+    per check, against an index that was just built and cached.
+    """
+    from ml.revision_pipeline.retrieval import build_index, sections_for_manual
+
+    try:
+        sections = sections_for_manual(section.manual)
+        index = build_index(section.manual.id, sections)
+        return [
+            s.section_id for s in index.top_k(
+                proposed_content or section.content or '',
+                exclude_section_id=section.id, k=3,
+                exclude_subtitle=section.subtitle or '',
+            )
+        ]
+    except Exception:
+        # An advisory is a nicety. Losing it must never cost the check
+        # itself, which is the thing the submitter is waiting for.
+        logger.exception("could not record retrieval context for %s", section.id)
+        return []
+
+
 def _assess_unsaved(section, proposed_content, change_reason, seed):
     """Run the pipeline over text that has not been saved yet."""
     from ml.revision_pipeline.pipeline import assess_texts

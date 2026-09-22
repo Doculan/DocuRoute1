@@ -18,6 +18,11 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
   anything. The example: `test_a_document_override_must_still_be_an_approving_office`
   checked only for 400 and passed on an unrelated blank-field error, so
   for one run it asserted nothing while looking green.
+- **A staleness check must compare against live state**, never two stored
+  values. `SectionChange.check_is_current` first compared the change's
+  stored hash with the assessment's stored hash - which is comparing the
+  check with itself. Always true, so every edited section reported as
+  checked and the guard did nothing. Fingerprint what is there *now*.
 - **Read the output you asked for.** The same review reported "no titles
   have stray whitespace" from a command whose result had been cut off by
   `tail`. `FAM 8.03` had a trailing space, and the duplicate-detecting
@@ -685,6 +690,106 @@ rollback 200
 
 **337 API tests pass**, 42 of them new. Migration 0023 adds one table and
 one column.
+
+**Not run against the real database.**
+
+---
+
+## Phase 2a — the old flow, and the new model (awaiting Checkpoint 2A)
+
+### What the old flow is
+
+`ManualRevision` does three jobs in one table: the submission, the
+decision, and the assessment snapshot. **One section, one submitter, one
+reviewer, one decision** - no version, no office, no notion of more than
+one party agreeing. That is the gap P2 closes, and it is structural
+rather than a matter of adding fields.
+
+Three submission paths: text, file upload, merge. 11 endpoints, 13
+frontend components, 8 test modules. The database is clear, so **nothing
+migrates** - the dependency is entirely code.
+
+### Decisions taken
+
+| | |
+|---|---|
+| **Merge** | Retired when the switch is on. It deletes a section, which is out of P2's scope; it returns with add/delete. |
+| **Upload** | Typed text only in P2. *Future work: upload a whole revised document and let the system match its sections into the boxes, with the staff member confirming.* |
+| **Old endpoints** | Refuse with an explanation when the switch is on, like `delete_department`. Not removed - removal 404s an open browser tab. |
+| **Admin dashboard** | Learns about proposals in 2c, so it does not go blank at the switch. |
+| **Rate limit** | 200/hour per user (was 60, sized for one section), plus 80 per proposal so one editor cannot spend the whole budget on one document. Real documents hold 5-17 sections, median 11. |
+
+### The advisory needed something stored that was not
+
+**Confirmed, and it corrected the 2a report.** The pipeline's trace keeps
+`layer1`, `layer2`, `layer3`, the version and the fingerprint - **not what
+retrieval returned**. `related_texts` hands back raw text with the ids
+already discarded. So the coordinated-change advisory could not have read
+stored output as described.
+
+Fixed by recording the retrieved section ids on the snapshot at check
+time, from the **view**: `build_index` and `top_k` are read-only and
+already public, so **nothing under `ml/` changed** and Layer 2 receives
+exactly what it received before. The advisory then reads
+`retrieved_section_ids` and recomputes nothing.
+
+It fails silently if retrieval errors - an advisory is a nicety, and
+losing it must never cost the check the submitter is waiting for.
+
+### The model
+
+`Proposal` (manual, initiating office, status), `ProposalVersion`
+(number, overall reason), `SectionChange` (old text **as of the version**,
+new text, note, its own assessment, hashes), plus `ProposalParticipant`,
+`Concurrence` and `AuditEvent` for 2b.
+
+`old_text` is stored rather than read live: the diff a reviewer sees has
+to be the diff the drafter saw, and the section can move underneath both.
+
+`current_version()` is **derived** from the rows, not a stored pointer - a
+stored "current" that disagreed with the highest number would be a bug
+nobody could see.
+
+### One open proposal per section
+
+A partial unique index on `(section) where is_open`, with `is_open`
+copied onto the row because a constraint cannot cross the join to
+`Proposal.status`. Same shape as `PositionAssignment.sole_holder`, and
+the same hazard: a stale False does not raise, it lets **two offices edit
+the same section at once and tells neither**.
+
+Open means *the proposal is open* **and** *this is the current version* -
+a superseded version is history, and its sections are free again.
+Maintained by `save()`, by the queryset's `bulk_create()` and `update()`,
+and by `Proposal.refresh_open_changes()` on every status or version
+change. Seven tests, including two rows in one `bulk_create` and an
+`update()` that moves a change onto an open version.
+
+The API reports it as what it is: *"3.0 POLICIES is already in an open
+proposal by ACC"* - with the office, so the drafter knows who to talk to.
+
+### A bug the tests caught
+
+`check_is_current` compared two **stored** values - the change's hash and
+the assessment's - which is comparing the check with itself. Always true.
+Every edited section reported as checked, and the per-section staleness
+guard did nothing.
+
+It now fingerprints the text **as it is now** and compares that with the
+one taken when the check ran. The fingerprint deliberately covers the two
+texts and **not** the overall reason: editing one box must clear only that
+box, and folding in the shared reason would clear every section at once.
+The reason is still checked at submission by the existing clause 6.3
+tiers.
+
+### Test state
+
+**376 API tests pass**, 39 of them new. Both switch states covered - with
+it off, the single-section pre-check still works end to end.
+
+Migration 0024 on a copy: **every existing row count unchanged**, six new
+tables empty, and it **reverses cleanly**. `check_setup.py` Ready, the
+pipeline untouched.
 
 **Not run against the real database.**
 

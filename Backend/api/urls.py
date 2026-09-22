@@ -3,6 +3,7 @@ from . import organisation_views as org
 from . import series_views as series
 from . import people_views as people
 from . import switchover_views as switchover
+from . import proposal_views as proposals
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -54,6 +55,15 @@ urlpatterns = [
     # see; POST flips it, and refuses while any blocker stands.
     path('org/switchover/', switchover.switchover),
     path('org/switchover/set/', switchover.set_access_mode),
+
+    # Proposals (v4 phase 2). Available only with the access switch on;
+    # with it off these refuse and the single-section flow is the real one.
+    path('proposals/', proposals.proposals),
+    path('proposals/<int:proposal_id>/', proposals.proposal_detail),
+    path('proposals/<int:proposal_id>/sections/<int:section_id>/',
+         proposals.proposal_section),
+    path('proposals/<int:proposal_id>/sections/<int:section_id>/check/',
+         proposals.check_section),
 
     # Auth
     path('auth/register/', register),
