@@ -286,13 +286,65 @@ class PositionAssignment(models.Model):
         return self.ends_on is None
 
 
-class ManualOffice(models.Model):
-    """How an office relates to a manual, other than owning it.
+class ManualSeries(models.Model):
+    """A family of documents that share an owner and a set of offices.
 
-    The owner is on `Manual.owning_office` and is deliberately not
-    duplicated here: it is approval authority, a different thing from the
-    working relationships below, and one row that can only ever have one
-    value does not belong in a join table.
+    What the application has always called a "manual" is really a
+    *document within a manual series*: the blank format's header keeps
+    MANUAL TITLE ("Finance and Administration Manual") and DOCUMENT NO.
+    ("FAM 6.02") in separate cells, and ten FAM documents in this database
+    sit in two different v3 departments. "Department" was naming the
+    document family and naming who works on it at the same time; those are
+    two axes, and this is the first of them.
+
+    Practically, it is what stops the system admin entering the same owner
+    and the same office links nineteen times.
+    """
+
+    code = models.CharField(max_length=32, unique=True)
+    title = models.CharField(max_length=255)
+
+    # The office that signs. Must be an approving level; null while the
+    # series has not been given one yet.
+    owning_office = models.ForeignKey(
+        Office, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='owned_series',
+    )
+
+    # Provisional, pending the QMS office (workflow plan section 8,
+    # question 5). False - the default - runs the approval route from the
+    # owner up through every approving level above it.
+    approval_stops_at_owner = models.BooleanField(default=False)
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['code']
+        verbose_name_plural = 'manual series'
+
+    def __str__(self):
+        return self.code
+
+    def clean(self):
+        if self.owning_office_id and not self.owning_office.is_approving_level:
+            raise ValidationError({
+                'owning_office': (
+                    'A manual is owned by an approving-level office - the one '
+                    'that signs. Mark the office as an approving level, or '
+                    'choose one that already is.'
+                )
+            })
+
+
+class OfficeLink(models.Model):
+    """Shared shape for the two office-link tables.
+
+    `ManualSeriesOffice` and `ManualOffice` hold the same pair of values
+    for different owners, and later phases read them through one helper.
+    Declaring the vocabulary once keeps the two from drifting apart in a
+    way that would be invisible until a concurrence list came out wrong.
     """
 
     CONCURRING = 'concurring'
@@ -303,15 +355,55 @@ class ManualOffice(models.Model):
         (READER, 'Reader — read only, never blocks'),
     ]
 
+    relationship = models.CharField(max_length=16, choices=RELATIONSHIP_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+
+
+class ManualSeriesOffice(OfficeLink):
+    """The offices a whole series relates to, inherited by its documents."""
+
+    series = models.ForeignKey(
+        ManualSeries, on_delete=models.CASCADE, related_name='office_links',
+    )
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='series_links',
+    )
+
+    class Meta:
+        ordering = ['series__code', 'office__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['series', 'office'],
+                name='one_relationship_per_series_and_office',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.office} — {self.get_relationship_display()} — {self.series}"
+
+
+class ManualOffice(OfficeLink):
+    """How an office relates to one document, when it differs from the series.
+
+    Only read when `Manual.offices_overridden` is set. The owner is on
+    `Manual.owning_office` and is deliberately not duplicated here: it is
+    approval authority, a different thing from the working relationships
+    below, and one row that can only ever have one value does not belong
+    in a join table.
+    """
+
+    CONCURRING = OfficeLink.CONCURRING
+    READER = OfficeLink.READER
+
     manual = models.ForeignKey(
         'Manual', on_delete=models.CASCADE, related_name='office_links',
     )
     office = models.ForeignKey(
         Office, on_delete=models.PROTECT, related_name='manual_links',
     )
-    relationship = models.CharField(max_length=16, choices=RELATIONSHIP_CHOICES)
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         ordering = ['manual__title', 'office__name']
         constraints = [
@@ -390,20 +482,39 @@ class Manual(models.Model):
         null=True,
         related_name='uploaded_manuals'
     )
-    # v4. Null means unassigned, which is where every existing manual
-    # starts: the organisation ships empty and the system admin links them
-    # by hand. PROTECT, because an office is never deleted anyway and a
-    # cascade here would destroy controlled documents.
+    # v4. The document's series - "FAM 6.02" belongs to "FAM". Null means
+    # unassigned, which is where every existing document starts: the
+    # organisation ships empty and the system admin links them by hand.
+    series = models.ForeignKey(
+        ManualSeries, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='documents',
+    )
+
+    # **Null means inherit from the series.** A document with no series and
+    # no owner is what "unassigned" means. PROTECT, because an office is
+    # never deleted anyway and a cascade here would destroy controlled
+    # documents.
     owning_office = models.ForeignKey(
         Office, on_delete=models.PROTECT,
         null=True, blank=True, related_name='owned_manuals',
     )
 
-    # Provisional, pending the QMS office (workflow plan section 8,
-    # question 5). False - the default - means the approval route runs from
-    # the owner up through every approving level above it. True stops it at
-    # the owner.
-    approval_stops_at_owner = models.BooleanField(default=False)
+    # False: this document uses its series' office links. True: it uses its
+    # own, which replace the series' set entirely rather than adding to it.
+    #
+    # Replace-all rather than per-office exclusion because the concurrence
+    # list, the notifications, the frozen participant list and the audit
+    # trail all read this, and one branch is something four readers can get
+    # right where a set difference is something four readers can get
+    # subtly differently. Its cost - a later series-level addition skipping
+    # overridden documents - is real, so the series screen names the
+    # documents that will not receive the change.
+    offices_overridden = models.BooleanField(default=False)
+
+    # Null means inherit from the series. Three states, not two: inherit,
+    # stop at the owner, continue upward. Provisional, pending the QMS
+    # office (workflow plan section 8, question 5).
+    approval_stops_at_owner = models.BooleanField(null=True, blank=True, default=None)
 
     file = models.FileField(upload_to='mastercopies/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
@@ -412,6 +523,104 @@ class Manual(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.department.name})"
+
+    # ── Inheritance ──────────────────────────────────────────
+    #
+    # Read through these, never off the columns directly. Every later
+    # phase asks the same three questions - who owns this, who concurs on
+    # it, who signs it - and each one answered separately from raw fields
+    # is a chance for two screens to disagree about the same document.
+
+    def clean(self):
+        if self.owning_office_id and not self.owning_office.is_approving_level:
+            raise ValidationError({
+                'owning_office': (
+                    'A document is owned by an approving-level office - the '
+                    'one that signs. An override is held to the same rule as '
+                    'the series it overrides.'
+                )
+            })
+
+    @property
+    def effective_owner(self):
+        """The office that signs, whether set here or inherited."""
+        if self.owning_office_id:
+            return self.owning_office
+        return self.series.owning_office if self.series_id else None
+
+    @property
+    def owner_is_inherited(self):
+        """For the screen: an inherited value and a value that happens to
+        match are different things, and the admin has to see which."""
+        return self.owning_office_id is None and self.series_id is not None
+
+    @property
+    def is_unassigned(self):
+        """No series and no owner. All nineteen documents start here."""
+        return self.series_id is None and self.owning_office_id is None
+
+    def effective_office_links(self):
+        """The (office, relationship) pairs that actually apply.
+
+        The document's own rows when it overrides, the series' otherwise.
+        Replace, not merge - see `offices_overridden`.
+
+        Named `effective_` rather than `office_links` because that name is
+        already the reverse accessor for `ManualOffice`, and a method with
+        the same name is silently shadowed by it - the kind of collision
+        that reads as correct and returns a manager.
+        """
+        if self.offices_overridden:
+            return list(
+                ManualOffice.objects.filter(manual=self).select_related('office')
+            )
+        if self.series_id is None:
+            return []
+        return list(
+            ManualSeriesOffice.objects.filter(
+                series_id=self.series_id
+            ).select_related('office')
+        )
+
+    def concurring_offices(self):
+        return [
+            link.office for link in self.effective_office_links()
+            if link.relationship == OfficeLink.CONCURRING
+        ]
+
+    def reader_offices(self):
+        return [
+            link.office for link in self.effective_office_links()
+            if link.relationship == OfficeLink.READER
+        ]
+
+    @property
+    def stops_at_owner(self):
+        if self.approval_stops_at_owner is not None:
+            return self.approval_stops_at_owner
+        return self.series.approval_stops_at_owner if self.series_id else False
+
+    def approval_route(self):
+        """The owner, then the approving levels above it, nearest first.
+
+        Empty when the document has no owner yet - which is the honest
+        answer, not an error: an unassigned document has no route because
+        nobody has said who signs it.
+        """
+        owner = self.effective_owner
+        if owner is None:
+            return []
+        if self.stops_at_owner:
+            return [owner]
+        return [owner] + [
+            office for office in owner.ancestors() if office.is_approving_level
+        ]
+
+    def can_be_proposed_against(self):
+        """A document with no concurring office cannot be changed by
+        anyone, which is worth flagging on screen rather than discovering
+        when someone tries."""
+        return bool(self.concurring_offices())
 
 
 class ManualSection(models.Model):

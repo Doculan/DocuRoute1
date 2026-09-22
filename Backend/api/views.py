@@ -628,6 +628,11 @@ def login(request):
         'access': str(refresh.access_token),
         'refresh': str(refresh),
         'role': user.role,
+        # v4. Which portal, and which nav groups within it. The v3 `role`
+        # still drives every permission check until 1c; this is sent
+        # alongside so the organisation screens can be shown to the people
+        # who can actually use them.
+        'system_role': user.system_role,
         'username': user.username,
         'department': user.department.name if user.department else None,
         'department_id': user.department.id if user.department else None,

@@ -3055,3 +3055,82 @@ a:hover { color: var(--brand-500); }
 @media (prefers-reduced-motion: reduce) {
   .rev-card.is-highlighted { animation: none; }
 }
+
+/* ============================================================
+   The organisation tree
+   ------------------------------------------------------------
+   A hierarchy with no fixed depth, so indentation is the only
+   thing carrying structure. It is drawn with a rule rather than
+   whitespace alone: at four levels deep, whitespace stops
+   reading as nesting and starts reading as drift.
+   ============================================================ */
+
+.office-tree { margin-top: 0.5rem; }
+
+.office-node {
+  padding-left: calc(var(--depth, 0) * 1.4rem);
+}
+
+.office-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.3rem;
+  border-bottom: 1px solid var(--rule-soft);
+  border-left: 2px solid transparent;
+  transition: background-color var(--t) var(--ease-quart);
+}
+.office-row:hover { background: var(--paper-3); }
+
+/* Retired offices stay listed - nothing is deleted - but they should
+   not compete with the live hierarchy for attention. */
+.office-row.is-retired { opacity: 0.62; }
+
+.office-twisty {
+  width: 1.1rem;
+  flex-shrink: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.office-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.office-abbr {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+/* The actions appear on hover, but stay reachable by keyboard: a control
+   that only exists on hover does not exist on a tablet or to a screen
+   reader. */
+.office-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+  opacity: 0;
+  transition: opacity var(--t) var(--ease-quart);
+}
+.office-row:hover .office-actions,
+.office-actions:focus-within { opacity: 1; }
+
+@media (hover: none) {
+  .office-actions { opacity: 1; }
+}
+
+.office-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.3rem 0.7rem 1.6rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.office-picker .select { max-width: 22rem; }

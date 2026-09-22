@@ -8,6 +8,7 @@ import RevisionReview from "./RevisionReview";
 import SVMEvaluation from "./SVMEvaluation";
 import Announcements from "./Announcements";
 import AdminHome from "./AdminHome";
+import Offices from "./Offices";
 import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
@@ -53,6 +54,17 @@ const NAV_GROUPS = [
     ],
   },
   {
+    // v4. Configuring the organisation is a different job from running
+    // the document process, and only the system admin does it - so the
+    // group is hidden rather than disabled for everyone else. A disabled
+    // group is an invitation to wonder what you are missing.
+    label: "Organisation",
+    systemAdminOnly: true,
+    items: [
+      { key: "offices", icon: departmentsIcon, label: "Offices" },
+    ],
+  },
+  {
     label: "System",
     items: [
       { key: "evaluation", icon: reviewIcon, label: "Model health" },
@@ -62,6 +74,7 @@ const NAV_GROUPS = [
 
 const CRUMBS = {
   home: "Dashboard",
+  offices: "Offices",
   users: "Users",
   departments: "Departments",
   manuals: "Manuals",
@@ -84,6 +97,10 @@ export default function AdminDashboard({ onLogout }) {
   const [revisionToOpen, setRevisionToOpen] = useState(null);
   const [pending, setPending] = useState({ users: 0, revisions: 0 });
   const username = localStorage.getItem("username") || "Admin";
+  const systemRole = localStorage.getItem("system_role") || "user";
+  const navGroups = NAV_GROUPS.filter(
+    (g) => !g.systemAdminOnly || systemRole === "system_admin"
+  );
 
   // Counts ride along on the nav so waiting work is visible without opening
   // the page. They come from the dashboard summary rather than from two
@@ -122,6 +139,7 @@ export default function AdminDashboard({ onLogout }) {
       case "sections":
         return <Sections openManualId={drillManual} />;
       case "announcements": return <Announcements />;
+      case "offices": return <Offices />;
       case "review": return <RevisionReview openRevision={revisionToOpen} />;
       case "evaluation": return <SVMEvaluation />;
       default: return <AdminHome onGo={goTo} onOpenRevision={openRevision} />;
@@ -193,7 +211,7 @@ export default function AdminDashboard({ onLogout }) {
         <div className="sidebar-eyebrow">Admin Panel</div>
 
         <nav className="sidebar-nav">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.label ?? "top"}>
               {group.label && <div className="nav-group">{group.label}</div>}
               {group.items.map((item) => {

@@ -1,4 +1,5 @@
 from django.urls import path
+from . import organisation_views as org
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -16,6 +17,16 @@ from .views import (
 )
 
 urlpatterns = [
+    # ─── Organisation (v4, system admin only) ────────────────
+    # Offices are never deleted, so there is no delete route here and
+    # there will not be one: deactivate, or merge into the office that
+    # took the work over.
+    path('org/offices/', org.offices),
+    path('org/offices/<int:office_id>/', org.office_detail),
+    path('org/offices/<int:office_id>/deactivate/', org.deactivate_office),
+    path('org/offices/<int:office_id>/reactivate/', org.reactivate_office),
+    path('org/offices/<int:office_id>/merge/', org.merge_office),
+
     # Auth
     path('auth/register/', register),
     path('auth/confirm-password/', confirm_password),

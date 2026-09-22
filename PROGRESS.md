@@ -32,6 +32,196 @@ direction.*
 
 ---
 
+## Phase 1b design — approved 2026-09-22
+
+**The series level.** What the application called a "manual" is a
+*document within a manual series*. The blank format's header keeps MANUAL
+TITLE and DOCUMENT NO. in separate cells, and the database agreed: **ten
+FAM documents sat in two different v3 departments** (CAS and CME).
+"Department" was naming the document family and naming who works on it at
+once. `ManualSeries` separates them, and turns 19 sets of links into 5.
+
+**Inheritance needs no new column for the owner.** `Manual.owning_office`
+was already nullable; null now means *inherit from the series*, and a
+document with **no series and no owner** is what "unassigned" means —
+which is all nineteen, so nothing had to be backfilled.
+
+**Office links: replace-all** (`Manual.offices_overridden`). A document
+either inherits the whole set or owns the whole set. Not per-office
+exclusion, because the concurrence list, the notifications, the frozen
+participant list and the audit trail all read this: one branch is
+something four readers get right, a set difference is something four
+readers get subtly differently. Its cost — a later series-level addition
+skipping overridden documents — is real, so the series screen names the
+documents that will not receive the change.
+
+**No header metadata.** Generated drafts leave VERSION NO., DOCUMENT NAME,
+REVISION NO., EFFECTIVITY DATE and PAGE NO. blank for hand-filling. No
+columns for any of them; document status becomes real data in P4 when the
+custodian records it.
+
+**Three checkpoints** — 1b-i model and Offices, 1b-ii series and
+documents, 1b-iii people and positions.
+
+---
+
+## Data cleanups — 2026-09-22
+
+Done before series links are entered, since all three are cheaper to fix
+before than after.
+
+**`COE` retired as a duplicate.** Manual id 219, pointing at
+`HRM_4_MoGMsSE.02.pdf`. **MD5-identical** to `HRM_4.02.pdf` — both
+`6fd175…7723`, 375,187 bytes. Referenced by nothing: no revisions, no
+section history, no pre-assessments, no recently-opened rows, no
+announcements. Its extraction was also the worse of the two — 5 sections
+against HRM 4.02's 17, two of them empty. Deleted.
+
+> The duplicate **PDF is still on disk** and untracked. A fresh clone will
+> not have it, but `import_mastercopies` on *this* machine would recreate
+> the same phantom document. Worth removing.
+
+**`FAM 8.02 Evaluation of External Providers` → `FAM 8.02`.** The source
+header settles it: DOCUMENT NO. is `FAM 8.02`, and "Evaluation of External
+Providers" is the DOCUMENT NAME, a separate cell.
+
+**`ASM 3.0` → `ASM 3.00`.** The rule was "leave it unless the source shows
+a different number", and the source does: its header reads `ASM 3.00`. A
+document number is a controlled identifier, so it follows the document.
+
+**19 manuals, 198 sections** after the cleanups.
+
+The headers also give the series titles, for whoever enters them: ACADEMIC
+SERVICES MANUAL, FINANCE AND ADMINISTRATION MANUAL, HUMAN RESOURCE MANUAL,
+STUDENT DEVELOPMENT MANUAL.
+
+---
+
+## Phase 1b-i — what was built (awaiting Checkpoint B1)
+
+### Models
+
+`ManualSeries`, `ManualSeriesOffice`, and an abstract `OfficeLink` holding
+the relationship vocabulary that both link tables share — declared once so
+the two cannot drift apart in a way that stays invisible until a
+concurrence list comes out wrong.
+
+`Manual` gains `series`, `offices_overridden`, and `approval_stops_at_owner`
+becomes **three-state**: null (inherit), true (stop at the owner), false
+(continue upward). An override has to work in both directions or it only
+half exists.
+
+Resolution lives on the model — `effective_owner`, `effective_office_links`,
+`concurring_offices`, `reader_offices`, `approval_route`,
+`can_be_proposed_against`. Later phases ask the same three questions about
+every document, and each one answered separately from raw columns is a
+chance for two screens to disagree.
+
+> **A name collision worth remembering.** The first version called the
+> method `office_links`, which is already the reverse accessor for
+> `ManualOffice.manual`. Django's descriptor silently shadows a method of
+> the same name, so it returned a manager and failed six tests with an
+> error that named neither. Renamed `effective_office_links`, matching
+> `effective_owner`.
+
+### The migration that changes a meaning
+
+`approval_stops_at_owner` was `default=False` in 1a — two states, and every
+row got False. Null now means inherit, so those nineteen Falses would have
+read as *"this document explicitly does not follow its series"*. Nobody
+chose them: the field arrived with a default and no screen. Migration 0020
+sets them back to null, and reversing restores the two-state field.
+
+Verified on a copy: **19 of 19 with no series, no owner, not overriding,
+and `approval_stops_at_owner` null** — no False survived. Every existing
+row count unchanged.
+
+### Offices
+
+`api/organisation_views.py`, kept out of `views.py` — which is already
+2,800 lines of the v3 application, while this belongs to a part that did
+not exist before and will outlive most of it.
+
+**There is no delete endpoint, and there will not be one.** Deactivate, or
+merge into the office that took the work over.
+
+- **Deactivating is refused while active children remain.** Retiring an
+  office out from under the units reporting to it would leave them
+  orphaned in the tree with no sign of why.
+- **Merging is two calls** — GET previews what moves, POST moves it. A
+  merge rewrites ownership, office links, positions and children in one
+  go, and the admin should see the list before agreeing rather than after.
+- **Duplicate links are dropped, not re-pointed.** Where both offices
+  relate to the same series, re-pointing would break the unique constraint
+  and fail the whole merge; the surviving office's relationship is the one
+  that keeps applying, and the preview says how many were dropped.
+- **Merging upward is refused.** It would put the surviving office inside
+  the one being retired, and reparenting the children would then form a
+  cycle.
+- **Re-authentication on moving, deactivating and merging. Not on creating
+  or renaming** — a prompt on routine work is how people learn to type the
+  password without reading it.
+
+`IsSystemAdmin` reads **`system_role`**, not the v3 `role`: this is the
+first code written against the new field, and a v3 admin who was never
+made a system admin configures nothing.
+
+### The screen
+
+`Offices.jsx` — a tree assembled client-side from the flat payload, since
+a nested response would have to pick a shape for a hierarchy of no fixed
+depth and every picker wants the flat list anyway. An office whose parent
+is missing from the list (the usual case: an inactive parent while
+inactive rows are hidden) is shown at the top level rather than dropped.
+
+Retired offices stay listed at reduced weight. Row actions appear on
+hover but stay reachable by keyboard and are always visible on touch — a
+control that exists only on hover does not exist on a tablet.
+
+The **Organisation** nav group is hidden rather than disabled for
+non-admins: a disabled group is an invitation to wonder what is behind it.
+`login` now returns `system_role` alongside `role`; it decides which nav
+groups appear and nothing else, since every endpoint checks for itself.
+Server-side routing replaces the stored copy at 1c.
+
+### Merging two offices that both have someone in post
+
+Asked at the checkpoint, and the answer was **not** what the design
+intended. The retired office's conflicting position was deactivated, but
+its assignment was **left open** - `ends_on` null, still reading as
+current. Someone would go on being the current Head of an office that no
+longer operates, and every reader asking "who holds this now" would
+believe it.
+
+The QMS case looked correct by accident: a conflicting IMR stopped
+counting as QMS staff, but only because `holds_current_qms_position`
+filters on `position__is_active`. That is a property of one query, not of
+the record - any other reader still saw an open assignment.
+
+Now: conflicting assignments are **ended with today's date** before the
+position is retired, and the preview **names the people** whose posts
+would end rather than reporting a count. Ending someone's appointment is
+not a side effect to discover afterwards.
+
+Untouched, deliberately: the surviving office's own holders, assignments
+that ended earlier (they keep the date they actually ended, not the date
+of the merge), and non-conflicting positions, which move across with their
+holders still in post.
+
+### Test state
+
+**234 API tests pass**, 44 of them new. The inheritance ones carry the
+weight: that an override *replaces* rather than merges, that override rows
+are ignored until the flag is set, that an overriding document does not
+receive a later series change (the known cost, asserted so it stays
+known), that an override owner is held to the approving-level rule, and
+that the approval route skips non-approving offices without ending the
+walk.
+
+**Nothing has been run against the real database.**
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
