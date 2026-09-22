@@ -16,6 +16,339 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 
 ---
 
+# ═══════════════════════════════════════════════════════════
+# v4 REBUILD — multi-office document control
+# ═══════════════════════════════════════════════════════════
+
+*Standing direction: `CLAUDE.md`. Current spec: `PHASE1_ORGANISATION_SPEC.md`.
+Background: `MULTI_OFFICE_WORKFLOW_PLAN.md`.*
+
+*This section is the current work and leads the file. Everything after the
+**v3 log** divider below is the previous foundation, kept because the AI
+pipeline and both portals carry across unchanged — it is history, not
+direction.*
+
+`v3.0.0` is tagged at `ff03583` — the last state before this work.
+
+---
+
+## Questions for the QMS office — open
+
+*The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
+the ones a build decision is currently resting on, recorded here so the
+provisional choice and its reason stay next to the work.*
+
+| # | Question | Provisional choice until answered |
+|---|---|---|
+| **A** | **May a university have more than one IMR, or more than one Document Custodian, at once?** | Unrestricted. `Position.SOLE_HOLDER_KINDS` is `(HEAD,)` only. The permissive choice on purpose: a wrong restriction blocks real work, a missing one can be added later. |
+| **B** | Does the approval route always continue upward from the owner, or stop at the owner for some manuals? *(plan section 8, question 5)* | Continues upward by default; `Manual.approval_stops_at_owner` overrides per manual. |
+| **C** | Is multi-office concurrence actual practice? The DCR has no section for it. *(question 1 — the largest one)* | Built as designed, with the concurrence record printed as an annex. |
+
+---
+
+## Phase 1a — the survey (2026-09-22)
+
+### The data model as it stood
+
+Eleven models, 17 migrations. `Department` was the only organisational
+structure: `name` (unique) and `created_at`. No hierarchy, no parent, no
+active flag, no abbreviation. Three foreign keys pointed at it —
+`CustomUser.department` (SET_NULL), `Manual.department` (**CASCADE,
+non-nullable**), `Announcement.department` (CASCADE, nullable).
+
+Two consequences shaped the plan:
+
+- **`Manual.department` could not express "unassigned"**, so that state has
+  to live on the new `owning_office`.
+- **Deleting a department destroyed its manuals, their sections and every
+  revision against them** — flatly against rule 3, "nothing in the
+  organisation is ever deleted".
+
+Live data at survey: 7 departments, 20 manuals, 203 sections, 6 revisions,
+6 users (1 admin, 5 staff, one of those unapproved).
+
+### Access scoping was thirteen sites, not one
+
+Not a helper — **nine inline `!=` comparisons and four queryset filters**:
+
+| Kind | Views |
+|---|---|
+| Inline comparison | `list_sections`, `review_section`, `review_delete_section`, `merge_sections`, `upload_revision`, `propose_text_revision`, `propose_merge`, `pre_assess_text_revision`, `pre_assess_merge` |
+| Queryset filter | `staff_list_manuals`, `staff_my_revisions`, `staff_sections`, `staff_dashboard` |
+
+Thirteen places to change, and a missed one looks like nothing.
+
+### `is_staff` was overloaded, and it was live
+
+Four views used Django's `is_staff` as the cross-department escape hatch,
+while the application's own role field uses `'staff'` to mean **the
+opposite** — an ordinary non-admin user. So `is_staff=True` granted
+cross-department access while `role='staff'` denied it, and any account
+made with `createsuperuser` picked that up silently.
+
+### Admin rights were three overlapping mechanisms
+
+`role` (the real one, guarding 23 endpoints via `IsAdminRole`),
+`is_approved` (a separate login gate), and Django's `is_staff` /
+`is_superuser`. Portal choice was made client-side from a `role` string in
+`localStorage` — not a privilege hole, since the API enforces per
+endpoint, but not something to add a third role to.
+
+---
+
+## Approved decisions — Phase 1a
+
+**1. The review-rights gap.** Mapping the single admin account to *system
+admin* would have left **nobody able to review anything**: no QMS staff can
+exist until offices exist, and three pending revisions would have been
+stranded. The one person who could fix it is the system admin, who by rule
+7 should not also be deciding requests.
+
+> **Decided (option 1):** review is allowed for `system_admin` **or** a
+> current QMS position, **until 1c**. Marked transitional in code, with a
+> test that fails when 1c removes it so the allowance cannot be forgotten.
+
+**2. `is_staff`.** Fixed in 1a as part of the scoping refactor. It stays
+**only** for Django's `/admin/` site and is never again consulted for
+access scoping.
+
+**3. `delete_department`.** Disabled now, in 1a, because the cascade
+destroys manuals and revisions today. The Departments screen retires at 1c
+when Offices replaces it. `Announcement.department`'s cascade is being
+checked in the same pass, and **nothing in v4 inherits a cascade from the
+organisation.**
+
+**4. Name history — denormalise.** `office_name_at_time` on the records
+that must read historically, not an `OfficeNameHistory` table.
+
+Why: nothing stored a department name — every display derived it live, so
+renaming already rewrote the past everywhere, silently. A history table
+fixes that only if all thirteen-plus display sites learn to ask "what was
+this called on that date", and each is a chance to forget. One column is
+impossible to get wrong at read time, and it matches the call already made
+for `SectionHistory.change_reason`, copied rather than referenced for
+exactly this reason. Live organisation screens show the current name
+because they are about the present.
+
+**5. Approval route — design for both.** Default continues upward (owner,
+then approving levels above it); a per-manual **"approval stops at owner"**
+boolean overrides it. **Provisional, pending the QMS office** — question 5
+of `MULTI_OFFICE_WORKFLOW_PLAN.md` §8.
+
+**6. Refactor before behaviour change.** One `offices_for(user)` /
+`can_reach(user, manual)` helper; all thirteen sites converted **while it
+still returns the department answer**, with the existing tests as the
+check; the helper's answer changes in one commit at 1c. Thirteen edits
+where a mistake is invisible becomes one commit with one test surface.
+
+**7. Portal routing.** At 1c, the server returns the role from an
+authenticated endpoint rather than the client trusting `localStorage`.
+
+---
+
+## Phase 1a — what was built (awaiting Checkpoint A)
+
+### The access refactor
+
+`Backend/api/access.py`. All thirteen sites now ask it; **it still returns
+the v3 answer on purpose**, so the existing tests are a real check that
+nothing moved. At 1c the body of `offices_for` changes and nothing else
+has to.
+
+**The refactor found something the survey had merged.** The thirteen sites
+were not thirteen copies of one rule. Four (`list_sections`,
+`review_section`, `review_delete_section`, `merge_sections`) let an admin
+through via `is_staff`; the five submission paths let **nobody** through —
+an admin outside the department was refused like anyone else. Collapsing
+them into a single `can_reach` would have handed admins the right to
+propose changes to any manual in the university, which no v3 screen ever
+allowed.
+
+So there are two questions, not one: **`can_reach`** (opening a document —
+admins pass) and **`can_propose`** (changing one — they do not). That split
+is also exactly what 1c needs, where an owning office and a reader office
+both open a manual and neither may propose against it.
+
+### `is_staff` is gone from access control
+
+It no longer appears anywhere in `views.py`. It was Django's `/admin/`
+flag being used as a cross-department escape hatch while the application's
+own `role` field uses `'staff'` to mean the opposite — an ordinary user —
+so any account made with `createsuperuser` silently bypassed scoping
+whatever its role said. Admin reach is now `role == 'admin'`, which is
+what the other 23 endpoints already meant by admin.
+
+### `delete_department` withdrawn
+
+Answers **409** and deletes nothing. It used to destroy every manual in
+the department, their sections and every revision against them.
+
+Kept as a 409 rather than removed outright because the Departments screen
+still calls it until Offices replaces that screen at 1c — a route that
+vanishes gives the browser a 404 and the admin no idea why. The message
+names the number of manuals that would have gone.
+
+**Both cascades into the organisation are now PROTECT** (migration 0019).
+The endpoint was only the route; the Django admin and the shell reach the
+same collector, so the guarantee belongs on the relationship.
+`Announcement.department` is PROTECT rather than SET_NULL because null on
+that field does not mean "no department" — it means **show this to
+everyone**, so clearing it would broadcast a departmental notice to the
+whole university.
+
+### Where the design changed under testing
+
+**The one-current-Head constraint could not be written as planned.** The
+migration-shape note above said a partial unique index on
+`(position) WHERE ends_on IS NULL AND position.kind = 'head'`. Django
+refuses it: *"Joined field references are not permitted in this query"* —
+a constraint condition cannot cross a relationship, and `kind` lives on
+`Position`. The earlier note blamed the database; SQLite would in fact
+have accepted the index.
+
+Fixed by copying the one fact the constraint needs onto the row:
+`PositionAssignment.sole_holder`, recomputed on every save from
+`position.kind in Position.SOLE_HOLDER_KINDS`. The constraint is then
+`unique(position) where ends_on is null and sole_holder`, and because
+`Position` is already unique per (office, kind), one current assignment to
+a head position **is** one current head for that office. Still a real
+database constraint, so the rule holds against the shell, a management
+command, and two requests arriving together.
+
+`SOLE_HOLDER_KINDS` is `(HEAD,)` only. IMR and Custodian are deliberately
+left out — nothing has said whether a university may have two, and
+guessing would encode a rule nobody agreed to. **Open question for the QMS
+office** (added to the list below); stays `(HEAD,)` until answered.
+
+### The flag had a hole, and it was the quiet kind
+
+`sole_holder` was recomputed in `save()` — and `bulk_create()` and
+`QuerySet.update()` never call `save()`. Both would have written rows at
+the field's default of **False**, and False there does not raise: it means
+the partial index does not apply, so two current Heads for one office
+would have gone in without complaint. A flag invented to carry a
+constraint, quietly switching that constraint off.
+
+Closed by making every writer maintain it rather than documenting around
+it. `PositionAssignmentQuerySet` recomputes on `bulk_create()`, and on
+`update()` whenever `position` is among the fields — the only update that
+can change the answer, since the flag depends on the position's kind and
+nothing else. Ending or reopening an assignment leaves it correct and the
+constraint does its own work.
+
+`Position.save()` now also refuses a change of `kind`. Re-kinding a
+position would re-point every assignment ever made against it — someone
+recorded as the office's Encoder in 2024 would become its Head — and
+would leave those rows' flags describing a kind that no longer applies.
+Deactivate and create the position you need instead.
+
+Eight tests cover it: bulk-create against an existing head, two heads in
+one bulk call with neither pre-existing, a bulk update moving a row onto a
+head position, reopening an ended head assignment in bulk, that the flag
+is actually written rather than left stale, that encoders are still
+unrestricted, and that re-kinding is refused.
+
+### The transitional review allowance
+
+`IsQmsReviewer` — a current IMR or Custodian assignment, **or** (for now)
+`role == 'admin'`. `list_revisions` and `review_revision` moved to it.
+
+"Current" is computed by date on every request rather than cached on the
+user: the point of dated assignments is that *who holds this now* is
+derived and cannot go stale. An assignment ending today still authorises
+today — its last day is a day they held it.
+
+`tests_transitional_review.py` imports `TRANSITIONAL_ADMIN_REVIEW` at
+module level, so deleting the flag at 1c makes the module fail to import
+rather than quietly pass. The allowance cannot outlive 1c unnoticed, and
+it cannot be removed while a green suite still claims it is there.
+
+### The migration, on a copy
+
+Three migrations, each reversible on its own:
+
+| | | |
+|---|---|---|
+| `0017_organisation_tables` | M1 | additive only |
+| `0018_map_accounts_to_system_roles` | M2 | six rows |
+| `0019_no_cascade_from_the_organisation` | M3′ | the PROTECT change |
+
+M2 derives from `role`, not from a list of usernames, so it produces the
+same result on a teammate's checkout or a database rebuilt from the master
+copies. It reads no departments — starting empty is not quietly undone.
+
+**Trial on a copy of the real database:**
+
+```
+api_department        7 ->   7      api_office              absent -> 0
+api_customuser        6 ->   6      api_position            absent -> 0
+api_manual           20 ->  20      api_positionassignment  absent -> 0
+api_manualsection   203 -> 203      api_manualoffice        absent -> 0
+api_sectionhistory    3 ->   3
+api_manualrevision    6 ->   6      role=admin -> system_admin   1
+api_announcement      3 ->   3      role=staff -> user           5
+api_recentlyopened    3 ->   3
+api_revisionpreassessment 1 -> 1    20 of 20 manuals unassigned
+```
+
+**No existing row count changed. The four organisation tables were created
+empty.** Reversing to 0016 drops all four tables and the new columns and
+leaves every existing count untouched — so "additive only" is tested, not
+asserted.
+
+**Nothing has been run against the real database.**
+
+### Test state
+
+**182 API tests pass.** 39 are new (`tests_organisation.py`,
+`tests_transitional_review.py`), covering cycle prevention in both
+directions, a merged office still existing, one current Head with
+succession still possible, several encoders, dated assignments at their
+boundaries, PROTECT on people and offices, and that the access refactor
+preserved every v3 answer — including that an admin still cannot propose
+across departments.
+
+One phase-3 test changed meaning rather than breaking: deleting a
+department used to assert 403 (permitted, guarded by re-authentication)
+and now asserts 409, because the action was withdrawn rather than
+protected. A second case asserts that a correct password is not a way back
+to the cascade.
+
+`check_setup.py` reports **Ready**; the pipeline was not touched.
+
+---
+
+## Migration shape — Phase 1a
+
+Split in three so the risky part is separable:
+
+- **M1 — additive only.** `Office`, `Position`, `PositionAssignment`,
+  `ManualOffice`; `Manual.owning_office` (nullable); `CustomUser.
+  system_role` and `full_name`. Touches no existing column, deletes
+  nothing, reversible by dropping the new tables. **Organisation tables
+  ship empty** — no import from the old departments.
+- **M2 — data, six rows.** `system_role` for the existing accounts. Reads
+  no departments.
+- **M3 — retirement, at 1c only**, once nothing reads `Department`.
+
+Constraints in M1: cycle guard on `Office.parent` (application-level —
+SQL cannot express an ancestor check); `owning_office` must be an
+approving-level office (model validation, since the flag lives on the other
+row); **exactly one current Head per office** as a real partial unique
+index; `ManualOffice` unique per (manual, office).
+
+> **Corrected during 1a.** The head constraint could not be written the way
+> this paragraph first described it — not because of SQLite, which would
+> have accepted the index, but because Django refuses a constraint
+> condition that crosses a relationship. See *Where the design changed
+> under testing* above.
+
+---
+
+# ════════════════════════════════════════════════════════
+# v3 LOG — the single-department tool (tagged v3.0.0)
+# ════════════════════════════════════════════════════════
+
 ## Status
 
 | Phase | State |

@@ -159,9 +159,30 @@ class ReauthenticationTests(TestCase):
                 ManualSection.objects.filter(pk=section.pk).exists(), route
             )
 
-    def test_deleting_a_department_is_guarded(self):
+    def test_departments_can_no_longer_be_deleted_at_all(self):
+        """This used to assert 403 - the deletion was permitted, and
+        re-authentication was what stood in front of it. In v4 phase 1a
+        the action itself was withdrawn, because the cascade destroyed
+        every manual in the department, their sections and every revision
+        against them.
+
+        So the assertion is no longer "you must confirm your password"
+        but "there is nothing here to confirm". 409, not 403: the request
+        was understood and authorised, and refused on its merits.
+        `tests_organisation.py` covers the message and the surviving rows.
+        """
         response = self.delete(f"/api/departments/{self.department.id}/delete/")
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["reason"], "deletion_disabled")
+        self.assertTrue(Department.objects.filter(pk=self.department.pk).exists())
+
+    def test_confirming_a_password_does_not_unlock_it_either(self):
+        """The point of withdrawing it: a correct password is not a way
+        back to the cascade."""
+        response = self.delete(
+            f"/api/departments/{self.department.id}/delete/", self.token()
+        )
+        self.assertEqual(response.status_code, 409)
         self.assertTrue(Department.objects.filter(pk=self.department.pk).exists())
 
     def test_rejecting_a_registration_is_guarded(self):

@@ -1,9 +1,17 @@
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import AbstractUser
 
 class Department(models.Model):
+    """The v3 organisation: one flat list, no hierarchy.
+
+    Superseded by `Office`. Kept until nothing reads it (phase 1c), because
+    access scoping, three foreign keys and most of the admin screens still
+    depend on it. Do not add to it.
+    """
     name = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -11,12 +19,345 @@ class Department(models.Model):
         return self.name
 
 
+# ─── ORGANISATION (v4) ───────────────────────────────────────
+#
+# Structure is code; content is data. Nothing here names a university
+# office, and these tables ship empty - the system admin enters every
+# office, manual link and position through screens.
+#
+# Nothing in this section is ever deleted. Offices are deactivated or
+# merged, people are deactivated, assignments are ended with a date.
+# Note in particular that no relationship below cascades *from* the
+# organisation: deleting a Department today destroys its manuals, their
+# sections and every revision against them, which is exactly what this
+# must not repeat.
+
+
+class Office(models.Model):
+    """A unit in the university, at any level.
+
+    One table for every level - a department, a college and the Office of
+    the President differ only by where they sit in the tree and whether
+    they are an approving level. A separate "higher office" table would
+    have to be kept in step with this one, and the hierarchy already says
+    everything that distinction says.
+    """
+
+    name = models.CharField(max_length=255)
+    abbreviation = models.CharField(max_length=32, blank=True)
+
+    # PROTECT, not CASCADE: an office cannot be deleted at all, and if one
+    # ever were, taking its children with it would silently remove units
+    # that still exist in the university.
+    parent = models.ForeignKey(
+        'self', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='children',
+    )
+
+    # Marks VP, President, COO, CAO and the like. These sign; they do not
+    # propose or concur. A flag rather than a level number, because the
+    # hierarchy has no fixed depth.
+    is_approving_level = models.BooleanField(default=False)
+
+    is_active = models.BooleanField(default=True)
+
+    # Set when this office was merged into another. The office itself
+    # stays, inactive, so past records still resolve.
+    merged_into = models.ForeignKey(
+        'self', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='merged_from',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.abbreviation or self.name
+
+    def ancestors(self):
+        """Parents upward, nearest first. Stops rather than looping if the
+        data is ever cyclic, so a bad row cannot hang a request."""
+        seen, walk, current = set(), [], self.parent
+        while current is not None and current.pk not in seen:
+            seen.add(current.pk)
+            walk.append(current)
+            current = current.parent
+        return walk
+
+    def clean(self):
+        # An office cannot be its own ancestor. This has to be checked in
+        # Python: SQL has no way to express "walk the parent chain", and a
+        # cycle is created by an edit that looks locally valid - each row
+        # has one parent, and only the path is wrong.
+        if self.parent_id:
+            if self.parent_id == self.pk:
+                raise ValidationError({'parent': 'An office cannot be its own parent.'})
+            if self.pk and any(a.pk == self.pk for a in self.parent.ancestors()):
+                raise ValidationError(
+                    {'parent': 'That would put the office inside its own hierarchy.'}
+                )
+        if self.merged_into_id and self.merged_into_id == self.pk:
+            raise ValidationError({'merged_into': 'An office cannot be merged into itself.'})
+
+
+class Position(models.Model):
+    """A role within an office that the process refers to.
+
+    The process never names a person - it names a position, and asks who
+    holds it. IMR and Document Custodian are positions like any other,
+    attached to whichever office the system admin chooses, so there is no
+    hardcoded QMS office.
+    """
+
+    ENCODER = 'encoder'
+    HEAD = 'head'
+    IMR = 'imr'
+    DOCUMENT_CUSTODIAN = 'document_custodian'
+
+    KIND_CHOICES = [
+        (ENCODER, 'Encoder'),                      # form: "Requested by"
+        (HEAD, 'Head'),                            # form: "Department/Unit Head"
+        (IMR, 'Integrated Management Representative'),   # form: section 3
+        (DOCUMENT_CUSTODIAN, 'Document Custodian'),      # form: To/For, section 5
+    ]
+
+    # The two that make someone QMS staff rather than an ordinary user.
+    QMS_KINDS = (IMR, DOCUMENT_CUSTODIAN)
+
+    # Positions only one person may hold at a time. Decided: exactly one
+    # current Head per office, several Encoders allowed. IMR and Custodian
+    # are left out deliberately - nothing has said whether a university
+    # may have two, and guessing would encode a rule nobody agreed.
+    SOLE_HOLDER_KINDS = (HEAD,)
+
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='positions',
+    )
+    kind = models.CharField(max_length=32, choices=KIND_CHOICES)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['office__name', 'kind']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['office', 'kind'], name='one_position_row_per_office_and_kind',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.office} — {self.get_kind_display()}"
+
+    def save(self, *args, **kwargs):
+        # `kind` is identity, not a setting. Changing it would silently
+        # re-point every assignment ever made against this row - someone
+        # recorded as the office's Encoder in 2024 would become its Head -
+        # and would leave `PositionAssignment.sole_holder` stale on rows
+        # that no longer match it. Make a new Position instead.
+        if self.pk:
+            previous = Position.objects.filter(pk=self.pk).values_list(
+                'kind', flat=True
+            ).first()
+            if previous is not None and previous != self.kind:
+                raise ValidationError({
+                    'kind': (
+                        "A position's kind cannot be changed. Deactivate "
+                        "this one and create the position you need."
+                    )
+                })
+        super().save(*args, **kwargs)
+
+
+class PositionAssignmentQuerySet(models.QuerySet):
+    """Keeps `sole_holder` true to `position.kind` on the bulk paths.
+
+    `save()` recomputes it, but `bulk_create()` and `QuerySet.update()`
+    never call `save()`. Left alone, both would write rows with the field
+    at its default of False - and False there means the partial unique
+    index does not apply, so two current Heads for one office would go in
+    without complaint.
+
+    That is the failure mode worth naming: the flag exists only to carry
+    the constraint across a join, so a path that leaves it stale does not
+    raise anything. It quietly switches off the rule the flag was
+    invented for.
+    """
+
+    def _sole_holder_for(self, position_id):
+        kind = Position.objects.filter(pk=position_id).values_list(
+            'kind', flat=True
+        ).first()
+        return kind in Position.SOLE_HOLDER_KINDS
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.sole_holder = self._sole_holder_for(obj.position_id)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def update(self, **kwargs):
+        # Only a change of `position` can change the answer: the flag
+        # depends on that position's kind and on nothing else. Ending or
+        # reopening an assignment leaves it correct, and the constraint
+        # then does its own work.
+        position = kwargs.get('position_id', kwargs.get('position'))
+        if position is not None and 'sole_holder' not in kwargs:
+            position_id = getattr(position, 'pk', position)
+            kwargs['sole_holder'] = self._sole_holder_for(position_id)
+        return super().update(**kwargs)
+
+
+class PositionAssignment(models.Model):
+    """Who holds a position, and when they held it.
+
+    Dated rather than a simple pointer, because the question the audit
+    trail asks is "who held this on the date of that record" - and a
+    pointer can only answer "who holds it now".
+    """
+
+    user = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='position_assignments',
+    )
+    position = models.ForeignKey(
+        Position, on_delete=models.PROTECT, related_name='assignments',
+    )
+    starts_on = models.DateField()
+    # Null while current. Ending an assignment sets this; nothing is deleted.
+    ends_on = models.DateField(null=True, blank=True)
+
+    assigned_by = models.ForeignKey(
+        'CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='assignments_made',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Copied from `position.kind`, and only so the constraint below can
+    # see it. A constraint's condition cannot cross a join - Django
+    # refuses with "Joined field references are not permitted in this
+    # query" - and `kind` lives on Position.
+    #
+    # Three paths write it and all three maintain it: `save()` recomputes
+    # it, and the manager above does the same for `bulk_create()` and
+    # `update()`. `Position.save()` refuses a change of `kind` so an
+    # existing row's answer cannot move underneath it. A fourth writer
+    # would be a hole rather than an inconvenience.
+    sole_holder = models.BooleanField(default=False, editable=False)
+
+    objects = PositionAssignmentQuerySet.as_manager()
+
+    class Meta:
+        ordering = ['-starts_on', 'position__office__name']
+        constraints = [
+            # Exactly one current Head per office. `Position` is already
+            # unique per (office, kind), so one current assignment to a
+            # head position *is* one current head for that office.
+            #
+            # A real partial index rather than a check in a view, because
+            # the rule should hold against the shell, a management
+            # command, and two requests arriving at the same moment.
+            models.UniqueConstraint(
+                fields=['position'],
+                condition=Q(ends_on__isnull=True, sole_holder=True),
+                name='one_current_holder_of_a_sole_holder_position',
+            ),
+            models.CheckConstraint(
+                condition=Q(ends_on__isnull=True) | Q(ends_on__gte=models.F('starts_on')),
+                name='assignment_ends_after_it_starts',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.sole_holder = self.position.kind in Position.SOLE_HOLDER_KINDS
+        # A partial save would otherwise drop the value just computed, and
+        # the constraint would be enforcing a stale flag.
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'sole_holder' not in update_fields:
+            kwargs['update_fields'] = list(update_fields) + ['sole_holder']
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user} — {self.position}"
+
+    @property
+    def is_current(self):
+        return self.ends_on is None
+
+
+class ManualOffice(models.Model):
+    """How an office relates to a manual, other than owning it.
+
+    The owner is on `Manual.owning_office` and is deliberately not
+    duplicated here: it is approval authority, a different thing from the
+    working relationships below, and one row that can only ever have one
+    value does not belong in a join table.
+    """
+
+    CONCURRING = 'concurring'
+    READER = 'reader'
+
+    RELATIONSHIP_CHOICES = [
+        (CONCURRING, 'Concurring — can propose, must concur'),
+        (READER, 'Reader — read only, never blocks'),
+    ]
+
+    manual = models.ForeignKey(
+        'Manual', on_delete=models.CASCADE, related_name='office_links',
+    )
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, related_name='manual_links',
+    )
+    relationship = models.CharField(max_length=16, choices=RELATIONSHIP_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['manual__title', 'office__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['manual', 'office'], name='one_relationship_per_manual_and_office',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.office} — {self.get_relationship_display()} — {self.manual}"
+
+
 class CustomUser(AbstractUser):
     ROLE_CHOICES = [
         ('admin', 'Admin'),
         ('staff', 'Staff'),
     ]
+
+    # v4. Roles decide which portal; positions decide what can be done
+    # inside it. Someone is QMS staff in practice only while holding a
+    # current IMR or Custodian assignment - the role routes them, the
+    # position authorises them.
+    SYSTEM_ADMIN = 'system_admin'
+    QMS_STAFF = 'qms_staff'
+    USER = 'user'
+
+    SYSTEM_ROLE_CHOICES = [
+        (SYSTEM_ADMIN, 'System administrator'),
+        (QMS_STAFF, 'QMS staff'),
+        (USER, 'User'),
+    ]
+
+    # The v3 role. Still what every existing permission check reads, so it
+    # stays authoritative until 1c; `system_role` is populated alongside it
+    # and takes over at the switchover.
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='staff')
+
+    system_role = models.CharField(
+        max_length=20, choices=SYSTEM_ROLE_CHOICES, default=USER,
+    )
+
+    # The process prints position titles, never names - but a person still
+    # has to be identifiable to the system admin approving them, and
+    # `username` is a login, not a name.
+    full_name = models.CharField(max_length=255, blank=True)
+
     is_approved = models.BooleanField(default=False)
     department = models.ForeignKey(
         Department,
@@ -32,9 +373,15 @@ class CustomUser(AbstractUser):
 
 class Manual(models.Model):
     title = models.CharField(max_length=255)
+    # PROTECT, not CASCADE. This used to destroy every manual in a
+    # department, their sections, and every revision proposed against
+    # them - controlled documents and their history - as a side effect of
+    # removing one organisation row. The API route that did it is
+    # disabled, but the Django admin and the shell reach the same code, so
+    # the guarantee belongs on the relationship rather than on one view.
     department = models.ForeignKey(
         Department,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='manuals'
     )
     uploaded_by = models.ForeignKey(
@@ -43,6 +390,21 @@ class Manual(models.Model):
         null=True,
         related_name='uploaded_manuals'
     )
+    # v4. Null means unassigned, which is where every existing manual
+    # starts: the organisation ships empty and the system admin links them
+    # by hand. PROTECT, because an office is never deleted anyway and a
+    # cascade here would destroy controlled documents.
+    owning_office = models.ForeignKey(
+        Office, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='owned_manuals',
+    )
+
+    # Provisional, pending the QMS office (workflow plan section 8,
+    # question 5). False - the default - means the approval route runs from
+    # the owner up through every approving level above it. True stops it at
+    # the owner.
+    approval_stops_at_owner = models.BooleanField(default=False)
+
     file = models.FileField(upload_to='mastercopies/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
     version = models.IntegerField(default=1)  # major QMS version
@@ -278,8 +640,13 @@ class Announcement(models.Model):
     # Dated items appear under Upcoming and drop off after their day.
     # Undated items are the banner.
     date = models.DateField(null=True, blank=True)
+    # PROTECT rather than SET_NULL, which would be actively wrong here:
+    # null does not mean "no department", it means **show this to
+    # everyone**. Clearing the field on a departmental notice would
+    # silently broadcast it to the whole university, which is worse than
+    # either keeping it or losing it.
     department = models.ForeignKey(
-        Department, on_delete=models.CASCADE, null=True, blank=True,
+        Department, on_delete=models.PROTECT, null=True, blank=True,
         related_name='announcements',
         help_text="Leave empty to show this to every department.",
     )

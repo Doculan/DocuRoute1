@@ -13,15 +13,15 @@ from django.db.models import Q
 from datetime import timedelta
 from .models import (
     Announcement, AnnouncementDismissal, CustomUser, Department, Manual,
-    ManualSection, ManualRevision, RecentlyOpened, RevisionPreAssessment,
-    SectionHistory,
+    ManualSection, ManualRevision, Position, PositionAssignment,
+    RecentlyOpened, RevisionPreAssessment, SectionHistory,
 )
 from ml.ocr_engine import extract_text
 from ml.revision_pipeline.change_reason import (
     blocks_submission,
     classify_reason,
 )
-from api import pre_assessment
+from api import access, pre_assessment
 from ml.svm_model import predict, predict_section
 import difflib
 import logging
@@ -36,6 +36,63 @@ class IsAdminRole(BasePermission):
     """
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.role == 'admin'
+
+
+# ─── WHO MAY REVIEW (transitional) ───────────────────────────
+#
+# TRANSITIONAL - REMOVE AT PHASE 1c.
+#
+# Spec section 5 moves the review screen from the admin to QMS staff.
+# Applied literally, that would have left nobody able to review anything:
+# QMS staff means holding a current IMR or Document Custodian position,
+# positions belong to offices, offices are entered by hand in 1b, and the
+# organisation ships empty. Every pending revision would have been
+# stranded, and the one account able to fix it is the system admin, who
+# by standing rule 7 should not also be deciding requests.
+#
+# So the system admin keeps review rights *until QMS positions can exist*.
+# `tests_transitional_review.py` fails when this is removed, so the
+# allowance cannot be forgotten - deleting it has to be a decision
+# somebody makes, not something that quietly survives into v4 proper.
+
+TRANSITIONAL_ADMIN_REVIEW = True
+
+
+def holds_current_qms_position(user):
+    """Does this person currently hold an IMR or Custodian position?
+
+    Current means started and not ended. Checked by date rather than by a
+    flag on the user, because the whole point of dated assignments is
+    that "who holds this now" is derived, never stored and left stale.
+    """
+    if not (user and user.is_authenticated):
+        return False
+
+    today = timezone.localdate()
+    return PositionAssignment.objects.filter(
+        user=user,
+        position__kind__in=Position.QMS_KINDS,
+        position__is_active=True,
+        starts_on__lte=today,
+    ).filter(
+        Q(ends_on__isnull=True) | Q(ends_on__gte=today)
+    ).exists()
+
+
+class IsQmsReviewer(BasePermission):
+    """May decide revisions: QMS staff, or - for now - the system admin.
+
+    The admin half is transitional; see the note above.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if holds_current_qms_position(user):
+            return True
+        # TRANSITIONAL - REMOVE AT 1c, with TRANSITIONAL_ADMIN_REVIEW.
+        return TRANSITIONAL_ADMIN_REVIEW and getattr(user, 'role', None) == 'admin'
 
 
 # ─── RE-AUTHENTICATION ───────────────────────────────────────
@@ -656,18 +713,39 @@ def create_department(request):
 @api_view(['DELETE'])
 @permission_classes([IsAdminRole])
 def delete_department(request, dept_id):
-    """The widest blast radius in the application: every manual in the
-    department goes with it, and every section and revision under those."""
-    failure = reauth_failure(request)
-    if failure:
-        return failure
+    """Disabled in v4 phase 1a. Answers 409, deletes nothing.
 
+    `Manual.department` cascades, so this endpoint destroyed every manual
+    in the department, every section under those manuals and every
+    revision ever proposed against them - controlled documents and their
+    history, removed by one confirmed click.
+
+    That is against the standing rule that nothing in the organisation is
+    ever deleted, and `Office` deliberately does not repeat it: every
+    relationship into the new organisation is PROTECT, and offices are
+    deactivated or merged instead.
+
+    Kept as a 409 rather than deleted outright because the Departments
+    screen still calls it and will until Offices replaces that screen at
+    1c. A route that vanishes gives the browser a 404 and the admin no
+    idea why; this says what happened and what to do instead. **Remove
+    this function, its route and its test at 1c**, with the screen.
+    """
     try:
         dept = Department.objects.get(id=dept_id)
     except Department.DoesNotExist:
         return Response({'error': 'Department not found'}, status=404)
-    dept.delete()
-    return Response({'message': f'{dept.name} deleted.'})
+
+    return Response({
+        'error': (
+            f'Departments can no longer be deleted. Deleting "{dept.name}" '
+            f'would also delete {dept.manuals.count()} manual(s), their '
+            f'sections and every revision proposed against them. '
+            f'Departments are being replaced by Offices, which are '
+            f'deactivated or merged instead of deleted.'
+        ),
+        'reason': 'deletion_disabled',
+    }, status=409)
 
 
 # ─── STAFF ENDPOINTS ─────────────────────────────────────────
@@ -679,7 +757,9 @@ def staff_list_manuals(request):
     dept = getattr(request.user, 'department', None)
     if not dept:
         return Response({'error': 'You are not assigned to a department.'}, status=403)
-    manuals = Manual.objects.filter(department=dept).order_by('-uploaded_at')
+    manuals = access.manuals_for(
+        request.user, Manual.objects.all()
+    ).order_by('-uploaded_at')
     data = [{
         'id': m.id,
         'title': m.title,
@@ -728,7 +808,7 @@ def staff_my_revisions(request):
             return Response(
                 {'error': 'You are not assigned to a department.'}, status=403
             )
-        revisions = revisions.filter(section__manual__department=department)
+        revisions = access.revisions_for(request.user, revisions)
     else:
         scope = 'mine'
         revisions = revisions.filter(submitted_by=request.user)
@@ -1258,7 +1338,7 @@ def staff_dashboard(request):
         'upcoming_total': visible.filter(date__gte=today).count(),
         'stats': {
             'manuals_total': Manual.objects.count(),
-            'manuals_mine': Manual.objects.filter(department=department).count() if department else 0,
+            'manuals_mine': access.manuals_for(user, Manual.objects.all()).count(),
             'revisions_mine': mine.count(),
             'department': department.name if department else None,
         },
@@ -1300,8 +1380,8 @@ def staff_sections(request):
     if not department:
         return Response({'error': 'You are not assigned to a department.'}, status=403)
 
-    sections = ManualSection.objects.select_related('manual').filter(
-        manual__department=department
+    sections = access.sections_for(
+        request.user, ManualSection.objects.select_related('manual')
     )
 
     manual_id = request.query_params.get('manual')
@@ -1723,9 +1803,8 @@ def list_sections(request, manual_id):
     except Manual.DoesNotExist:
         return Response({'error': 'Manual not found'}, status=404)
 
-    if not request.user.is_staff:
-        if manual.department != request.user.department:
-            return Response({'error': 'Access denied'}, status=403)
+    if not access.can_reach(request.user, manual):
+        return Response({'error': 'Access denied'}, status=403)
 
     # Remembering here rather than in the client records what was actually
     # served, and survives moving to another device.
@@ -1783,8 +1862,7 @@ def review_section(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    # Only allow access by staff in the same department (or admins)
-    if not request.user.is_staff and section.manual.department != request.user.department:
+    if not access.can_reach_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
     # Update content/metadata if provided
@@ -2001,7 +2079,7 @@ def review_delete_section(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    if not request.user.is_staff and section.manual.department != request.user.department:
+    if not access.can_reach_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
     section.delete()
@@ -2038,7 +2116,7 @@ def merge_sections(request, section_id):
     if source.manual_id != target.manual_id:
         return Response({'error': 'Sections must belong to the same manual'}, status=400)
 
-    if not request.user.is_staff and source.manual.department != request.user.department:
+    if not access.can_reach_section(request.user, source):
         return Response({'error': 'Access denied'}, status=403)
 
     # Save history for target
@@ -2128,7 +2206,7 @@ def upload_revision(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    if section.manual.department != request.user.department:
+    if not access.can_propose_to_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
     if 'file' not in request.FILES:
@@ -2180,7 +2258,7 @@ def propose_text_revision(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    if section.manual.department != request.user.department:
+    if not access.can_propose_to_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
     proposed_content = request.data.get('proposed_content')
@@ -2231,7 +2309,7 @@ def propose_merge(request):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    if target.manual.department != request.user.department:
+    if not access.can_propose_to_section(request.user, target):
         return Response({'error': 'Access denied'}, status=403)
 
     if source.manual.id != target.manual.id:
@@ -2276,7 +2354,7 @@ def propose_merge(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsQmsReviewer])
 def list_revisions(request):
     status_filter = request.query_params.get('status', None)
     revisions = ManualRevision.objects.all().order_by('-submitted_at')
@@ -2507,7 +2585,7 @@ def pre_assess_text_revision(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    if section.manual.department != request.user.department:
+    if not access.can_propose_to_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
     # An uploaded revision is assessed on the text the extractor pulls out of
@@ -2584,7 +2662,7 @@ def pre_assess_merge(request):
     except (ManualSection.DoesNotExist, ValueError, TypeError):
         return Response({'error': 'Section not found'}, status=404)
 
-    if target.manual.department != request.user.department:
+    if not access.can_propose_to_section(request.user, target):
         return Response({'error': 'Access denied'}, status=403)
     if source.id == target.id:
         return Response(
@@ -2684,7 +2762,7 @@ def _attach_pre_assessment(revision, snapshot):
 
 
 @api_view(['PATCH'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsQmsReviewer])
 def review_revision(request, revision_id):
     try:
         revision = ManualRevision.objects.get(id=revision_id)
