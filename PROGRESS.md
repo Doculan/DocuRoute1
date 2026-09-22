@@ -553,6 +553,143 @@ section 2. They are not re-derived and do not need to be.
 
 ---
 
+## Phase 1c-i — what was built (awaiting Checkpoint C1)
+
+### The flag and the gate
+
+`AccessMode`, one row. A database row rather than a setting, because
+flipping it changes who can see which documents - that should be done from
+a screen, by a named person, at a recorded time, not by a redeploy nobody
+can point at afterwards.
+
+The gate refuses while any blocker stands, and **there is no force**. Every
+blocker is somebody losing access to the documents that govern their work,
+which is the one case where making it easy to proceed is the wrong thing
+to build.
+
+| | Check |
+|---|---|
+| **Blocker** | Approved, active, non-admin accounts holding no current position |
+| **Blocker** | Documents with no concurring office |
+| **Blocker** | An owning office that may propose with no approving level above it |
+| Warning | Offices with no current Head |
+| Warning | Documents not in a series |
+| Warning | Announcements still targeted at a department |
+
+The first blocker clears **two** ways - assign a position, or deactivate
+the account. Some of these are test accounts that will never hold a post,
+and making a position the only exit would mean inventing one.
+
+Switching **back** is not gated: it only ever restores access, and gating
+it would make a rollback harder than the switch.
+
+### Rollback is total
+
+Every function in `access.py` reads the flag, `can_propose` included. A
+flag that restored most of the old behaviour would be worse than none,
+because the part it did not restore is the part nobody thinks to check.
+Tested in both directions.
+
+### The owner may propose
+
+An office can own a manual **and** work on it - the VPSD owns the Student
+Development Manual and its own staff draft changes to it. The old comment
+claiming the owner "is deliberately not duplicated" in the link table is
+gone; nothing ever enforced it anyway.
+
+What cannot happen is the route ending at that same office, because then
+the office that wrote the change approves it. `Manual.owner_proposal_conflict`
+names the two ways in: the owner concurs while **approval stops at the
+owner**, or the owner concurs and has **no approving level above it** at
+all. Both are refused **when the configuration is set**, from either
+direction, and the write is rolled back rather than half applied - by the
+time somebody tries to submit, they have already done the work.
+
+An owner listed as concurring **counts** toward the "has a concurring
+office" blocker. Without that, a document only its owner works on would
+read as stranded and the switch would be refused for no reason.
+
+### Announcements move with access - and the trap in doing so
+
+Targeted by office once the flag is on, by department before. Otherwise
+the system would scope documents by office and notices by department: two
+answers to "where do you work" in one application.
+
+**The trap, found by a failing test.** A department-targeted announcement
+has `office = NULL`, and null means *everyone*. Read carelessly, the
+moment of the switch would take every notice aimed at one department and
+**broadcast it to the whole university**. It now means *nobody* instead:
+untargeted is `office` null **and** `department` null. A notice whose
+targeting the current mode cannot express stops showing rather than going
+everywhere - and the switchover screen warns about them first, because a
+notice nobody sees is still a notice nobody sees.
+
+### The preview, and one honest row
+
+The blockers catch people who would see **nothing**. The preview catches
+what they cannot: somebody who holds a position, but the wrong one. Only a
+person reading the two numbers side by side notices that.
+
+It computes both answers **directly**, via a `mode` override, and never
+touches the flag. Flipping the row to work out "after" - even inside a
+try/finally - would mean a staff member loading a page during the preview
+got the other rule.
+
+The system admin is reported as **unscoped**, showing "all" rather than a
+comparison. Their reach does not come from an office, so running them
+through the office rules produced *"5 documents today, 0 afterwards"* -
+alarming, and false.
+
+### The rehearsal, on a copy with the real data
+
+```
+10 offices, 4 series, 19 of 19 documents placed
+
+gate, nobody assigned     ready: False   BLOCK staff_without_positions: 4
+switch attempt            409 not_ready
+
+assign 3 people, deactivate 1 test account
+gate                      ready: True    warn offices_without_a_head: 8
+
+preview
+  Admin      -      all -> all      (not scoped)
+  Eug        ACC      5 -> 14
+  eugene_l   ACC      5 -> 14
+  STAFF1     GUID     5 -> 4
+  deactivated: try        unapproved: STAFF2
+
+switch 200
+  Eug       reaches 14, may propose on 10
+  STAFF1    reaches  4, may propose on  4
+  SDM 3.01  owner VPSD, concurring [GUID, VPSD], route VPSD -> OP,
+            owner may propose: True, conflict: None
+
+rollback 200
+  Eug, eugene_l, STAFF1 all back to 5 reached, 5 proposable
+```
+
+### Also in 1c-i
+
+- Manual lists show **the reader's relationship** - Owner, Concurring,
+  Read only - instead of a department, plus the series and owner. Before
+  the switch the server sends nothing there, because "your department's"
+  is the only true answer and the list already says it.
+- The "not assigned to a department" error follows the flag and becomes
+  *"approved but not yet assigned to an office. The system administrator
+  will assign you."* Telling someone they have no department when the
+  system stopped caring about departments sends them to ask the wrong
+  question.
+- Sign-up asks for an **Office**.
+
+### Test state
+
+**337 API tests pass**, 42 of them new. Migration 0023 adds one table and
+one column.
+
+**Not run against the real database.**
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

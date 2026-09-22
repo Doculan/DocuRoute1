@@ -2,6 +2,7 @@ from django.urls import path
 from . import organisation_views as org
 from . import series_views as series
 from . import people_views as people
+from . import switchover_views as switchover
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -48,6 +49,11 @@ urlpatterns = [
     path('org/people/<int:person_id>/assign/', people.assign_position),
     path('org/assignments/<int:assignment_id>/end/', people.end_assignment),
     path('org/positions/', people.positions_by_office),
+
+    # The switchover. GET reports readiness and what each account would
+    # see; POST flips it, and refuses while any blocker stands.
+    path('org/switchover/', switchover.switchover),
+    path('org/switchover/set/', switchover.set_access_mode),
 
     # Auth
     path('auth/register/', register),

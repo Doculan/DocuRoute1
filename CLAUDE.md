@@ -15,8 +15,14 @@ Reference documents in the repo:
 - `PHASE1_ORGANISATION_SPEC.md` — the current build spec (later phases get their own)
 - `PROGRESS.md` — what has been done and decided
 - `EVALUATION.md`, `MODEL_EXPLAINED.md` — the AI pipeline and its published figures
-- **The official DCR form** — `Backend/media/templates/F-QMS-001-Document-Change-Request-Rev.1-01-05-26.doc` (F-QMS-001, Rev. 1, 01-05-26) — the template the system pre-fills. Note the filename reads `Rev.1`, with a dot. It is a legacy `.doc`; generation in P3 needs it converted to `.docx` first, since the fields cannot be filled in the old binary format.
-- `Backend/media/MANUAL_BLANK_FORMAT/` — the blank manual format, with the VP and President approval spaces, filled with approved revisions for printing (currently untracked).
+- **The official DCR form** — `Backend/media/templates/F-QMS-001-Document-Change-Request-Rev.1-01-05-26.doc` (F-QMS-001, Rev. 1, 01-05-26) — the template the system pre-fills. Note the filename reads `Rev.1`, with a dot. It is a legacy `.doc`; generation in P3 needs it converted to `.docx` first, since the fields cannot be filled in the old binary format. **The IMR's printed name has been removed from section 3.**
+- `ORG_STRUCTURE_REFERENCE.md` — the university's offices (no names), for the system admin's data entry. **Reference only — never seed or hardcode it.**
+- `Backend/media/MANUAL_BLANK_FORMAT/MANUAL_BLANK.docx` — the blank document template (currently untracked), filled with approved revisions for printing. Its structure:
+  - **Header, every page:** Version No. · Manual Title · Document No. · Document Name · Revision No. · Effectivity Date · Page No., with the LNU seal. One template serves every document. **Decided: generated drafts leave these header fields blank** for hand-filling — extraction never labelled them reliably, and the revision number and effectivity date are only known after approval (DCR section 5). Only the page numbering is automatic.
+  - **Body:** empty — the document's sections go here.
+  - **Footer, every page:** the confidentiality notice and **two unlabelled bordered boxes** at bottom right (presumed approval spaces). **[open]** confirm what they are for and whether generated copies print position titles under them.
+  - **Page number** is a `PAGE` field only; real documents show *"1 of 4"*, so generation must add the total-pages field.
+- **Before committing either template to the repo**, remove any printed personal names (the DCR's section 3 carries the IMR's name). Generated documents print position titles, never names.
 
 ---
 
@@ -88,7 +94,9 @@ Three system roles decide **which portal** a person uses. Positions decide **wha
 | **IMR** | Section 3 | QMS staff |
 | **Document Custodian** | To/For, section 5 | QMS staff |
 
-One person may hold several positions. Assignments carry start and end dates. **Exactly one current Head per office**; several Encoders allowed.
+One person may hold several positions (the university has **concurrent heads** — one person heading two offices). Assignments carry start and end dates, and can be marked **acting / OIC**, since several offices are led by an officer-in-charge. **Exactly one current Head per office**; several Encoders allowed.
+
+**QMS office:** the two QMS offices shown on the 2022 chart (administrative services / ISO, and academic services / accreditation) are reported to have **recently merged into a single QMS office** — to be confirmed with the QMS office, including its official name and parent. Design for **one** home for the IMR and Document Custodian positions; do not build per-series resolution. The model must not prevent it if the offices ever split again.
 
 The system admin should not also be able to decide or file requests unless deliberately given a QMS position — configuring the system and controlling documents are separate responsibilities.
 
@@ -120,6 +128,14 @@ Require the password again (the existing short-lived re-auth token, held in memo
 7. **Custodian** — receives the complete package (locked content, AI snapshots, concurrence record, signed scans) alongside the physical originals. Either **Accepts** — records document status (number, version, revision, effectivity date) and the change becomes effective — or **Returns for package defects only** (missing signature, unreadable scan), back to the uploading step. Content cannot be changed here; it was locked at stage 3.
 
 Exact behaviour of each stage is decided in its phase spec.
+
+---
+
+## Terminology — manual vs document
+
+What DocuRoute currently calls a **"manual"** is really a **document** (e.g. *FAM 6.02 — Monitoring of Accounts Receivables*) within a **manual series** (e.g. *Finance and Administration Manual*). The header block and the DCR both work at document level. **Decided and built (1b-i, 1b-ii):** `ManualSeries` holds the owner and the default concurring/reader offices, inherited by its documents with per-document overrides. An override **replaces** the series' set rather than adding to it, and the screen names the documents a series-level change will not reach.
+
+Structured header metadata (version, revision number, effectivity date as real fields) is **not required** for now. Once the custodian records DCR section 5 in P4, those values exist going forward and could fill headers later.
 
 ---
 

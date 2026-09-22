@@ -12,9 +12,9 @@ from django.utils.dateparse import parse_date
 from django.db.models import Q
 from datetime import timedelta
 from .models import (
-    Announcement, AnnouncementDismissal, CustomUser, Department, Manual,
-    ManualSection, ManualRevision, Position, PositionAssignment,
-    RecentlyOpened, RevisionPreAssessment, SectionHistory,
+    AccessMode, Announcement, AnnouncementDismissal, CustomUser, Department,
+    Manual, ManualSection, ManualRevision, Office, OfficeLink, Position,
+    PositionAssignment, RecentlyOpened, RevisionPreAssessment, SectionHistory,
 )
 from ml.ocr_engine import extract_text
 from ml.revision_pipeline.change_reason import (
@@ -765,14 +765,22 @@ def staff_list_manuals(request):
     """Return manuals belonging to the logged-in staff member's department."""
     dept = getattr(request.user, 'department', None)
     if not dept:
-        return Response({'error': 'You are not assigned to a department.'}, status=403)
+        return _no_unit_error()
     manuals = access.manuals_for(
         request.user, Manual.objects.all()
     ).order_by('-uploaded_at')
     data = [{
         'id': m.id,
         'title': m.title,
+        # v4: what this document *is* to the reader's offices, which is
+        # the question a list of manuals actually answers. The department
+        # is kept alongside until it is retired, so nothing that still
+        # reads it breaks mid-switchover.
         'department': m.department.name if m.department else 'N/A',
+        'series': m.series.code if m.series_id else None,
+        'series_title': m.series.title if m.series_id else None,
+        'owner': str(m.effective_owner) if m.effective_owner else None,
+        'relationship': _relationship_for(request.user, m),
         'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
         'uploaded_at': m.uploaded_at,
         'section_count': m.sections.count(),
@@ -814,9 +822,7 @@ def staff_my_revisions(request):
     if scope == 'office':
         department = getattr(request.user, 'department', None)
         if not department:
-            return Response(
-                {'error': 'You are not assigned to a department.'}, status=403
-            )
+            return _no_unit_error()
         revisions = access.revisions_for(request.user, revisions)
     else:
         scope = 'mine'
@@ -911,11 +917,91 @@ def _record_recently_opened(user, manual, section=None):
         logger.exception("could not record recently-opened for %s", user)
 
 
+def _no_unit_error():
+    """What someone sees when their account works and shows nothing.
+
+    Named after whichever unit the system is currently scoping by, because
+    telling a person they have no department when the system stopped
+    caring about departments sends them to ask the wrong question. It also
+    says who fixes it - the alternative is an error that reads like a
+    fault in the software.
+    """
+    if access.by_position():
+        return Response({
+            'error': (
+                'Your account is approved but not yet assigned to an office. '
+                'The system administrator will assign you.'
+            ),
+            'reason': 'no_position',
+        }, status=403)
+    return Response({
+        'error': 'You are not assigned to a department.',
+        'reason': 'no_department',
+    }, status=403)
+
+
+def _relationship_for(user, manual):
+    """What this document is to the person looking at it.
+
+    Owner, Concurring, Read only - or None before the switchover, when the
+    answer is simply "your department's", and saying anything else would
+    be inventing a relationship that does not exist yet.
+
+    An office can own a manual *and* concur on it, so more than one label
+    can apply and both are shown.
+    """
+    if not access.by_position():
+        return None
+
+    mine = {office.pk for office in access.current_offices(user)}
+    if not mine:
+        return None
+
+    labels = []
+    owner = manual.effective_owner
+    if owner is not None and owner.pk in mine:
+        labels.append('Owner')
+    for link in manual.effective_office_links():
+        if link.office_id in mine:
+            labels.append(
+                'Concurring' if link.relationship == OfficeLink.CONCURRING
+                else 'Read only'
+            )
+    return ' · '.join(dict.fromkeys(labels)) or None
+
+
 def _visible_announcements(user):
-    """Active announcements for everyone, plus this user's department."""
+    """Active announcements for everyone, plus the ones aimed at this
+    person's own unit.
+
+    Which unit that is follows the same switch as document access, so
+    notices and access change together. Leaving announcements on
+    departments after the switch would mean the system scoped documents by
+    office and notices by department - two answers to "where do you work"
+    living in one application.
+
+    An untargeted announcement is for everyone either way.
+    """
+    if access.by_position():
+        offices = access.current_offices(user) if (
+            user and user.is_authenticated
+        ) else []
+        return Announcement.objects.filter(active=True).filter(
+            # Untargeted means untargeted *in this mode*. A notice still
+            # carrying only a department has targeting the system can no
+            # longer express - and the safe reading of that is "nobody",
+            # not "everybody". Treating it as untargeted would take a
+            # notice meant for one department and broadcast it to the
+            # whole university, which is the worse of the two mistakes by
+            # a long way. The switchover screen lists these so they can be
+            # re-aimed at an office.
+            Q(office__isnull=True, department__isnull=True)
+            | Q(office__in=offices)
+        ).select_related('office', 'department')
+
     return Announcement.objects.filter(active=True).filter(
         Q(department__isnull=True) | Q(department=getattr(user, 'department', None))
-    ).select_related('department')
+    ).select_related('department', 'office')
 
 
 def _announcement_payload(announcement):
@@ -926,7 +1012,13 @@ def _announcement_payload(announcement):
     and the staff dashboard can never disagree about which a row is.
     """
     audience = CustomUser.objects.filter(role='staff', is_approved=True)
-    if announcement.department_id:
+    if access.by_position():
+        if announcement.office_id:
+            audience = audience.filter(
+                position_assignments__position__office_id=announcement.office_id,
+                position_assignments__ends_on__isnull=True,
+            ).distinct()
+    elif announcement.department_id:
         audience = audience.filter(department_id=announcement.department_id)
 
     return {
@@ -937,6 +1029,11 @@ def _announcement_payload(announcement):
         'shows_as': 'upcoming' if announcement.date else 'banner',
         'department_id': announcement.department_id,
         'department': announcement.department.name if announcement.department else None,
+        'office_id': announcement.office_id,
+        'office': str(announcement.office) if announcement.office_id else None,
+        # Which of the two fields is actually being read right now, so the
+        # admin screen does not have to work it out from the flag.
+        'targets_by': 'office' if access.by_position() else 'department',
         'active': announcement.active,
         'created_by': announcement.created_by.username if announcement.created_by else None,
         'created_at': announcement.created_at,
@@ -977,6 +1074,20 @@ def _clean_announcement_fields(data, partial=False):
                     status=400,
                 )
             fields['date'] = parsed
+
+    if 'office_id' in data:
+        raw = data.get('office_id')
+        if raw in (None, '', 'all'):
+            fields['office'] = None
+        else:
+            try:
+                fields['office'] = Office.objects.get(id=raw)
+            except (Office.DoesNotExist, ValueError, TypeError):
+                return None, Response(
+                    {'error': 'That office does not exist.',
+                     'field': 'office_id'},
+                    status=400,
+                )
 
     if 'department_id' in data or not partial:
         raw = data.get('department_id')
@@ -1387,7 +1498,7 @@ def staff_sections(request):
     """
     department = getattr(request.user, 'department', None)
     if not department:
-        return Response({'error': 'You are not assigned to a department.'}, status=403)
+        return _no_unit_error()
 
     sections = access.sections_for(
         request.user, ManualSection.objects.select_related('manual')
@@ -1486,7 +1597,15 @@ def list_manuals(request):
     data = [{
         'id': m.id,
         'title': m.title,
+        # v4: what this document *is* to the reader's offices, which is
+        # the question a list of manuals actually answers. The department
+        # is kept alongside until it is retired, so nothing that still
+        # reads it breaks mid-switchover.
         'department': m.department.name if m.department else 'N/A',
+        'series': m.series.code if m.series_id else None,
+        'series_title': m.series.title if m.series_id else None,
+        'owner': str(m.effective_owner) if m.effective_owner else None,
+        'relationship': _relationship_for(request.user, m),
         'department_id': m.department.id if m.department else None,
         'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
         'uploaded_at': m.uploaded_at,

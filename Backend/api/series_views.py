@@ -112,6 +112,14 @@ def _document_payload(document, detail=False):
         # The question a reader of this screen actually has: can anybody
         # change this document yet?
         'can_be_proposed_against': document.can_be_proposed_against(),
+        # Whether the owning office is also a working office. Worth
+        # showing, because it is the case that needs the route to
+        # continue above it.
+        'owner_may_propose': (
+            document.effective_owner is not None
+            and document.effective_owner in document.concurring_offices()
+        ),
+        'owner_conflict': document.owner_proposal_conflict(),
     }
     if detail:
         links = document.effective_office_links()
@@ -138,6 +146,35 @@ def _validation_error(error):
                 message if field == '__all__' else f'{field}: {message}'
             )
     return Response({'error': '; '.join(parts)}, status=400)
+
+
+def _owner_conflicts_after(documents):
+    """Documents that would end up approving their own proposals.
+
+    An owning office **may** also be a concurring office - the VPSD owns
+    the Student Development Manual and its own staff draft changes to it.
+    What cannot happen is the route ending at that same office, because
+    then the office that wrote the change is the office that approves it.
+
+    Checked at the moment the configuration is set rather than when a
+    proposal is made: by then somebody has done the work, and the answer
+    would be "you cannot submit this", which is far too late.
+    """
+    problems = []
+    for document in documents:
+        document.refresh_from_db()
+        conflict = document.owner_proposal_conflict()
+        if conflict:
+            problems.append({'document': document.title, 'problem': conflict})
+    return problems
+
+
+def _conflict_response(problems):
+    return Response({
+        'error': ' '.join(p['problem'] for p in problems),
+        'reason': 'owner_would_approve_its_own_proposal',
+        'documents': problems,
+    }, status=409)
 
 
 def _apply_links(model, owner_field, owner, rows):
@@ -273,7 +310,14 @@ def series_detail(request, series_id):
         series.full_clean()
     except ValidationError as error:
         return _validation_error(error)
-    series.save()
+
+    with transaction.atomic():
+        series.save()
+        problems = _owner_conflicts_after(list(series.documents.all()))
+        if problems:
+            transaction.set_rollback(True)
+            return _conflict_response(problems)
+
     return Response(_series_payload(series, detail=True))
 
 
@@ -302,9 +346,17 @@ def series_offices(request, series_id):
             {'error': 'Send the whole set of offices as a list.'}, status=400
         )
 
-    _, error = _apply_links(ManualSeriesOffice, 'series', series, rows)
-    if error:
-        return error
+    with transaction.atomic():
+        _, error = _apply_links(ManualSeriesOffice, 'series', series, rows)
+        if error:
+            return error
+
+        problems = _owner_conflicts_after(list(series.documents.all()))
+        if problems:
+            # Rolled back: a refused configuration must leave the previous
+            # one in place, not a half-applied set.
+            transaction.set_rollback(True)
+            return _conflict_response(problems)
 
     payload = _series_payload(series, detail=True)
     payload['did_not_reach'] = payload['overriding_documents']
@@ -381,7 +433,14 @@ def document_detail(request, document_id):
         document.full_clean(exclude=['file', 'department'])
     except ValidationError as error:
         return _validation_error(error)
-    document.save()
+
+    with transaction.atomic():
+        document.save()
+        problems = _owner_conflicts_after([document])
+        if problems:
+            transaction.set_rollback(True)
+            return _conflict_response(problems)
+
     return Response(_document_payload(document, detail=True))
 
 
@@ -423,12 +482,18 @@ def document_offices(request, document_id):
             ),
         }, status=400)
 
-    _, error = _apply_links(ManualOffice, 'manual', document, rows)
-    if error:
-        return error
+    with transaction.atomic():
+        _, error = _apply_links(ManualOffice, 'manual', document, rows)
+        if error:
+            return error
 
-    if not document.offices_overridden:
-        document.offices_overridden = True
-        document.save(update_fields=['offices_overridden'])
+        if not document.offices_overridden:
+            document.offices_overridden = True
+            document.save(update_fields=['offices_overridden'])
+
+        problems = _owner_conflicts_after([document])
+        if problems:
+            transaction.set_rollback(True)
+            return _conflict_response(problems)
 
     return Response(_document_payload(document, detail=True))

@@ -103,6 +103,51 @@ class Office(models.Model):
             raise ValidationError({'merged_into': 'An office cannot be merged into itself.'})
 
 
+class AccessMode(models.Model):
+    """Whether access is scoped by department (v3) or by position (v4).
+
+    One row. A database row rather than a setting, because flipping it
+    changes who can see which documents - that should be done from a
+    screen, by a named person, at a recorded time, not by a redeploy
+    nobody can point at afterwards.
+
+    It exists because the organisation ships empty. Positions cannot be
+    assigned until offices have been entered, so the switch is an
+    operation the system admin performs when the data is ready, and the
+    system has to be able to say whether it is.
+
+    **Everything scoped reads this**, including `can_propose` - so
+    flipping it back restores v3 behaviour completely rather than mostly.
+    """
+
+    by_position = models.BooleanField(default=False)
+    switched_at = models.DateTimeField(null=True, blank=True)
+    switched_by = models.ForeignKey(
+        'CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='switchovers',
+    )
+    # What the admin accepted at the time. Warnings can be passed;
+    # blockers cannot, so this records what was knowingly overlooked.
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = 'access mode'
+
+    def __str__(self):
+        return 'by position' if self.by_position else 'by department'
+
+    @classmethod
+    def current(cls):
+        """The single row, created on first read.
+
+        `get_or_create` rather than a migration that inserts it: a fresh
+        clone and an existing database then behave the same, and the
+        default is the safe one either way.
+        """
+        mode, _ = cls.objects.get_or_create(pk=1)
+        return mode
+
+
 class Position(models.Model):
     """A role within an office that the process refers to.
 
@@ -401,11 +446,17 @@ class ManualSeriesOffice(OfficeLink):
 class ManualOffice(OfficeLink):
     """How an office relates to one document, when it differs from the series.
 
-    Only read when `Manual.offices_overridden` is set. The owner is on
-    `Manual.owning_office` and is deliberately not duplicated here: it is
-    approval authority, a different thing from the working relationships
-    below, and one row that can only ever have one value does not belong
-    in a join table.
+    Only read when `Manual.offices_overridden` is set.
+
+    **The owner may appear here too.** Ownership is approval authority and
+    is held on `Manual.owning_office`; being listed here is a working
+    relationship, and an office can have both - the VPSD owns the Student
+    Development Manual and its own staff draft changes to it. The two are
+    different facts about the same office, so neither implies the other
+    and neither excludes it.
+
+    What that does require is a route that does not end at the proposer.
+    See `Manual.owner_proposal_conflict`.
     """
 
     CONCURRING = OfficeLink.CONCURRING
@@ -638,8 +689,45 @@ class Manual(models.Model):
     def can_be_proposed_against(self):
         """A document with no concurring office cannot be changed by
         anyone, which is worth flagging on screen rather than discovering
-        when someone tries."""
+        when someone tries.
+
+        An owning office listed as concurring counts: it can propose, so
+        the document is not stranded.
+        """
         return bool(self.concurring_offices())
+
+    def owner_proposal_conflict(self):
+        """The one configuration the owner-as-proposer rule cannot allow.
+
+        If the owning office may propose, the approval route must continue
+        *above* it - otherwise the office that drafted the change is also
+        the office that approves it, and the signature means nothing.
+
+        Returns an explanation, or None when the configuration is sound.
+        Checked rather than silently corrected: which of the two settings
+        is wrong is the admin's call, not the system's.
+        """
+        owner = self.effective_owner
+        if owner is None or owner not in self.concurring_offices():
+            return None
+        if not self.stops_at_owner:
+            # The route carries on to the approving levels above the
+            # owner, so somebody else signs. That is the intended shape.
+            higher = [o for o in owner.ancestors() if o.is_approving_level]
+            if higher:
+                return None
+            return (
+                f'{owner} may propose changes to this document and there is '
+                f'no approving level above it, so it would approve its own '
+                f'proposal. Give it a parent that is an approving level, or '
+                f'remove it from the concurring offices.'
+            )
+        return (
+            f'{owner} may propose changes to this document, but approval '
+            f'stops at the owner - so it would approve its own proposal. '
+            f'Either let the route continue above {owner}, or remove it '
+            f'from the concurring offices.'
+        )
 
 
 class ManualSection(models.Model):
@@ -877,6 +965,20 @@ class Announcement(models.Model):
         Department, on_delete=models.PROTECT, null=True, blank=True,
         related_name='announcements',
         help_text="Leave empty to show this to every department.",
+    )
+
+    # v4. Read instead of `department` once access is scoped by position,
+    # so notices and access switch together rather than leaving the system
+    # scoping documents by office and announcements by department.
+    #
+    # Null means everyone, exactly as the department field does - and for
+    # the same reason it is PROTECT rather than SET_NULL, since clearing
+    # it would silently broadcast a targeted notice to the whole
+    # university.
+    office = models.ForeignKey(
+        'Office', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='announcements',
+        help_text="Leave empty to show this to every office.",
     )
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, null=True, blank=True,

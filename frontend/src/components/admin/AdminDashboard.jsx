@@ -11,6 +11,7 @@ import AdminHome from "./AdminHome";
 import Offices from "./Offices";
 import Series from "./Series";
 import People from "./People";
+import Switchover from "./Switchover";
 import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
@@ -66,6 +67,7 @@ const NAV_GROUPS = [
       { key: "offices", icon: departmentsIcon, label: "Offices" },
       { key: "series",  icon: manualsIcon,     label: "Manual series" },
       { key: "people",  icon: usersIcon,       label: "People" },
+      { key: "switchover", icon: sectionsIcon, label: "Switchover" },
     ],
   },
   {
@@ -81,6 +83,7 @@ const CRUMBS = {
   offices: "Offices",
   series: "Manual series",
   people: "People and positions",
+  switchover: "Switchover",
   users: "Users",
   departments: "Departments",
   manuals: "Manuals",
@@ -148,6 +151,7 @@ export default function AdminDashboard({ onLogout }) {
       case "offices": return <Offices />;
       case "series": return <Series />;
       case "people": return <People />;
+      case "switchover": return <Switchover />;
       case "review": return <RevisionReview openRevision={revisionToOpen} />;
       case "evaluation": return <SVMEvaluation />;
       default: return <AdminHome onGo={goTo} onOpenRevision={openRevision} />;

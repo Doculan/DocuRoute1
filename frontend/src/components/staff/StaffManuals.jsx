@@ -45,7 +45,7 @@ export default function StaffManuals({ onSelectManual }) {
         <div>
           <h1 className="page-title">My Manuals</h1>
           <p className="page-subtitle">
-            Manuals assigned to your department — open one to read sections or submit a revision.
+            The documents your office works with — open one to read sections or propose a change.
           </p>
         </div>
       </header>
@@ -57,7 +57,8 @@ export default function StaffManuals({ onSelectManual }) {
           <div className="empty-icon">📂</div>
           <p className="empty-title">No manuals yet</p>
           <p className="empty-text">
-            No manuals have been assigned to your department. Contact your administrator.
+            No documents are linked to your office yet. The system
+            administrator assigns them.
           </p>
         </div>
       ) : (
@@ -82,7 +83,17 @@ export default function StaffManuals({ onSelectManual }) {
               <h3 className="doc-name">{manual.title}</h3>
 
               <dl className="col" style={{ gap: "0.35rem", margin: 0 }}>
-                <MetaRow label="Department" value={manual.department} />
+                {/* What this document is to you, once access follows
+                    positions. Before that the server sends nothing here,
+                    because "your department's" is the only true answer
+                    and the list already says it. */}
+                {manual.relationship
+                  ? <MetaRow label="Your office" value={manual.relationship} />
+                  : <MetaRow label="Department" value={manual.department} />}
+                {manual.series && (
+                  <MetaRow label="Series" value={`${manual.series} — ${manual.series_title}`} />
+                )}
+                {manual.owner && <MetaRow label="Owner" value={manual.owner} />}
                 <MetaRow label="Sections" value={manual.section_count} />
                 <MetaRow label="Uploaded" value={new Date(manual.uploaded_at).toLocaleDateString()} />
                 <MetaRow label="By" value={manual.uploaded_by} />

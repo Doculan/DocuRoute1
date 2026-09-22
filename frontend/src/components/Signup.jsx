@@ -166,7 +166,7 @@ export default function Signup({ onBackToLogin }) {
             </div>
 
             <div className="field">
-              <label className="label" htmlFor="su-dept">Department</label>
+              <label className="label" htmlFor="su-dept">Office</label>
               <select
                 id="su-dept"
                 className="select"
