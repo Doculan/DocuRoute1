@@ -296,7 +296,17 @@ empty.** Reversing to 0016 drops all four tables and the new columns and
 leaves every existing count untouched — so "additive only" is tested, not
 asserted.
 
-**Nothing has been run against the real database.**
+### Run for real — 2026-09-22
+
+Backup at `Backend/db.sqlite3.bak-20260922-pre-v4-phase1a`. All three
+migrations applied. **The result is identical to the trial**: every
+existing row count unchanged, the four organisation tables created empty,
+1 account to `system_admin` and 5 to `user`, 20 of 20 manuals unassigned.
+
+Smoke-checked live afterwards: the admin reaches the dashboard, the
+revision queue and the manual list; a staff account reaches its dashboard
+and sees its 5 department manuals. `check_setup.py` reports **Ready** and
+the pipeline was not touched.
 
 ### Test state
 
