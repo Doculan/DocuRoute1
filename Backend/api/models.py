@@ -939,6 +939,46 @@ class ManualRevision(models.Model):
         return f"Revision by {self.submitted_by} on {self.section.subtitle}"
 
 
+class DemoRecord(models.Model):
+    """One row the demo seeder created, or one field it changed.
+
+    The seeder has to be exactly reversible, and "delete everything that
+    looks like demo data" is not exact - a name can be typed by hand and a
+    real office can share a name with a fictional one. So it records what
+    it did, object by object, and `--clear` undoes precisely that.
+
+    A marker table rather than an `is_demo` flag on Office, CustomUser and
+    the rest: a demo convenience has no business adding a column to the
+    models that hold the university's real organisation, where it would
+    then have to be considered by every query for ever.
+    """
+
+    CREATED = 'created'
+    CHANGED = 'changed'
+
+    KIND_CHOICES = [
+        (CREATED, 'Created by the seeder'),
+        (CHANGED, 'Existing row the seeder modified'),
+    ]
+
+    label = models.CharField(max_length=64)          # "api.Office"
+    object_id = models.CharField(max_length=64)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    # For CHANGED rows: the field values as they were, so clearing puts
+    # them back instead of guessing at a default.
+    previous = models.JSONField(default=dict, blank=True)
+    # Creation order, so clearing can walk backwards - everything in the
+    # organisation is PROTECT, so the order is not optional.
+    sequence = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sequence']
+
+    def __str__(self):
+        return f"{self.kind} {self.label}#{self.object_id}"
+
+
 # ─── PROPOSALS (v4 phase 2) ──────────────────────────────────
 #
 # The university's actual process, up to agreement. An office drafts a

@@ -795,6 +795,58 @@ pipeline untouched.
 
 ---
 
+## The demonstration organisation — 2026-09-23
+
+`seed_demo_org`, with `--clear`. **Every person in it is fictional**, and
+it exists so the system can be shown to other people before the real
+organisation is entered.
+
+Three things make it safe. It **refuses to run beside a real
+organisation** - any office or series it did not create means somebody has
+started entering the real one, and fictional data beside it could not be
+told apart afterwards. It **records what it did, row by row**, in
+`DemoRecord`, so `--clear` undoes precisely that rather than deleting
+everything that looks like demo data - a real office can share a name with
+a fictional one. And it is **not a migration and never will be**: a
+migration runs on every machine that deploys, including the one holding
+the real data.
+
+`DemoRecord` is a marker table rather than an `is_demo` flag on `Office`,
+`CustomUser` and the rest. A demo convenience has no business adding a
+column to the models that hold the university's real organisation, where
+every query would then have to consider it for ever.
+
+It also records **changes**, not only creations: the nineteen documents
+existed already, so it stores each one's previous `series_id` and
+`--clear` puts it back rather than blanking it.
+
+Verified as an exact round trip on the real database: 14 offices, 4
+series, 14 people, 19 documents placed; then `--clear` back to 0 offices,
+the original 6 accounts, 19 documents, none in a series, nothing left.
+
+**A guard found by a failing test.** The refusal covered offices but not
+series, so a real series carrying one of the demo codes collided on the
+unique constraint and the command died with a raw `IntegrityError`
+instead of an explanation. Both are checked now.
+
+### Readiness after seeding
+
+```
+ready: False
+BLOCK staff_without_positions (4)   Eug, STAFF1, eugene_l, try
+warn  offices_without_a_head (5)
+
+ACC_*, BUD_*, CMO_*   0 -> 10      GUI/HRM/SFA/VPSD  0 -> 4
+CDO/VPAS              0 ->  1      QMS_Ana, QMS_Pedro 0 -> 0
+Admin                all -> all (not scoped)
+```
+
+The four blockers are the old v3 test accounts. **QMS at 0 is correct**,
+not a gap: the QMS office decides requests and is linked to no series, so
+it works on no documents - it reaches them through the QMS role in P4.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
