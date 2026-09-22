@@ -13,6 +13,16 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 - Update this file after every phase and every decision: findings,
   approved decisions, deviations, known issues, resume commands.
 - Stop at every CHECKPOINT and wait for go-ahead.
+- **A test that expects an error must assert the reason** - the field or
+  the message - not only the status code. A 400 is not a claim about
+  anything. The example: `test_a_document_override_must_still_be_an_approving_office`
+  checked only for 400 and passed on an unrelated blank-field error, so
+  for one run it asserted nothing while looking green.
+- **Read the output you asked for.** The same review reported "no titles
+  have stray whitespace" from a command whose result had been cut off by
+  `tail`. `FAM 8.03` had a trailing space, and the duplicate-detecting
+  importer found it afterwards. Absence of evidence in a truncated
+  output is not evidence.
 
 ---
 
