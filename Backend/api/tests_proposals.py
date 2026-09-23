@@ -340,11 +340,23 @@ class OneOpenProposalPerSectionTests(ProposalFixture):
         )
         self.assertEqual(response.status_code, 200)
 
-    def test_locking_frees_the_section_too(self):
-        """Until P4 a locked proposal has not changed the manual - but it
-        is no longer being drafted, so it no longer holds the section."""
+    def test_locking_keeps_the_section_held(self):
+        """Changed in P4. A locked request is on its way to being made
+        effective; releasing its sections at the lock let a second office
+        start changing the same text, and the two would have met at the
+        custodian's desk."""
         Proposal.objects.filter(pk=self.mine).update(status=Proposal.LOCKED)
         Proposal.objects.get(pk=self.mine).refresh_open_changes()
+        response = self.edit(self.theirs, self.s2, "x", client=self.other_client)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'section_in_another_proposal')
+
+    def test_closing_frees_the_section(self):
+        """Denied, withdrawn or made effective: the text is free again."""
+        for closed in Proposal.CLOSED_STATUSES:
+            Proposal.objects.filter(pk=self.mine).update(status=closed)
+            Proposal.objects.get(pk=self.mine).refresh_open_changes()
+            self.assertFalse(SectionChange.objects.get(section=self.s2, version__proposal_id=self.mine).is_open, closed)
         self.assertEqual(
             self.edit(self.theirs, self.s2, "x", client=self.other_client).status_code,
             200,

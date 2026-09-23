@@ -34,7 +34,9 @@ The seed turns the switch on and leaves one proposal on `VRF 1.01`,
 locked and awaiting signature, with its documents generated. Accounts,
 all with password `Verify-scratch-pass!`: `verify_enc` (Encoder),
 `verify_head` (Head), `verify_bud_head` (the concurring Head),
-`verify_admin` (system admin). Fictional throughout.
+`verify_admin` (system admin), `verify_imr` and `verify_custodian` (QMS
+staff holding the IMR and Document Custodian positions). Fictional
+throughout.
 
 Pipe-feeding the seed to `manage.py shell` does **not** work - the
 interactive shell stops at the first blank line inside a block and runs
@@ -76,6 +78,19 @@ node "$SK/cdp.mjs" "$SK/drives/package-encoder.cdp" "$SCRATCH/shots"
 node "$SK/cdp.mjs" "$SK/drives/package-admin.cdp"   "$SCRATCH/shots"
 ```
 
+Order matters where a drive changes the request's state:
+
+| Drive | Needs | Leaves |
+|---|---|---|
+| `package-encoder` | a fresh seed | ready for the IMR |
+| `imr-accept` | ready for the IMR | awaiting the approving authority |
+| `imr-deny` | ready for the IMR | denied |
+| `denial-seen-by-office` | denied | - |
+| `qms-reading`, `package-admin` | anything | - |
+
+The seed leaves one request, so accepting and denying need separate
+fresh copies.
+
 Commands are listed at the top of `cdp.mjs`: `nav`, `wait`, `click`,
 `type`, `upload`, `shot`, `text`, `errors`, and `? ` for an optional
 step. `${NAME}` is filled from the environment - `package-encoder.cdp`
@@ -90,6 +105,11 @@ App-specific points:
 - **Navigation is `useState`, not a router** - there are no URLs to jump
   to. Always start from `/` and click through (`.nav-item`, then
   `.series-row`).
+- **The portal is the server's choice** (`/api/auth/me/`), so a drive
+  signs in and then waits for something only that portal has - "Requests"
+  for QMS staff, "Proposals" for staff.
+- **`wait` reads `innerText`, which applies CSS `text-transform`.** The
+  sidebar labels are upper-cased: wait for "Requests", not "QMS Portal".
 - **Sign in through the form** (`#login-username`, `#login-password`,
   `button[type=submit]`). `type` goes through real input events, which
   React's controlled inputs need; setting `.value` from script does not.

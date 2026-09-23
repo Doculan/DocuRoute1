@@ -225,6 +225,9 @@ export default function StaffSections({
   // the whole document rather than one section at a time, so this screen
   // hands off instead of carrying its own submission form.
   byPosition = false, onPropose,
+  // Reading only: QMS staff read every document but neither edit nor
+  // propose, so none of the controls that would are shown.
+  readOnly = false,
 }) {
   const [manual, setManual]           = useState(null);
   const [sections, setSections]       = useState([]);
@@ -709,6 +712,7 @@ export default function StaffSections({
                   <h2 className="doc-title">{activeSection.subtitle}</h2>
                 </div>
 
+                {!readOnly && (
                 <div className="row-wrap" style={{ gap: "0.5rem" }}>
                   {byPosition ? (
                     /* Secondary, not the centre of the screen: reading a
@@ -740,9 +744,11 @@ export default function StaffSections({
                     {isEditing ? "✕ Cancel edit" : "✏️ Edit text"}
                   </button>
                 </div>
+                )}
               </div>
 
               {/* Merge workflow grouped as one tool rather than scattered buttons */}
+              {!readOnly && (
               <div className="merge-bar">
                 <span className="merge-bar-label">🔀 Merge sections</span>
                 <div className="row-wrap" style={{ gap: "0.4rem" }}>
@@ -803,6 +809,7 @@ export default function StaffSections({
                 )}
                 <AiCheckPanel result={mergeCheck} loading={aiChecking} />
               </div>
+              )}
 
               {revMsg && (
                 <div className={`toast ${revMsgType === "success" ? "toast-success" : "toast-danger"}`}>
@@ -898,6 +905,9 @@ export default function StaffSections({
                 </div>
               )}
 
+              {/* A reader who submits nothing has no revisions of their own,
+                  and a single "Content" tab would be noise. */}
+              {!readOnly && (
               <div className="tabs">
                 <button
                   className={`tab${revTab === "content" ? " is-active" : ""}`}
@@ -913,6 +923,7 @@ export default function StaffSections({
                   {pendingCount > 0 && <span className="tab-count">{pendingCount}</span>}
                 </button>
               </div>
+              )}
 
               {revTab === "content" ? (
                 isEditing ? (

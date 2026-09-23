@@ -9,6 +9,8 @@ Leaves:
     verify_enc / verify_head   Encoder and Head of "Verify Accounting Office"
     verify_bud_head            Head of "Verify Budget Office" (has concurred)
     verify_admin               a system admin
+    verify_imr / verify_custodian  IMR and Document Custodian of
+                               "Verify QMS Office" (QMS staff)
     all with the password Verify-scratch-pass!
     one proposal on "VRF 1.01", locked, its documents generated, awaiting
     signature.
@@ -65,6 +67,9 @@ with transaction.atomic():
     head, _ = person('verify_head', acc, Position.HEAD)
     bud_head, bud_position = person('verify_bud_head', bud, Position.HEAD)
     person('verify_admin', role='admin', system_role='system_admin')
+    qms = Office.objects.create(name='Verify QMS Office')
+    person('verify_imr', qms, Position.IMR, system_role='qms_staff')
+    person('verify_custodian', qms, Position.DOCUMENT_CUSTODIAN, system_role='qms_staff')
 
     proposal = Proposal.objects.create(
         manual=manual, initiating_office=acc, created_by=encoder,

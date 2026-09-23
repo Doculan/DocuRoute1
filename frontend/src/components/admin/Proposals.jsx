@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import DiffView from "../DiffView";
 import ProposalPackage from "../ProposalPackage";
+import QmsDecisions from "../QmsDecisions";
+import {
+  IN_PROGRESS, STATUS_LABEL, WITH_PACKAGE, statusTone,
+} from "../proposalStatus";
 
 const BASE_URL = "";
 
@@ -9,19 +13,6 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
-const STATUS_LABEL = {
-  draft: "Draft",
-  concurrence: "Out for concurrence",
-  locked: "Locked",
-  awaiting_signature: "Awaiting signature",
-  ready_for_imr: "Ready for the IMR",
-  withdrawn: "Withdrawn",
-};
-
-// Agreed and frozen. Until 3c gives these their own screens, they read
-// as the lock they grew out of.
-const FROZEN = ["locked", "awaiting_signature", "ready_for_imr"];
-const WITH_PACKAGE = ["awaiting_signature", "ready_for_imr"];
 
 function when(value) {
   if (!value) return "";
@@ -76,7 +67,7 @@ export default function Proposals() {
     // Frozen is not finished: the paperwork is still to come. Named
     // rather than "not withdrawn", so P4's finished statuses do not
     // arrive here by default.
-    : rows.filter((r) => ["draft", "concurrence", ...FROZEN].includes(r.status));
+    : rows.filter((r) => IN_PROGRESS.includes(r.status));
 
   return (
     <div>
@@ -122,9 +113,7 @@ export default function Proposals() {
                   ? `${p.concurred} of ${p.of} concurred`
                   : `version ${p.version}`}
               </span>
-              <span className={`status-mark is-${
-                FROZEN.includes(p.status) ? "approved"
-                  : p.status === "withdrawn" ? "returned" : "pending"}`}>
+              <span className={`status-mark is-${statusTone(p.status)}`}>
                 {STATUS_LABEL[p.status]}
               </span>
               <span className="subtle text-xs">{when(p.updated_at)}</span>
@@ -136,27 +125,34 @@ export default function Proposals() {
   );
 }
 
-function ProposalDetail({ proposalId, onBack }) {
+/**
+ * One request, read only. The QMS portal reuses it, passing
+ * `renderActions` for the one thing its reader may do there - the IMR's
+ * decision - so the reviewer sees exactly what the admin sees.
+ */
+export function ProposalDetail({
+  proposalId, onBack, backLabel = "Proposals", renderActions,
+}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: full } = await axios.get(
-          `${BASE_URL}/api/proposals/${proposalId}/full/`, getAuth()
-        );
-        setData(full);
-      } catch (err) {
-        setError(err.response?.data?.error || "Could not load this proposal.");
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      const { data: full } = await axios.get(
+        `${BASE_URL}/api/proposals/${proposalId}/full/`, getAuth()
+      );
+      setData(full);
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not load this proposal.");
+    }
   }, [proposalId]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (error) {
     return (
       <div>
-        <button className="link-btn" onClick={onBack}>← Proposals</button>
+        <button className="link-btn" onClick={onBack}>← {backLabel}</button>
         <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{error}</div>
       </div>
     );
@@ -167,7 +163,7 @@ function ProposalDetail({ proposalId, onBack }) {
 
   return (
     <div>
-      <button className="link-btn" onClick={onBack}>← Proposals</button>
+      <button className="link-btn" onClick={onBack}>← {backLabel}</button>
 
       <header className="page-head" style={{ marginTop: "0.6rem" }}>
         <div>
@@ -179,7 +175,16 @@ function ProposalDetail({ proposalId, onBack }) {
         </div>
       </header>
 
-      {WITH_PACKAGE.includes(data.status) && <ProposalPackage proposalId={proposalId} />}
+      {renderActions && renderActions(data, load)}
+
+      <QmsDecisions decisions={data.qms_decisions} />
+
+      {/* Keyed on the status: the package loads its own data, and a
+          decision elsewhere on this page must not leave it telling the
+          reader what was true before. */}
+      {WITH_PACKAGE.includes(data.status) && (
+        <ProposalPackage key={data.status} proposalId={proposalId} />
+      )}
 
       <section style={{ marginTop: "1.5rem" }}>
         <h2 className="section-title">Reason for the change</h2>

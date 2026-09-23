@@ -132,6 +132,10 @@ def _full_payload(proposal):
          'at': e.at, 'detail': e.detail}
         for e in proposal.events.select_related('actor', 'position').order_by('at')
     ]
+    # The IMR's and custodian's decisions - a denial's reason above all -
+    # shown to every office involved.
+    from .qms_views import decisions_payload
+    data['qms_decisions'] = decisions_payload(proposal)
     return data
 
 
@@ -601,6 +605,8 @@ def proposal_full(request, proposal_id):
         proposal.status == Proposal.DRAFT
         and _head_of(request.user, proposal.initiating_office) is not None
     )
+    from .qms_views import can_imr_decide
+    data['can_imr_decide'] = can_imr_decide(request.user, proposal)
     return Response(data)
 
 

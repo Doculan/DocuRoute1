@@ -1,0 +1,24 @@
+# The IMR denies a request that is ready for them. Run package-encoder.cdp
+# first, so both signed copies are in.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | verify_imr
+type #login-password | Verify-scratch-pass!
+click button[type=submit] | 
+wait Requests
+shot 20-qms-landing
+click .nav-item | Requests
+wait Waiting for your decision
+shot 21-queue
+click .series-row | VRF 1.01
+wait Your decision
+shot 22-request
+type #imr-password | Verify-scratch-pass!
+click button | Deny
+wait Say why it is denied
+type #imr-comments | The release window conflicts with FAM 6.03.
+click button | Deny
+wait Denied by the IMR
+shot 23-denied
+errors

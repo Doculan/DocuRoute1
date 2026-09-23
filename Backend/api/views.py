@@ -764,8 +764,7 @@ def delete_department(request, dept_id):
 @permission_classes([IsAuthenticated])
 def staff_list_manuals(request):
     """Return manuals belonging to the logged-in staff member's department."""
-    dept = getattr(request.user, 'department', None)
-    if not dept:
+    if not access.has_unit(request.user):
         return _no_unit_error()
     manuals = access.manuals_for(
         request.user, Manual.objects.all()
@@ -821,8 +820,7 @@ def staff_my_revisions(request):
         'section', 'section__manual', 'submitted_by', 'reviewed_by'
     )
     if scope == 'office':
-        department = getattr(request.user, 'department', None)
-        if not department:
+        if not access.has_unit(request.user):
             return _no_unit_error()
         revisions = access.revisions_for(request.user, revisions)
     else:
@@ -937,6 +935,48 @@ def _superseded_by_proposals(what='This'):
         ),
         'reason': 'superseded_by_proposals',
     }, status=409)
+
+
+def _refuse_if_held(sections, action='changed'):
+    """Refuse a direct edit to text a change request is holding.
+
+    A section held by a request is text the offices have agreed - or are
+    agreeing - to replace. Editing it underneath them would mean the
+    custodian's check at the end fails, or worse, that the request is made
+    effective over words nobody on it ever saw. So the text waits until the
+    request is made effective, denied or withdrawn.
+
+    Returns a response to send, or None.
+    """
+    from .models import SectionChange
+    ids = [s.pk for s in sections if s is not None]
+    change = SectionChange.objects.filter(
+        section_id__in=ids, is_open=True,
+    ).select_related(
+        'section', 'version__proposal__initiating_office',
+    ).first()
+    if change is None:
+        return None
+    proposal = change.version.proposal
+    label = proposal.dcr_number or 'a change request'
+    return Response({
+        'error': (
+            f'{change.section.subtitle} cannot be {action}: it is held by '
+            f'{label} from {proposal.initiating_office.name} until that is '
+            f'made effective, denied or withdrawn.'
+        ),
+        'reason': 'section_held',
+        'proposal_id': proposal.pk,
+    }, status=409)
+
+
+def _text_would_change(request, section):
+    """Only the text is held. Tag, order and page number are not what the
+    offices agreed on, and correcting them does not disturb the request."""
+    return any(
+        field in request.data and request.data[field] != getattr(section, field)
+        for field in ('content', 'subtitle')
+    )
 
 
 def _merging_is_deleting():
@@ -1655,8 +1695,7 @@ def staff_sections(request):
     Deliberately reuses the same filters list_sections already applies, so a
     search means the same thing from either direction.
     """
-    department = getattr(request.user, 'department', None)
-    if not department:
+    if not access.has_unit(request.user):
         return _no_unit_error()
 
     sections = access.sections_for(
@@ -2051,6 +2090,9 @@ def delete_manual(request, manual_id):
         manual = Manual.objects.get(id=manual_id)
     except Manual.DoesNotExist:
         return Response({'error': 'Manual not found'}, status=404)
+    held = _refuse_if_held(list(manual.sections.all()), 'deleted with the manual')
+    if held:
+        return held
     manual.delete()
     return Response({'message': 'Manual deleted.'})
 
@@ -2151,6 +2193,11 @@ def review_section(request, section_id):
 
     if not access.can_reach_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
+
+    if _text_would_change(request, section):
+        held = _refuse_if_held([section], 'edited')
+        if held:
+            return held
 
     # Update content/metadata if provided
     section.subtitle = request.data.get('subtitle', section.subtitle)
@@ -2275,6 +2322,11 @@ def update_section(request, section_id):
     # with "." within a week, which is worse than an honest blank.
     reason = (request.data.get('change_reason') or '').strip()
 
+    if _text_would_change(request, section):
+        held = _refuse_if_held([section], 'edited')
+        if held:
+            return held
+
     SectionHistory.objects.create(
         section=section,
         version=section.version,
@@ -2340,6 +2392,9 @@ def delete_section(request, section_id):
         section = ManualSection.objects.get(id=section_id)
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
+    held = _refuse_if_held([section], 'deleted')
+    if held:
+        return held
     section.delete()
     return Response({'message': 'Section deleted.'})
 
@@ -2368,6 +2423,10 @@ def review_delete_section(request, section_id):
 
     if not access.can_reach_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
+
+    held = _refuse_if_held([section], 'deleted')
+    if held:
+        return held
 
     section.delete()
     return Response({'message': 'Section deleted.'})
@@ -2402,6 +2461,11 @@ def merge_sections(request, section_id):
     # Only allow merge within same manual
     if source.manual_id != target.manual_id:
         return Response({'error': 'Sections must belong to the same manual'}, status=400)
+
+    # A hold can outlive the switch being turned back off.
+    held = _refuse_if_held([source, target], 'merged')
+    if held:
+        return held
 
     if access.by_position():
         return _merging_is_deleting()
@@ -3111,6 +3175,12 @@ def review_revision(request, revision_id):
     new_status = request.data.get('status')
     if new_status not in ['approved', 'rejected']:
         return Response({'error': 'Status must be approved or rejected'}, status=400)
+
+    if new_status == 'approved':
+        merged = list(ManualSection.objects.filter(id__in=revision.merge_section_ids or []))
+        held = _refuse_if_held([revision.section] + merged, 'changed')
+        if held:
+            return held
 
     revision.status = new_status
     revision.reviewer_notes = request.data.get('reviewer_notes', '')

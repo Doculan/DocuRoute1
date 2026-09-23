@@ -1559,6 +1559,156 @@ defence in depth doing its job, not a weak test.
 
 ---
 
+## Phase 4 — design approved (2026-09-24)
+
+Decided at the design review:
+
+1. **Section 4's printed title stays blank** until the QMS office answers
+   (question D).
+2. **A future effectivity date is refused**; the custodian makes the change
+   effective on or after it.
+3. **Revision numbers**: typed by the custodian, prefilled with the last
+   plus one, stored as text; a lower number than the current is refused
+   when both are numeric.
+4. **A baseline per document**: the custodian may record a starting status
+   (number, version, revision, effectivity date), since the manuals carry
+   real revisions on paper. A section never changed through a request
+   shows nothing of its own; the document header shows the baseline or
+   the latest status.
+5. **Conflict of interest**: no IMR decision, and no custodian making it
+   effective, by anyone holding a position in the requesting office.
+6. **Direct edits to held sections are refused.**
+7. **The v3 counters keep incrementing**, and stop being shown to readers.
+
+4d, removing the transitional admin review, waits until the switch is
+confirmed as having held. Retiring `Department` stays separate.
+
+---
+
+## Phase 4a — the IMR, the hold, the QMS portal (awaiting Checkpoint 4A)
+
+Migration **0028**, tested on copies of the live database and **not yet
+applied to the live one**. It holds the whole Phase 4 schema, database
+first: the new statuses, `QmsDecision`, `DocumentStatus` with
+`Manual.current_status` and `ManualSection.status_changed`, section
+history's "proposal" source and link, the approving authority's
+attachment kind, and the new audit events. 4b and 4c add behaviour, not
+tables.
+
+### A request holds its sections until it is closed
+
+Found in the design survey: a section was held only while its proposal
+was drafted or out for concurrence. At the lock it was released, and a
+second office could begin changing the same text while the first request
+was still collecting signatures - the two would have met at the
+custodian's desk, and one would have overwritten the other. Now a request
+holds its sections through every frozen status, until it is denied,
+withdrawn or made effective. `is_open` keeps its meaning (still being
+worked on); a new `holds_sections` drives the hold.
+
+One Phase 2 test encoded the old rule - its own docstring said "until
+P4" - and was rewritten for the new one, in both directions.
+
+**The migration restores holds** for requests already frozen. Tested
+properly, not only applied to an empty copy: a seeded frozen request,
+migrated back to 0027 (released, as the old code would have) and forward
+again (held). And the collision: where another request had claimed the
+section in between, the step leaves it unheld and **prints "NOT HELD"**
+naming both, rather than failing or silently breaking the index.
+
+### Direct edits wait for the request
+
+Seven paths write section text directly: the admin edit, the staff edit,
+both deletes, deleting a manual, merging, and approving a v3 revision.
+Each refuses a held section, naming the DCR and the office holding it.
+Only the text is held - subtitle and content. Tag, order and page number
+are not what the offices agreed on, and correcting them still works.
+
+### The QMS portal, chosen by the server
+
+There was no QMS portal: the browser picked admin or staff from a `role`
+kept in local storage, and the review screen lived in the admin portal,
+so a QMS account landed with nothing to do. Now:
+
+- **`/api/auth/me/`** answers which portal an account belongs in. The
+  browser asks it on every load and after login, and no longer reads the
+  role from storage - anyone can edit that.
+- **The QMS portal** leads with reading, like the others: it opens on the
+  manuals, read only (no edit, merge, propose or "my revisions"), with
+  **Requests** beside them - a count only when something is waiting.
+- **QMS staff read every document** once access is by position - the
+  custodian keeps them all. Reading only: proposing is unchanged, and the
+  switchover preview still reports their pre-switch reach honestly.
+
+### The IMR's decision
+
+Accept or deny, with comments and the password. Only a current IMR; never
+on a request from an office where they hold any position; only a request
+ready for the IMR. **A denial needs a reason, closes the request, releases
+its sections, and is shown first, in red, to every office involved.** An
+acceptance moves it to the approving authority and keeps the sections
+held. The signed copies close with the decision (option A).
+
+### A bug found on the way: lists asked for a department
+
+The manual list, the section search and "my revisions" refused anyone
+without a v3 **department** - while the refusal itself said "not yet
+assigned to an office". Every v4 account is a position holder whether or
+not it has a department, so under position-based access this turned away
+the very people the switch is for. Found when QMS reading failed; fixed
+with `access.has_unit`, which asks for a current office after the switch.
+
+### Seen working in the real app
+
+With the `run-docuroute` skill, from a cold start, twice: the Encoder's
+signed copies; the IMR landing in the QMS portal from the server's
+answer, seeing the request in the queue, being refused a denial without a
+reason, then denying; the requesting office reading the denial in red;
+then a fresh run with the IMR accepting, the queue emptying, and the
+office reading "Accepted" with no way left to replace a scan; the
+custodian reading a document their office has no link to, read only.
+
+Looking at it caught three things the tests could not:
+
+- **A stale package line.** After the decision the package still said
+  "The IMR decides next": it had loaded its data before the decision.
+  It now remounts when the status changes.
+- The sidebar printed the IMR's full title, upper-cased, over four lines;
+  it now says "IMR".
+- A lone "My revisions" tab for readers who submit nothing.
+
+The skill gained QMS accounts in its seed and four drives (IMR accept,
+IMR deny, the office reading a denial, QMS reading); its cold run caught
+two drive mistakes of mine (upper-cased labels in `innerText`, a
+confirmation that lives on another page).
+
+### Open
+
+- **The direct edit asks for no password.** `update_section` (the admin's
+  edit) and `review_section` do not re-authenticate, although CLAUDE.md's
+  table requires it for "any direct edit to manual content", and P1 was to
+  add it. Not changed in 4a - it needs the admin Sections screen to ask for
+  the password too - but it should not wait long.
+- **The v3 counters are still shown to readers** ("Document v1", "Revision
+  No.", "Manual Version" on a section). Decision 7 removes them; that is
+  4c's reader display.
+
+### Test state
+
+**566 tests, all passing** - 29 more than before 4a. No `IntegrityError`
+anywhere in the log: the duplicate-upload failure has not recurred.
+`check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11` unchanged; nothing
+under `ml/` touched.
+
+**Shown to fail without what they test: 15 of 15** - the hold through the
+lock, the release on denial, only-the-IMR, the conflict of interest, the
+reason for a denial, the password, the status check, the decision shown
+to every office, the queue, the server's portal, the direct-write refusal
+and its text-only scope, QMS reading and list reach, and the department
+gate.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

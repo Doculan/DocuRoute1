@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "../admin/ConfirmDestructive";
 import ProposalPackage from "../ProposalPackage";
+import QmsDecisions from "../QmsDecisions";
+import { STATUS_LABEL, WITH_PACKAGE, statusTone } from "../proposalStatus";
 // DocDiff, not DiffView: this is the submitter's view of their own
 // change, marked the way a person with a red pen would mark it.
 // DiffView is the reviewer's technical diff.
@@ -16,21 +18,6 @@ const getAuth = () => ({
 const confirmed = (token) => ({
   headers: { ...getAuth().headers, ...reauthHeader(token) },
 });
-
-const STATUS_LABEL = {
-  draft: "Draft",
-  concurrence: "Out for concurrence",
-  locked: "Locked",
-  awaiting_signature: "Awaiting signature",
-  ready_for_imr: "Ready for the IMR",
-  withdrawn: "Withdrawn",
-};
-
-// Agreed and frozen. Until 3c gives these their own screens, they read
-// as the lock they grew out of.
-const FROZEN = ["locked", "awaiting_signature", "ready_for_imr"];
-// Frozen with documents to sign: the package is what there is to do.
-const WITH_PACKAGE = ["awaiting_signature", "ready_for_imr"];
 
 const VERDICT_WORDS = {
   approve: "no concerns",
@@ -171,9 +158,7 @@ export default function StaffProposals({ startManualId, onDone }) {
                 {p.changed_sections} section{p.changed_sections === 1 ? "" : "s"}
                 {p.version > 1 ? ` · version ${p.version}` : ""}
               </span>
-              <span className={`status-mark is-${
-                FROZEN.includes(p.status) ? "approved"
-                  : p.status === "withdrawn" ? "returned" : "pending"}`}>
+              <span className={`status-mark is-${statusTone(p.status)}`}>
                 {STATUS_LABEL[p.status]}
               </span>
               {tab === "awaiting" && (
@@ -262,8 +247,10 @@ function Proposal({ proposalId, onBack, onSay }) {
         </div>
       )}
 
+      <QmsDecisions decisions={data.qms_decisions} />
+
       {WITH_PACKAGE.includes(data.status) && (
-        <ProposalPackage proposalId={proposalId} onChanged={load} />
+        <ProposalPackage key={data.status} proposalId={proposalId} onChanged={load} />
       )}
 
       {data.status === "draft" && data.blockers.length > 0 && (

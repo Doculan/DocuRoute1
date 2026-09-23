@@ -71,6 +71,43 @@ def is_admin(user):
     )
 
 
+def is_qms_staff(user):
+    """QMS staff by system role - the portal, not what they may decide.
+
+    Reading reach only. What they may *decide* comes from the IMR or
+    Document Custodian position they hold, checked where the decision is
+    made.
+    """
+    from .models import CustomUser
+    return bool(
+        user and user.is_authenticated
+        and getattr(user, 'system_role', None) == CustomUser.QMS_STAFF
+    )
+
+
+def reads_everything(user):
+    """Whole-corpus reading: the system admin, and - once access is by
+    position - QMS staff. The Document Custodian controls every document,
+    and the IMR decides requests on any of them; neither can do that from
+    the handful linked to the QMS office."""
+    return is_admin(user) or (is_qms_staff(user) and by_position())
+
+
+def has_unit(user):
+    """Is there anything to scope this person's lists by?
+
+    Before the switch, a department. After it, a current office - the
+    department is a v3 field that v4 accounts need not have, and asking
+    for it turned away people who hold positions. Whole-corpus readers
+    need neither.
+    """
+    if reads_everything(user):
+        return True
+    if by_position():
+        return bool(current_offices(user))
+    return getattr(user, 'department', None) is not None
+
+
 def current_offices(user):
     """Offices where this person holds a position today.
 
@@ -148,7 +185,7 @@ def can_reach(user, manual):
     """
     if manual is None:
         return False
-    if is_admin(user):
+    if reads_everything(user):
         return True
 
     mine = _office_ids(user)
@@ -272,6 +309,12 @@ def _narrow(user, queryset, department_lookup, prefix, mode=None):
     other rule.
     """
     positional = by_position() if mode is None else (mode == 'position')
+
+    # QMS staff read the whole corpus under position-based access. Only
+    # then: in the department preview they have no such reach, and saying
+    # otherwise would misreport what the switch changes for them.
+    if positional and is_qms_staff(user):
+        return queryset
 
     if positional:
         offices = [office for office in current_offices(user)] if (

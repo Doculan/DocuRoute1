@@ -6,6 +6,7 @@ from . import switchover_views as switchover
 from . import proposal_views as proposals
 from . import concurrence_views as concurrence
 from . import package_views as package
+from . import qms_views as qms
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register, login, confirm_password,
@@ -75,6 +76,9 @@ urlpatterns = [
     path('proposals/<int:proposal_id>/withdraw/', concurrence.withdraw),
     path('proposals/awaiting/', concurrence.awaiting_my_office),
     path('proposals/<int:proposal_id>/package/', package.package),
+    path('proposals/<int:proposal_id>/imr/', qms.imr_decide),
+    path('qms/queue/', qms.queue),
+    path('auth/me/', qms.me),
     path('proposals/<int:proposal_id>/scans/', package.upload_scan),
     path('proposals/<int:proposal_id>/scans/<int:attachment_id>/replace/',
          package.replace_scan),

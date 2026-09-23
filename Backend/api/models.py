@@ -589,8 +589,15 @@ class Manual(models.Model):
 
     file = models.FileField(upload_to='mastercopies/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    # v3's own counters. Still incremented, for compatibility, but no longer
+    # shown to readers: the official number, version, revision and
+    # effectivity date are recorded by the custodian, in `current_status`.
     version = models.IntegerField(default=1)  # major QMS version
     revision = models.IntegerField(default=0)  # minor revision counter
+    current_status = models.ForeignKey(
+        'DocumentStatus', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
 
     def __str__(self):
         return f"{self.title} ({self.department.name})"
@@ -756,6 +763,14 @@ class ManualSection(models.Model):
     page_number = models.IntegerField(null=True, blank=True)
     order = models.IntegerField(default=0)
     version = models.IntegerField(default=1)  # ✅ section-level version
+    # The recorded status under which this section last changed through a
+    # request - what readers see as its revision and effectivity date.
+    # Null for a section no request has changed: it shows nothing of its
+    # own, and the document header carries the baseline.
+    status_changed = models.ForeignKey(
+        'DocumentStatus', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sections_changed',
+    )
 
     # Hierarchy (parent/child sections)
     parent = models.ForeignKey(
@@ -796,6 +811,7 @@ class SectionHistory(models.Model):
     # has to stay true afterwards.
     SOURCE_CHOICES = [
         ('revision', 'Approved revision'),
+        ('proposal', 'Change request made effective'),
         ('direct', 'Direct edit by an admin'),
         ('merge', 'Merged with another section'),
         ('extraction', 'Re-extracted from the master copy'),
@@ -838,6 +854,13 @@ class SectionHistory(models.Model):
     # document changed.
     revision = models.ForeignKey(
         'ManualRevision',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='section_versions',
+    )
+    # The v4 equivalent: the change request this version came from.
+    proposal = models.ForeignKey(
+        'Proposal',
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='section_versions',
@@ -1004,6 +1027,11 @@ class Proposal(models.Model):
     LOCKED = 'locked'
     AWAITING_SIGNATURE = 'awaiting_signature'
     READY_FOR_IMR = 'ready_for_imr'
+    DENIED = 'denied'
+    AWAITING_APPROVAL = 'awaiting_approval'
+    WITH_CUSTODIAN = 'with_custodian'
+    PACKAGE_RETURNED = 'package_returned'
+    EFFECTIVE = 'effective'
     WITHDRAWN = 'withdrawn'
 
     STATUS_CHOICES = [
@@ -1012,6 +1040,11 @@ class Proposal(models.Model):
         (LOCKED, 'Locked'),
         (AWAITING_SIGNATURE, 'Awaiting signature'),
         (READY_FOR_IMR, 'Ready for the IMR'),
+        (DENIED, 'Denied by the IMR'),
+        (AWAITING_APPROVAL, 'Awaiting the approving authority'),
+        (WITH_CUSTODIAN, 'With the Document Custodian'),
+        (PACKAGE_RETURNED, 'Returned for package defects'),
+        (EFFECTIVE, 'Effective'),
         (WITHDRAWN, 'Withdrawn'),
     ]
 
@@ -1023,7 +1056,13 @@ class Proposal(models.Model):
     #
     # From 3b the two happen in one transaction, so nothing new rests in
     # `LOCKED`; rows locked before then legitimately do.
-    FROZEN_STATUSES = (LOCKED, AWAITING_SIGNATURE, READY_FOR_IMR)
+    FROZEN_STATUSES = (
+        LOCKED, AWAITING_SIGNATURE, READY_FOR_IMR,
+        AWAITING_APPROVAL, WITH_CUSTODIAN, PACKAGE_RETURNED,
+    )
+
+    # Finished, one way or another. Nothing further happens to these.
+    CLOSED_STATUSES = (DENIED, EFFECTIVE, WITHDRAWN)
 
     # Signed copies may be uploaded or replaced only here: after the
     # documents exist, and before the IMR decides. Once P4 adds the IMR's
@@ -1031,9 +1070,16 @@ class Proposal(models.Model):
     # has already judged is refused - reopening it is the IMR's act.
     SCAN_STATUSES = (AWAITING_SIGNATURE, READY_FOR_IMR)
 
-    # Still being worked on or decided. A section may be in only one of
-    # these at a time - see `SectionChange.is_open`.
+    # Still open for work: drafting or concurring. What can be edited,
+    # returned and withdrawn.
     OPEN_STATUSES = (DRAFT, CONCURRENCE)
+
+    # Holding its sections: everything not yet closed. A locked request is
+    # still on its way to being made effective, and until then nobody else
+    # may start changing the same text - or two agreed changes would meet
+    # at the custodian's desk, and one would silently overwrite the other.
+    # Found in the Phase 4 survey: the hold used to end at the lock.
+    HOLDING_STATUSES = OPEN_STATUSES + FROZEN_STATUSES
 
     manual = models.ForeignKey(
         Manual, on_delete=models.PROTECT, related_name='proposals',
@@ -1085,6 +1131,10 @@ class Proposal(models.Model):
     def is_open(self):
         return self.status in self.OPEN_STATUSES
 
+    @property
+    def holds_sections(self):
+        return self.status in self.HOLDING_STATUSES
+
     def current_version(self):
         """The version being worked on or decided.
 
@@ -1097,8 +1147,10 @@ class Proposal(models.Model):
     def refresh_open_changes(self):
         """Keep `SectionChange.is_open` true to this proposal's state.
 
-        A change is open when its proposal is open **and** it belongs to
-        the current version. Superseded versions are history: the office
+        A change is open - holds its section - when its proposal is not yet
+        closed **and** it belongs to the current version. Not only while
+        drafting: a locked request holds its sections until it is made
+        effective, denied or withdrawn. Superseded versions are history: the office
         agreed to text that no longer exists, and their sections are free
         for somebody else.
 
@@ -1108,7 +1160,7 @@ class Proposal(models.Model):
         stale False lets two proposals edit the same section at once.
         """
         current = self.current_version()
-        open_now = self.is_open and current is not None
+        open_now = self.holds_sections and current is not None
 
         SectionChange.objects.filter(version__proposal=self).exclude(
             version=current
@@ -1175,7 +1227,7 @@ class SectionChangeQuerySet(models.QuerySet):
             return False
         proposal = version.proposal
         current = proposal.current_version()
-        return proposal.is_open and current is not None and current.pk == version.pk
+        return proposal.holds_sections and current is not None and current.pk == version.pk
 
     def bulk_create(self, objs, *args, **kwargs):
         objs = list(objs)
@@ -1411,6 +1463,11 @@ class AuditEvent(models.Model):
     SCAN_UPLOADED = 'scan_uploaded'
     SCAN_REPLACED = 'scan_replaced'
     PACKAGE_COMPLETE = 'package_complete'
+    IMR_ACCEPTED = 'imr_accepted'
+    IMR_DENIED = 'imr_denied'
+    APPROVAL_UPLOADED = 'approval_uploaded'
+    PACKAGE_RETURNED = 'package_returned'
+    MADE_EFFECTIVE = 'made_effective'
     WITHDRAWN = 'withdrawn'
 
     EVENT_CHOICES = [
@@ -1424,6 +1481,11 @@ class AuditEvent(models.Model):
         (SCAN_UPLOADED, 'Signed copy uploaded'),
         (SCAN_REPLACED, 'Signed copy replaced'),
         (PACKAGE_COMPLETE, 'Signed copies complete'),
+        (IMR_ACCEPTED, 'Accepted by the IMR'),
+        (IMR_DENIED, 'Denied by the IMR'),
+        (APPROVAL_UPLOADED, 'Approving authority signed'),
+        (PACKAGE_RETURNED, 'Returned for package defects'),
+        (MADE_EFFECTIVE, 'Made effective'),
         (WITHDRAWN, 'Withdrawn'),
     ]
 
@@ -1456,6 +1518,103 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_display()} — {self.office_name_at_time}"
+
+
+class QmsDecision(models.Model):
+    """What the IMR or the Document Custodian decided about a request.
+
+    Append-only, like the audit trail: a decision that could be edited
+    afterwards would not be a record of one. The person and the position
+    they held are both kept - the position as it read at the time, because
+    a later reassignment must not change who is recorded as deciding.
+    """
+
+    IMR = 'imr'
+    CUSTODIAN = 'custodian'
+    STAGE_CHOICES = [(IMR, 'IMR'), (CUSTODIAN, 'Document Custodian')]
+
+    ACCEPT = 'accept'
+    DENY = 'deny'
+    RETURN = 'return'
+    EFFECTIVE = 'effective'
+    OUTCOME_CHOICES = [
+        (ACCEPT, 'Accepted'),
+        (DENY, 'Denied'),
+        (RETURN, 'Returned for package defects'),
+        (EFFECTIVE, 'Made effective'),
+    ]
+
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.CASCADE, related_name='qms_decisions',
+    )
+    version = models.ForeignKey(
+        ProposalVersion, on_delete=models.CASCADE, related_name='qms_decisions',
+    )
+    stage = models.CharField(max_length=16, choices=STAGE_CHOICES)
+    outcome = models.CharField(max_length=16, choices=OUTCOME_CHOICES)
+    comments = models.TextField(blank=True)
+    # For a custodian's return: which signed copies are defective, so that
+    # only those can be replaced.
+    returned_kinds = models.JSONField(default=list, blank=True)
+
+    decided_by = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='qms_decisions',
+    )
+    decided_as = models.CharField(max_length=255)
+    decided_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['proposal', 'decided_at']
+
+    def __str__(self):
+        return f"{self.get_stage_display()}: {self.get_outcome_display()}"
+
+
+class DocumentStatus(models.Model):
+    """A document's official status: DCR section 5, or a recorded baseline.
+
+    The manuals already carry real revisions on paper, so the custodian
+    may record where a document stands before any request touches it - a
+    baseline, with no request behind it. After that, each request made
+    effective adds a row. `Manual.current_status` points at the latest;
+    the rows are the history.
+
+    Version and revision are text, as the paper form writes them ("01",
+    "Rev. 2"). Where both old and new are plain numbers the system refuses
+    to go backwards; anything else it records as written.
+    """
+
+    manual = models.ForeignKey(
+        Manual, on_delete=models.PROTECT, related_name='statuses',
+    )
+    # Null for a baseline.
+    proposal = models.OneToOneField(
+        Proposal, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='document_status',
+    )
+    document_number = models.CharField(max_length=64)
+    version = models.CharField(max_length=32)
+    revision = models.CharField(max_length=32)
+    effective_on = models.DateField()
+    # Section 5's "Date updated in the IDS". Not asked of a baseline.
+    updated_in_ids_on = models.DateField(null=True, blank=True)
+
+    recorded_by = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='document_statuses',
+    )
+    recorded_as = models.CharField(max_length=255)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['manual', 'recorded_at']
+        verbose_name_plural = 'document statuses'
+
+    @property
+    def is_baseline(self):
+        return self.proposal_id is None
+
+    def __str__(self):
+        return f"{self.document_number} v{self.version} rev {self.revision}"
 
 
 def attachment_path(instance, filename):
@@ -1493,6 +1652,7 @@ class Attachment(models.Model):
     CONCURRENCE_RECORD = 'concurrence_record'
     SIGNED_DCR = 'signed_dcr'
     SIGNED_PAGES = 'signed_pages'
+    APPROVED_DCR = 'approved_dcr'
 
     KIND_CHOICES = [
         (DCR_GENERATED, 'Document Change Request (generated)'),
@@ -1500,6 +1660,7 @@ class Attachment(models.Model):
         (CONCURRENCE_RECORD, 'Record of concurrence (generated)'),
         (SIGNED_DCR, 'Signed Document Change Request'),
         (SIGNED_PAGES, 'Signed draft copy'),
+        (APPROVED_DCR, 'DCR signed by the approving authority'),
     ]
 
     # Made by the system, from frozen content. Never replaced: the content

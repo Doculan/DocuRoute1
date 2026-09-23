@@ -1,0 +1,15 @@
+# QMS staff read every document, read only: no edit, merge or propose.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | verify_custodian
+type #login-password | Verify-scratch-pass!
+click button[type=submit] | 
+wait Requests
+wait VRF 1.01
+shot 30-qms-manuals
+click .card-interactive | VRF 1.01
+wait 3.0 POLICIES
+shot 31-qms-reading
+text .sidebar-role
+errors
