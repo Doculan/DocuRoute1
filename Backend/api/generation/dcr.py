@@ -30,7 +30,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from api.models import Attachment, Position
+from ..models import Attachment, Position
 from . import metrics
 from .common import (
     DCR_TEMPLATE, TemplateChanged, changed_sections, clone, form_date,
@@ -67,7 +67,7 @@ SEE_DRAFT = 'See attached draft copy.'
 
 def requester_title(proposal):
     """The drafter's position in the initiating office, else its Encoder."""
-    from api.proposal_views import _held_position
+    from ..proposal_views import _held_position
 
     office = proposal.initiating_office
     held = _held_position(proposal.created_by, office,

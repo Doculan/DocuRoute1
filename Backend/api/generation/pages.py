@@ -28,7 +28,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 
-from api.models import Attachment
+from ..models import Attachment
 from .common import _TBLPR_ORDER, PAGES_TEMPLATE, changed_sections, put, save
 
 # The table separator row, `|---|---|` or `|:--|--:|` - the same rule the

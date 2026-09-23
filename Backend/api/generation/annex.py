@@ -16,7 +16,7 @@ from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.shared import Pt
 
-from api.models import Attachment, Concurrence, Position, ProposalParticipant
+from ..models import Attachment, Concurrence, Position, ProposalParticipant
 from .common import form_date, position_title, save
 from .dcr import plan
 

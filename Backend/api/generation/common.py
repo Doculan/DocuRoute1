@@ -17,8 +17,8 @@ from django.utils import timezone
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from api.document_hygiene import scrub_document
-from api.models import Attachment, Position
+from ..document_hygiene import scrub_document
+from ..models import Attachment, Position
 
 DOCX_TYPE = ('application/vnd.openxmlformats-officedocument'
              '.wordprocessingml.document')
@@ -96,7 +96,7 @@ def check_package(data, filename):
     import collections
     import zipfile
 
-    from api.document_hygiene import docx_personal_metadata
+    from ..document_hygiene import docx_personal_metadata
 
     with zipfile.ZipFile(io.BytesIO(data)) as package:
         repeated = [name for name, count in

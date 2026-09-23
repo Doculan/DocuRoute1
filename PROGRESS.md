@@ -1436,6 +1436,12 @@ docstring. **Adding `api/__init__.py` is the conventional repair** but
 changes how all the tests are imported, so it is left as a decision
 rather than folded into this phase.
 
+> **Done after Phase 3, as its own commit (2026-09-24).** `api/__init__.py`
+> added and `api.generation` back on relative imports. Test discovery now
+> finds `Backend/` as the top level, so every test module is imported as
+> `api.tests_x`, as everything else already imported it. Full suite: 537
+> tests, OK - with no recurrence of the duplicate-upload failure.
+
 ### Test state
 
 **502 tests, all passing** - 23 new in 3b. Nothing is left in `media/`
