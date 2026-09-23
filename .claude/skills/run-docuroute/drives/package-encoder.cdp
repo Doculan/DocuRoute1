@@ -1,0 +1,29 @@
+# The signed-copies path, as the requesting office's Encoder.
+# Needs SCRATCH (folder holding signed-dcr.pdf, signed-dcr-rescan.pdf and
+# signed-pages.png) and a freshly seeded scratch database.
+nav http://127.0.0.1:5173/
+type #login-username | verify_enc
+type #login-password | Verify-scratch-pass!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+wait VRF 1.01
+click .series-row | VRF 1.01
+wait Documents to sign
+shot 01-package
+upload #scan-signed_dcr | ${SCRATCH}/signed-dcr.pdf
+wait signed-dcr.pdf
+shot 02-uploaded
+click button | Replace
+wait Replace this signed copy?
+upload #replace-file | ${SCRATCH}/signed-dcr-rescan.pdf
+type #replace-reason | The first scan cut off page 2.
+type #replace-password | Verify-scratch-pass!
+click .modal-foot button | Replace
+wait Replaced 1 time
+upload #scan-signed_pages | ${SCRATCH}/signed-pages.png
+wait The signed copies are in
+click .package-earlier summary | Replaced
+shot 03-ready
+text .page-subtitle
+errors

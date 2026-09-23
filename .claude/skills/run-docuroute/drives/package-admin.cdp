@@ -1,0 +1,16 @@
+# The same proposal as the system admin: read-only, Download only.
+# Signs out whoever is signed in first, if anyone is.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | verify_admin
+type #login-password | Verify-scratch-pass!
+click button[type=submit] |
+wait Proposals
+click button | Proposals
+wait VRF 1.01
+click .series-row | VRF 1.01
+wait Signed copies
+shot 10-admin-package
+text .package-actions
+errors
