@@ -178,6 +178,7 @@ def _coordinated_advisory(change, all_changes):
 
 
 def _change_payload(change, all_changes=None):
+    from .views import build_diff
     assessment = change.assessment
     data = {
         'section_id': change.section_id,
@@ -188,6 +189,13 @@ def _change_payload(change, all_changes=None):
         'note': change.note,
         'has_changed': change.has_changed,
         'check_is_current': change.check_is_current,
+        # Built here with the same normaliser the v3 flow uses, so a diff
+        # reads identically whichever screen shows it - and so the client
+        # is not left diffing text it would have to normalise itself.
+        'diff_text': (
+            build_diff(change.old_text, change.new_text)
+            if change.has_changed else ''
+        ),
         'assessment': None,
     }
     if assessment is not None:

@@ -12,9 +12,10 @@ from django.utils.dateparse import parse_date
 from django.db.models import Q
 from datetime import timedelta
 from .models import (
-    AccessMode, Announcement, AnnouncementDismissal, CustomUser, Department,
-    Manual, ManualSection, ManualRevision, Office, OfficeLink, Position,
-    PositionAssignment, RecentlyOpened, RevisionPreAssessment, SectionHistory,
+    AccessMode, Announcement, AnnouncementDismissal, Concurrence, CustomUser,
+    Department, Manual, ManualSection, ManualRevision, Office, OfficeLink,
+    Position, PositionAssignment, Proposal, ProposalVersion, RecentlyOpened,
+    RevisionPreAssessment, SectionHistory,
 )
 from ml.ocr_engine import extract_text
 from ml.revision_pipeline.change_reason import (
@@ -917,6 +918,44 @@ def _record_recently_opened(user, manual, section=None):
         logger.exception("could not record recently-opened for %s", user)
 
 
+def _superseded_by_proposals(what='This'):
+    """The v3 single-section flow, once proposals are the real one.
+
+    Refused rather than removed, like `delete_department`: a route that
+    vanishes gives an open browser tab a 404 and the person no idea why.
+    This says what replaced it and where to go.
+
+    Only while the access switch is on. With it off these are still the
+    only way to change a document, and they work exactly as they did.
+    """
+    return Response({
+        'error': (
+            f'{what} has been replaced by proposals. A change is now '
+            f'drafted for the whole document, with each changed section '
+            f'carrying its own check, and agreed by the offices that '
+            f'concur on it.'
+        ),
+        'reason': 'superseded_by_proposals',
+    }, status=409)
+
+
+def _merging_is_deleting():
+    """Merging two sections deletes one of them.
+
+    Out of scope for P2, which changes existing sections only. It returns
+    with adding and deleting sections rather than being quietly dropped -
+    the operation is legitimate, it just has no home in a proposal yet.
+    """
+    return Response({
+        'error': (
+            'Merging sections is not available while a change is proposed '
+            'for a whole document. Merging deletes a section, and adding '
+            'or deleting sections is not part of a proposal yet.'
+        ),
+        'reason': 'merge_out_of_scope',
+    }, status=409)
+
+
 def _no_unit_error():
     """What someone sees when their account works and shows nothing.
 
@@ -1185,27 +1224,58 @@ ACTIVITY_WINDOW_DAYS = 30
 
 
 def _activity_series(window_start, today):
-    """Submissions and decisions per day, oldest first.
+    """Work per day, oldest first.
 
     Decisions are counted on the day they were *made*, not the day the
-    revision arrived: the question this answers is how much reviewing is
-    happening, and a decision taken today about a month-old submission is
-    today's work.
+    submission arrived: the question this answers is how much reviewing
+    is happening, and a decision taken today about a month-old submission
+    is today's work.
+
+    **Reads both flows.** Before the switch the numbers are single-section
+    revisions; afterwards they are proposals. Reading only one would make
+    the chart go blank at the moment access changed, which would look
+    like the system stopped being used.
+
+    The two are counted into the same three series rather than shown
+    apart. A reader of this chart is asking how much work is moving, and
+    which internal shape a change had is not that question - `mode` says
+    which is being counted for anyone who needs it.
     """
     submitted = {}
+    approved, rejected = {}, {}
+
+    def add(bucket, value):
+        day = timezone.localtime(value).date()
+        bucket[day] = bucket.get(day, 0) + 1
+
     for value in ManualRevision.objects.filter(
         submitted_at__date__gte=window_start
     ).values_list('submitted_at', flat=True):
-        day = timezone.localtime(value).date()
-        submitted[day] = submitted.get(day, 0) + 1
+        add(submitted, value)
 
-    approved, rejected = {}, {}
     for value, outcome in ManualRevision.objects.filter(
         reviewed_at__isnull=False, reviewed_at__date__gte=window_start
     ).values_list('reviewed_at', 'status'):
-        day = timezone.localtime(value).date()
-        bucket = approved if outcome == 'approved' else rejected
-        bucket[day] = bucket.get(day, 0) + 1
+        add(approved if outcome == 'approved' else rejected, value)
+
+    # A proposal is submitted once per version, so a redraft counts as
+    # another submission - which is true: it was drafted and sent again.
+    for value in ProposalVersion.objects.filter(
+        submitted_at__isnull=False, submitted_at__date__gte=window_start,
+    ).values_list('submitted_at', flat=True):
+        add(submitted, value)
+
+    # Locked is the proposal equivalent of approved: everyone agreed.
+    for value in Proposal.objects.filter(
+        locked_at__isnull=False, locked_at__date__gte=window_start,
+    ).values_list('locked_at', flat=True):
+        add(approved, value)
+
+    # A return is the equivalent of sending it back.
+    for value in Concurrence.objects.filter(
+        decision='return', recorded_at__date__gte=window_start,
+    ).values_list('recorded_at', flat=True):
+        add(rejected, value)
 
     days = []
     cursor = window_start
@@ -1269,6 +1339,26 @@ def admin_dashboard(request):
             Q(tag='') | Q(tag='UNTAGGED')
         ).count(),
     }
+
+    # Proposals, once they are the real flow. Reported alongside rather
+    # than instead of the revision counts: during the changeover both can
+    # be non-zero, and a dashboard that hid one would be wrong for
+    # exactly the period somebody was watching it most closely.
+    proposals_open = Proposal.objects.filter(
+        status__in=Proposal.OPEN_STATUSES
+    )
+    attention.update({
+        'proposals_drafting': proposals_open.filter(
+            status=Proposal.DRAFT
+        ).count(),
+        'proposals_in_concurrence': proposals_open.filter(
+            status=Proposal.CONCURRENCE
+        ).count(),
+        # Agreed and waiting for the paperwork that P3 and P4 build.
+        'proposals_locked': Proposal.objects.filter(
+            status=Proposal.LOCKED
+        ).count(),
+    })
 
     # -- 2. activity over time -----------------------------------
     days, active_days = _activity_series(window_start, today)
@@ -1371,15 +1461,51 @@ def admin_dashboard(request):
         ).count(),
     }
 
+    # Which flow the figures above describe. The chart counts both, but
+    # a reader deserves to know which one the system is actually using.
+    activity['mode'] = 'proposals' if access.by_position() else 'revisions'
+
+    system['proposals_total'] = Proposal.objects.count()
+
     return Response({
         'attention': attention,
         'activity': activity,
         'departments': departments,
         'decisions': decisions,
+        'proposals': _recent_proposals(),
         'upcoming': upcoming,
         'upcoming_total': scheduled.count(),
         'system': system,
     })
+
+
+def _recent_proposals():
+    """The last few proposals and where each has got to.
+
+    The revision list answers "what was decided"; this answers "what is
+    moving". Both are shown while both flows can carry work.
+    """
+    rows = []
+    for proposal in Proposal.objects.select_related(
+        'manual', 'initiating_office'
+    ).order_by('-updated_at')[:6]:
+        version = proposal.current_version()
+        participants = proposal.participants.filter(role='concurring')
+        decided = Concurrence.objects.filter(
+            version=version, decision='concur',
+        ).count() if version else 0
+        rows.append({
+            'id': proposal.id,
+            'manual': proposal.manual.title,
+            'office': str(proposal.initiating_office),
+            'status': proposal.status,
+            'status_label': proposal.get_status_display(),
+            'version': version.number if version else None,
+            'concurred': decided,
+            'of': participants.count(),
+            'updated_at': proposal.updated_at,
+        })
+    return rows
 
 
 @api_view(['GET'])
@@ -1447,7 +1573,37 @@ def staff_dashboard(request):
         'is_today': a.date == today,
     } for a in visible.filter(date__gte=today).order_by('date')[:5]]
 
+    # Which flow this portal is running, so the shell can name the tab
+    # "My Revisions" or "My Proposals" without a second request - and how
+    # much is waiting on this person's offices, for the badge.
+    by_position = access.by_position()
+    awaiting = 0
+    if by_position:
+        from .concurrence_views import _offices_yet_to_decide
+        # Not `mine` - that name already holds this person's revisions a
+        # few lines above, and rebinding it made the dashboard count a
+        # list instead of a queryset.
+        my_office_ids = [o.pk for o in access.current_offices(user)]
+        if my_office_ids:
+            for proposal in Proposal.objects.filter(
+                status=Proposal.CONCURRENCE,
+                participants__office_id__in=my_office_ids,
+                participants__role='concurring',
+            ).distinct():
+                undecided = _offices_yet_to_decide(
+                    proposal, proposal.current_version()
+                )
+                if any(p.office_id in my_office_ids for p in undecided):
+                    awaiting += 1
+
     return Response({
+        'access_by_position': by_position,
+        'proposals_awaiting': awaiting,
+        'proposals_mine': (
+            Proposal.objects.filter(
+                initiating_office__in=access.current_offices(user)
+            ).count() if by_position else 0
+        ),
         'attention': attention,
         'activity': activity,
         'recently_opened': recent,
@@ -2244,6 +2400,9 @@ def merge_sections(request, section_id):
     if source.manual_id != target.manual_id:
         return Response({'error': 'Sections must belong to the same manual'}, status=400)
 
+    if access.by_position():
+        return _merging_is_deleting()
+
     if not access.can_reach_section(request.user, source):
         return Response({'error': 'Access denied'}, status=403)
 
@@ -2334,6 +2493,9 @@ def upload_revision(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
+    if access.by_position():
+        return _superseded_by_proposals('Uploading a revision for one section')
+
     if not access.can_propose_to_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
@@ -2386,6 +2548,9 @@ def propose_text_revision(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
+    if access.by_position():
+        return _superseded_by_proposals('Proposing a change to one section')
+
     if not access.can_propose_to_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
@@ -2436,6 +2601,9 @@ def propose_merge(request):
         target = ManualSection.objects.get(id=target_section_id)
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
+
+    if access.by_position():
+        return _merging_is_deleting()
 
     if not access.can_propose_to_section(request.user, target):
         return Response({'error': 'Access denied'}, status=403)
@@ -2747,6 +2915,9 @@ def pre_assess_text_revision(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
+    if access.by_position():
+        return _superseded_by_proposals('Checking one section on its own')
+
     if not access.can_propose_to_section(request.user, section):
         return Response({'error': 'Access denied'}, status=403)
 
@@ -2823,6 +2994,9 @@ def pre_assess_merge(request):
         target = ManualSection.objects.get(id=request.data.get('target_section_id'))
     except (ManualSection.DoesNotExist, ValueError, TypeError):
         return Response({'error': 'Section not found'}, status=404)
+
+    if access.by_position():
+        return _merging_is_deleting()
 
     if not access.can_propose_to_section(request.user, target):
         return Response({'error': 'Access denied'}, status=403)

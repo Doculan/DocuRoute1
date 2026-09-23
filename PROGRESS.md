@@ -1002,6 +1002,90 @@ without proving anything.
 
 ---
 
+## Phase 2c — the screens (awaiting Checkpoint 2C)
+
+No migration. The API from 2a and 2b, given something to look at.
+
+### The proposal screens
+
+One tab, three states - list, editor, detail - because they are three
+states of one thing and moving between them should not feel like
+navigating.
+
+**The editor is the whole document, collapsed.** Opening a section is what
+starts an edit, so the closed state is quiet enough to scan twenty of them
+and the open one is clearly the thing in hand. Each changed section shows
+its own check and its own verdict; a section edited after being checked
+says *needs a check* rather than reporting a stale one as current.
+
+The **AI explanation is the one place given room** - a few sentences on
+what changed and why it matters - while the rest of the screen stays
+sparse, per the design principles. The coordinated-change advisory sits
+directly under it.
+
+**`DocDiff`, not `DiffView`**, on the staff side: this is the submitter
+looking at their own change, marked the way a person with a red pen would
+mark it. The admin screen keeps the technical diff, because that audience
+is checking what changed rather than reading the document.
+
+> The first version passed `oldText`/`newText` to `DiffView`, which takes
+> `diffText`. It would have rendered an empty state, silently. The server
+> now sends `diff_text` per changed section, built with the same
+> normaliser the v3 flow uses, so a diff reads identically whichever
+> screen shows it.
+
+### The old flow stands aside rather than vanishing
+
+With the switch on, the five v3 paths refuse with an explanation and a
+`reason`, like `delete_department`. A route that vanishes gives an open
+browser tab a 404 and the person no idea why.
+
+**Merging says something different.** It is not *replaced* by proposals -
+it deletes a section, and adding or deleting sections has no home in a
+proposal yet. `merge_out_of_scope`, not `superseded_by_proposals`, because
+those are different facts and the second would be a lie. The admin
+Sections screen merges too, and it deletes the same row, so it refuses on
+the same terms.
+
+**Reading is untouched.** Only the ways of *changing* a document stood
+aside.
+
+### The dashboards read both flows
+
+The admin activity chart counts revisions **and** proposals into the same
+three series. Reading only one would make it go blank at the moment access
+changed, which looks like the system stopped being used. A proposal
+submitted is a submission, locked is agreed, returned is sent back;
+`mode` says which flow is live for anyone who needs it.
+
+Open proposals appear in the attention strip - in concurrence, and locked
+and waiting for the paperwork P3 and P4 build.
+
+The staff shell shows **one tab or the other**, never both: *My Revisions*
+becomes *Proposals* when access is scoped by position, with a count of
+what is waiting on the person's offices. Two ways to change a document,
+with nothing deciding between them, is what this phase exists to avoid.
+
+`Propose changes` sits on a section as a **secondary** action, per the
+design principles - reading a document is the common case and proposing a
+change to it is the rare one.
+
+### A shadowed name
+
+`staff_dashboard` already had a local called `mine` holding this person's
+revisions. The new awaiting-count rebound it to a list of office ids, and
+`mine.count()` a few lines later became `list.count()` with no argument.
+Renamed; the tests caught it immediately.
+
+### Test state
+
+**19 new tests.** Both switch states for every v3 path, that nothing is
+written when one refuses, that reading still works, that the dashboards
+carry both flows, and that the awaiting count clears when the office
+decides.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

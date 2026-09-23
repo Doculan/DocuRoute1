@@ -149,6 +149,22 @@ function Attention({ counts, onGo }) {
       tone: "is-danger",
       go: "review",
     },
+    counts.proposals_in_concurrence > 0 && {
+      key: "concurrence",
+      value: counts.proposals_in_concurrence,
+      label: plural(counts.proposals_in_concurrence, "proposal") + " out for concurrence",
+      note: "waiting on the offices that must agree",
+      tone: "",
+      go: "proposals",
+    },
+    counts.proposals_locked > 0 && {
+      key: "locked",
+      value: counts.proposals_locked,
+      label: plural(counts.proposals_locked, "proposal") + " agreed and locked",
+      note: "waiting for signing and the custodian",
+      tone: "is-warning",
+      go: "proposals",
+    },
     counts.untagged_sections > 0 && {
       key: "untagged",
       value: counts.untagged_sections,
@@ -210,7 +226,8 @@ function Activity({ activity }) {
   const summary = (
     <p className="subtle text-xs" style={{ margin: "0 0 0.75rem" }}>
       Last {window} days · {totals.submitted} submitted ·{" "}
-      {totals.approved} approved · {totals.rejected} returned
+      {totals.approved} {activity.mode === "proposals" ? "agreed" : "approved"} ·{" "}
+      {totals.rejected} returned
     </p>
   );
 

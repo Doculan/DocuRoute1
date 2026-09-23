@@ -221,6 +221,10 @@ function AiCheckPanel({ result, loading }) {
 
 export default function StaffSections({
   manualId, onBack, focusSectionId, onOpenRevision,
+  // Set once access is scoped by position. A change is then proposed for
+  // the whole document rather than one section at a time, so this screen
+  // hands off instead of carrying its own submission form.
+  byPosition = false, onPropose,
 }) {
   const [manual, setManual]           = useState(null);
   const [sections, setSections]       = useState([]);
@@ -706,12 +710,25 @@ export default function StaffSections({
                 </div>
 
                 <div className="row-wrap" style={{ gap: "0.5rem" }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => { setShowRevForm((v) => !v); setRevMsg(""); }}
-                  >
-                    {showRevForm ? "✕ Cancel" : "📤 Submit revision"}
-                  </button>
+                  {byPosition ? (
+                    /* Secondary, not the centre of the screen: reading a
+                       document is the common case and proposing a change
+                       to it is the rare one. */
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => onPropose?.(manualId)}
+                      title="Changes are proposed for the whole document"
+                    >
+                      Propose changes
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => { setShowRevForm((v) => !v); setRevMsg(""); }}
+                    >
+                      {showRevForm ? "✕ Cancel" : "📤 Submit revision"}
+                    </button>
+                  )}
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => {
