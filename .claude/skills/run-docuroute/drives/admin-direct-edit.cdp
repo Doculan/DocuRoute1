@@ -1,0 +1,24 @@
+# The system admin edits a section directly: the save asks for the
+# password, and the reason is recorded. Uses an unheld document from the
+# database copy (FAM 4.01); the seeded one is held by its request.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | verify_admin
+type #login-password | Verify-scratch-pass!
+click button[type=submit] | 
+wait Proposals
+click .nav-item | Sections
+wait Select a manual
+select .select | FAM 4.01
+wait OBJECTIVES
+click .icon-btn[title=Edit] | 
+type #direct-edit-reason | Scratch check of the password prompt.
+click button[type=submit] | Save changes
+wait Save this edit to the document?
+shot 40-edit-asks-password
+type #confirm-destructive-password | Verify-scratch-pass!
+click button[type=submit] | Save edit
+wait Section updated
+shot 41-edit-saved
+errors

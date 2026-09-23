@@ -251,7 +251,7 @@ class SectionEditAttributionTests(TestCase):
             f"/api/sections/{self.section.id}/update/",
             {"content": "The Cashier shall release the cheque in a day.",
              "change_reason": "Corrected the release window after the audit."},
-            format="json",
+            format="json", HTTP_X_REAUTH_TOKEN=issue_reauth_token(self.admin),
         )
         self.assertEqual(response.status_code, 200)
 
@@ -268,6 +268,7 @@ class SectionEditAttributionTests(TestCase):
         response = self.client.patch(
             f"/api/sections/{self.section.id}/update/",
             {"content": "Typo fixed."}, format="json",
+            HTTP_X_REAUTH_TOKEN=issue_reauth_token(self.admin),
         )
         self.assertEqual(response.status_code, 200)
         entry = SectionHistory.objects.get(section=self.section)
@@ -312,6 +313,33 @@ class SectionEditAttributionTests(TestCase):
         self.assertEqual(entry.source, "revision")
         self.assertIn("management review", entry.change_reason)
 
+    def test_a_direct_edit_without_the_password_is_refused_and_writes_nothing(self):
+        """A direct edit changes a controlled document with nothing behind
+        it, so it asks for the password again - and a refusal must leave
+        no trace: not the text, not a history row."""
+        before = self.section.content
+        for path in ("update", "review"):
+            response = self.client.patch(
+                f"/api/sections/{self.section.id}/{path}/",
+                {"content": "Changed without confirming.", "change_reason": "No password."},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 403, path)
+            self.assertEqual(response.data["reason"], "reauth_required", path)
+        self.section.refresh_from_db()
+        self.assertEqual(self.section.content, before)
+        self.assertFalse(SectionHistory.objects.filter(section=self.section).exists())
+
+    def test_a_wrong_token_is_refused_too(self):
+        response = self.client.patch(
+            f"/api/sections/{self.section.id}/update/", {"content": "x"},
+            format="json", HTTP_X_REAUTH_TOKEN="not-a-token",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data["reason"], "reauth_invalid")
+        self.section.refresh_from_db()
+        self.assertEqual(self.section.content, "The Cashier shall release the cheque.")
+
     def test_rows_written_before_this_existed_are_unknown_not_guessed(self):
         """Defaulting old rows to "direct" would record a guess as a fact.
         An honest gap is better in an audit trail."""
@@ -325,7 +353,7 @@ class SectionEditAttributionTests(TestCase):
         self.client.patch(
             f"/api/sections/{self.section.id}/update/",
             {"content": "Edited.", "change_reason": "Because."},
-            format="json",
+            format="json", HTTP_X_REAUTH_TOKEN=issue_reauth_token(self.admin),
         )
         rows = self.client.get(f"/api/sections/{self.section.id}/history/").data
         self.assertEqual(rows[0]["source"], "direct")

@@ -2185,7 +2185,20 @@ def list_sections(request, manual_id):
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def review_section(request, section_id):
-    """Review or edit a section before final approval."""
+    """Review or edit a section before final approval.
+
+    No screen calls this today - the staff "Edit text" proposes a revision
+    instead - but it writes the same row as the admin's edit, so it asks
+    for the same password. A guarded route beside an unguarded one secures
+    nothing.
+    """
+    # A direct edit changes a controlled document with no request behind
+    # it - no concurrence, no IMR, no custodian - so it asks for the
+    # password again, before anything is read or written.
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         section = ManualSection.objects.get(id=section_id)
     except ManualSection.DoesNotExist:
@@ -2307,6 +2320,13 @@ def create_section(request, manual_id):
 @api_view(['PATCH'])
 @permission_classes([IsAdminRole])
 def update_section(request, section_id):
+    # A direct edit changes a controlled document with no request behind
+    # it - no concurrence, no IMR, no custodian - so it asks for the
+    # password again, before anything is read or written.
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         section = ManualSection.objects.get(id=section_id)
     except ManualSection.DoesNotExist:

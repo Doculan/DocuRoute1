@@ -201,9 +201,10 @@ class HoldTests(QmsFixture):
         self.assertEqual(response.data['reason'], 'section_in_another_proposal')
 
     def test_a_held_section_cannot_be_edited_directly(self):
-        response = self.as_(self.admin()).patch(
+        admin = self.admin()
+        response = self.as_(admin).patch(
             f'/api/sections/{self.s1.id}/update/', {'content': 'Edited under the request.'},
-            format='json')
+            format='json', HTTP_X_REAUTH_TOKEN=self.token(admin))
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data['reason'], 'section_held')
         self.assertIn(self.proposal.dcr_number, response.data['error'])
@@ -212,8 +213,10 @@ class HoldTests(QmsFixture):
 
     def test_only_the_text_is_held(self):
         """Tag, order and page number are not what the offices agreed on."""
-        response = self.as_(self.admin()).patch(
-            f'/api/sections/{self.s1.id}/update/', {'tag': 'PROCEDURE'}, format='json')
+        admin = self.admin()
+        response = self.as_(admin).patch(
+            f'/api/sections/{self.s1.id}/update/', {'tag': 'PROCEDURE'}, format='json',
+            HTTP_X_REAUTH_TOKEN=self.token(admin))
         self.assertEqual(response.status_code, 200, response.data)
 
     def test_a_held_section_cannot_be_deleted_nor_its_manual(self):
@@ -229,9 +232,10 @@ class HoldTests(QmsFixture):
 
     def test_a_denial_frees_the_text(self):
         self.imr_decides('deny', 'Not this year.')
-        response = self.as_(self.admin()).patch(
+        admin = self.admin()
+        response = self.as_(admin).patch(
             f'/api/sections/{self.s1.id}/update/', {'content': 'Now it may change.'},
-            format='json')
+            format='json', HTTP_X_REAUTH_TOKEN=self.token(admin))
         self.assertEqual(response.status_code, 200, response.data)
 
 
@@ -262,7 +266,8 @@ class MoreHeldPathsTests(QmsFixture):
 
     def test_the_staff_edit_path_waits_too(self):
         response = self.as_(self.acc_enc).patch(
-            f'/api/sections/{self.s1.id}/review/', {'content': 'Staff edit.'}, format='json')
+            f'/api/sections/{self.s1.id}/review/', {'content': 'Staff edit.'}, format='json',
+            HTTP_X_REAUTH_TOKEN=self.token(self.acc_enc))
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data['reason'], 'section_held')
 

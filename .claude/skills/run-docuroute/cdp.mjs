@@ -8,6 +8,7 @@
 //   wait <text>                  wait until the page text contains <text>
 //   click <css> | <text>         click the first <css> element whose text contains <text>
 //   type <css> | <text>          focus <css>, then type <text> as real input
+//   select <css> | <text>        choose the option whose text contains <text>
 //   upload <css> | <path>        set a file input's file (fires change)
 //   shot <name>                  screenshot to <dir>/<name>.png
 //   text <css>                   print the innerText of <css>
@@ -98,6 +99,22 @@ for (const raw of lines) {
         if (!el) return false; el.scrollIntoView({block: 'center'}); el.click(); return true; })()`);
       if (!clicked) throw new Error('nothing to click');
       await sleep(600);
+    } else if (cmd === 'select') {
+      // Choose the option whose text contains <text>. React listens for
+      // `change` on a select, so the event is dispatched after the value
+      // is set through the native setter React tracks.
+      const [css, text] = split(rest);
+      const chosen = await evaluate(`(() => {
+        const el = document.querySelector(${JSON.stringify(css)});
+        if (!el) return 'no such select';
+        const option = [...el.options].find((o) => o.text.includes(${JSON.stringify(text)}));
+        if (!option) return 'no such option';
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        setter.call(el, option.value);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true; })()`);
+      if (chosen !== true) throw new Error(chosen);
+      await sleep(800);
     } else if (cmd === 'type') {
       const [css, text] = split(rest);
       const focused = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(css)});

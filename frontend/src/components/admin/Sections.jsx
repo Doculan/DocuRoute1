@@ -462,8 +462,19 @@ export default function Sections({ openManualId = null }) {
     setIsFullDoc(false);
   };
 
-  const handleEditSave = async (e) => {
+  // A direct edit changes the document with no request behind it, so the
+  // form's submit asks for the password first; the save happens only once
+  // that confirmation hands back a token.
+  const [pendingSave, setPendingSave] = useState(false);
+
+  const handleEditSave = (e) => {
     e.preventDefault();
+    setPendingSave(true);
+  };
+
+  const saveEdit = async (reauthToken) => {
+    setPendingSave(false);
+    const auth = getAuth();
     try {
       const res = await axios.patch(
         `/api/sections/${editingSection}/update/`,
@@ -475,7 +486,7 @@ export default function Sections({ openManualId = null }) {
           tag: editForm.tag,
           change_reason: editReason,
         },
-        getAuth()
+        { headers: { ...auth.headers, ...reauthHeader(reauthToken) } }
       );
       showMsg(`✅ Section updated — Section v${res.data.version} · Document v${res.data.manual_version} — Tag: ${res.data.tag}`);
       setEditingSection(null);
@@ -1027,6 +1038,18 @@ export default function Sections({ openManualId = null }) {
             )}
           </section>
         </div>
+      )}
+
+      {pendingSave && (
+        <ConfirmDestructive
+          title="Save this edit to the document?"
+          body={editReason.trim()
+            ? "It changes the controlled text directly, outside a change request. Your reason is recorded with it."
+            : "It changes the controlled text directly, outside a change request. No reason was given - cancel to add one."}
+          confirmLabel="Save edit"
+          onConfirm={saveEdit}
+          onCancel={() => setPendingSave(false)}
+        />
       )}
 
       {pendingDelete && (

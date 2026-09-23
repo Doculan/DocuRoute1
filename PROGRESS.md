@@ -1684,11 +1684,16 @@ confirmation that lives on another page).
 
 ### Open
 
-- **The direct edit asks for no password.** `update_section` (the admin's
-  edit) and `review_section` do not re-authenticate, although CLAUDE.md's
-  table requires it for "any direct edit to manual content", and P1 was to
-  add it. Not changed in 4a - it needs the admin Sections screen to ask for
-  the password too - but it should not wait long.
+- ~~**The direct edit asks for no password.**~~ **Fixed after Checkpoint
+  4A, as its own commit.** Both direct-edit endpoints - the admin's
+  `update_section` and the staff `review_section` - now re-authenticate
+  before reading or writing anything. Only the admin Sections screen calls
+  either (the staff "Edit text" proposes a revision instead), and saving an
+  edit there now asks for the password; the reason is still recorded.
+  Tests: an edit without the token, and with a wrong one, is refused with
+  nothing written - no text change, no history row - on both endpoints;
+  shown to fail with the check removed, 2 of 2. Seen working in the real
+  app with the `admin-direct-edit` drive.
 - **The v3 counters are still shown to readers** ("Document v1", "Revision
   No.", "Manual Version" on a section). Decision 7 removes them; that is
   4c's reader display.
