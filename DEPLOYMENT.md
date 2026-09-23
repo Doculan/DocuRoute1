@@ -206,6 +206,13 @@ authenticated Django view using `X-Accel-Redirect`). Serving `/media/` as
 plain static files publishes every uploaded document to anyone who guesses a
 filename.
 
+**`media/proposals/` holds signed DCRs and the documents generated for
+them** (phase 3). The application never hands out their media URLs: they
+are downloaded through `/api/proposals/<id>/attachments/<id>/download/`,
+which applies the same visibility check as the proposal. The proxy must
+therefore **not** serve `/media/proposals/` at all - denying it outright
+costs nothing, since nothing links to it.
+
 Media must also survive deployments: keep `MEDIA_ROOT` on a volume outside the
 code directory, and back it up. It is not in version control.
 

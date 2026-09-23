@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "../admin/ConfirmDestructive";
+import ProposalPackage from "../ProposalPackage";
 // DocDiff, not DiffView: this is the submitter's view of their own
 // change, marked the way a person with a red pen would mark it.
 // DiffView is the reviewer's technical diff.
@@ -28,6 +29,8 @@ const STATUS_LABEL = {
 // Agreed and frozen. Until 3c gives these their own screens, they read
 // as the lock they grew out of.
 const FROZEN = ["locked", "awaiting_signature", "ready_for_imr"];
+// Frozen with documents to sign: the package is what there is to do.
+const WITH_PACKAGE = ["awaiting_signature", "ready_for_imr"];
 
 const VERDICT_WORDS = {
   approve: "no concerns",
@@ -251,12 +254,16 @@ function Proposal({ proposalId, onBack, onSay }) {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      {FROZEN.includes(data.status) && (
+      {data.status === "locked" && (
         <div className="alert alert-success">
           Every office has agreed and the content is frozen. The document
           itself changes once the paperwork is signed and the custodian
           records it.
         </div>
+      )}
+
+      {WITH_PACKAGE.includes(data.status) && (
+        <ProposalPackage proposalId={proposalId} onChanged={load} />
       )}
 
       {data.status === "draft" && data.blockers.length > 0 && (

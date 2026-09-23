@@ -1457,6 +1457,98 @@ nothing under `ml/` was touched.
 
 ---
 
+## Phase 3c — signed copies (awaiting Checkpoint 3C)
+
+Migration **0027**, tested on a copy of the live database (forward, back,
+forward) and **not yet applied to the live one**. It adds one column,
+`Attachment.created_as`, and one audit event label; the event label alone
+is a no-op in SQL.
+
+### What was built
+
+- **The package**: `GET /api/proposals/<id>/package/` - the generated
+  documents, each signed copy with its current file and every earlier
+  one, what is outstanding, and whether this person may upload.
+- **The first upload** of each signed copy: no password.
+- **Replacement**: a reason and the password. The old row is superseded,
+  never overwritten; the new one carries the reason.
+- **Downloads** through an authenticated view, never as media URLs.
+  DEPLOYMENT.md now says the proxy must not serve `/media/proposals/`.
+- **Ready for the IMR**, automatically, when both signed copies are in,
+  recorded as its own audit event (`package_complete`).
+- **The screen**, shared by the staff and admin portals. The admin and QMS
+  see the same package with nothing to press, because the server says
+  they may not upload.
+
+### Decisions taken in building it
+
+- **Who uploads: any current Encoder or Head of the initiating office.**
+  The design did not settle it. The secretary usually does the scanning,
+  so an Encoder can; the Head can too. No other office, and not the
+  system admin or QMS staff.
+- **What "the IMR has decided" means before P4 exists.** Uploading and
+  replacing are allowed only while the request is awaiting signature or
+  ready for the IMR (`Proposal.SCAN_STATUSES`). P4's decided statuses
+  will fall outside that, so option A holds without further code.
+- **Files are judged by their bytes.** The first bytes decide PDF, PNG or
+  JPEG, never the name or the type the browser sent; then the file must
+  actually open. Empty, over 20 MB, unsupported, damaged, truncated and
+  password-protected files are each refused with their own reason.
+- **The uploader's position is written down at upload** (`created_as`),
+  not looked up when displayed. Found before it shipped: the first
+  version looked it up, so an Encoder later made Head would have seen
+  their old upload start saying "Head" - the silent rewriting of history
+  the project's rules forbid.
+
+### Seen working in the real app
+
+Not only tests. The app was run against a scratch copy of the database -
+Django on the scratch settings, Vite, and headless Chrome driven over the
+DevTools protocol by a small dependency-free Node script - and walked end
+to end: sign in as an Encoder, open the proposal, download list shown,
+upload a signed DCR, replace it with a reason and password, upload the
+signed draft copy, see the request become **Ready for the IMR** with the
+earlier scan kept under "Replaced 1 time". Then the same proposal as a
+system admin: Download only. No console errors at any step.
+
+Two wording fixes came out of looking at it: the replace dialog had
+lower-cased the form's proper name, and "Documents to sign" stayed as the
+heading after everything was signed.
+
+### Test state
+
+**533 tests, all passing** - 31 new in 3c. Nothing left in `media/`.
+`check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11` unchanged; nothing
+under `ml/` touched.
+
+**Shown to fail without what they test: 18 of 19**, and the nineteenth is
+the point. Duplicate uploads are stopped twice - a check before writing,
+and the unique index behind it. Removing the check alone leaves the test
+passing, because the index still holds; removing both fails it. That is
+defence in depth doing its job, not a weak test.
+
+> The first run of that pair was invalid: the harness change that applies
+> a second substitution had not taken (an escaping slip), so "both
+> removed" silently ran as "pre-check removed". Caught from the identical
+> results, fixed, and re-run.
+
+### Open
+
+- **An intermittent failure, not explained.** Right after this session
+  resumed, `test_the_same_copy_cannot_be_uploaded_twice` failed twice
+  with an unhandled `IntegrityError` - the behaviour of a build with both
+  duplicate guards removed - and then passed every time after, seven
+  runs and the full suite. The bytecode cache matched the source, the
+  test database is in memory per process, and the file held both guards
+  throughout. Recorded rather than dismissed; the full suite now keeps
+  its complete log so a recurrence leaves a traceback.
+- **Pre-existing, not changed here:** the participant rows on the proposal
+  screen (from 2c) show the recording person's **username** beside
+  "Concurred". Everything 3 generates or displays uses positions; whether
+  that row should too is a question for the owner.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

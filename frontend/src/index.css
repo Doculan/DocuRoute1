@@ -3212,3 +3212,50 @@ a:hover { color: var(--brand-500); }
     margin-left: 0.2rem;
   }
 }
+
+/* ─── Proposal package: documents to print, signed copies back ─── */
+
+.package-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.package-row:last-child { border-bottom: 0; }
+.package-name { flex: 1 1 14rem; min-width: 0; }
+.package-meta {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.78rem;
+  color: var(--n-500);
+  overflow-wrap: anywhere;
+}
+.package-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.package-note {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  color: var(--n-600);
+}
+.package-earlier { margin-top: 0.35rem; }
+.package-earlier summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--n-600);
+  list-style: none;
+}
+.package-earlier summary::-webkit-details-marker { display: none; }
+.package-earlier summary::before { content: "▸ "; }
+.package-earlier[open] summary::before { content: "▾ "; }
+.package-earlier ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+  color: var(--n-600);
+}
+.package-earlier li { margin-bottom: 0.25rem; }

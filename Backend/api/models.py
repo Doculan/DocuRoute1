@@ -1025,6 +1025,12 @@ class Proposal(models.Model):
     # `LOCKED`; rows locked before then legitimately do.
     FROZEN_STATUSES = (LOCKED, AWAITING_SIGNATURE, READY_FOR_IMR)
 
+    # Signed copies may be uploaded or replaced only here: after the
+    # documents exist, and before the IMR decides. Once P4 adds the IMR's
+    # decision the request moves past these, and replacing a scan the IMR
+    # has already judged is refused - reopening it is the IMR's act.
+    SCAN_STATUSES = (AWAITING_SIGNATURE, READY_FOR_IMR)
+
     # Still being worked on or decided. A section may be in only one of
     # these at a time - see `SectionChange.is_open`.
     OPEN_STATUSES = (DRAFT, CONCURRENCE)
@@ -1404,6 +1410,7 @@ class AuditEvent(models.Model):
     DOCUMENTS_GENERATED = 'documents_generated'
     SCAN_UPLOADED = 'scan_uploaded'
     SCAN_REPLACED = 'scan_replaced'
+    PACKAGE_COMPLETE = 'package_complete'
     WITHDRAWN = 'withdrawn'
 
     EVENT_CHOICES = [
@@ -1416,6 +1423,7 @@ class AuditEvent(models.Model):
         (DOCUMENTS_GENERATED, 'Documents generated'),
         (SCAN_UPLOADED, 'Signed copy uploaded'),
         (SCAN_REPLACED, 'Signed copy replaced'),
+        (PACKAGE_COMPLETE, 'Signed copies complete'),
         (WITHDRAWN, 'Withdrawn'),
     ]
 
@@ -1531,6 +1539,11 @@ class Attachment(models.Model):
     created_by = models.ForeignKey(
         'CustomUser', on_delete=models.PROTECT, related_name='attachments_created',
     )
+    # The position the uploader held, as it read at the time - "Accounting
+    # Office — Encoder". Written once: someone who is later made Head must
+    # not have their earlier upload start saying so. Blank for generated
+    # documents, which nobody uploaded.
+    created_as = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     supersedes = models.ForeignKey(

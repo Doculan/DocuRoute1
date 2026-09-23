@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import DiffView from "../DiffView";
+import ProposalPackage from "../ProposalPackage";
 
 const BASE_URL = "";
 
@@ -20,6 +21,7 @@ const STATUS_LABEL = {
 // Agreed and frozen. Until 3c gives these their own screens, they read
 // as the lock they grew out of.
 const FROZEN = ["locked", "awaiting_signature", "ready_for_imr"];
+const WITH_PACKAGE = ["awaiting_signature", "ready_for_imr"];
 
 function when(value) {
   if (!value) return "";
@@ -71,7 +73,10 @@ export default function Proposals() {
 
   const shown = filter === "all"
     ? rows
-    : rows.filter((r) => r.status === "draft" || r.status === "concurrence");
+    // Frozen is not finished: the paperwork is still to come. Named
+    // rather than "not withdrawn", so P4's finished statuses do not
+    // arrive here by default.
+    : rows.filter((r) => ["draft", "concurrence", ...FROZEN].includes(r.status));
 
   return (
     <div>
@@ -174,7 +179,9 @@ function ProposalDetail({ proposalId, onBack }) {
         </div>
       </header>
 
-      <section>
+      {WITH_PACKAGE.includes(data.status) && <ProposalPackage proposalId={proposalId} />}
+
+      <section style={{ marginTop: "1.5rem" }}>
         <h2 className="section-title">Reason for the change</h2>
         <p className="text-sm" style={{ margin: 0, color: "var(--n-700)" }}>
           {data.overall_reason || <span className="subtle">Not given yet.</span>}

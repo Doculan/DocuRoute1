@@ -120,6 +120,20 @@ def _load(request, proposal_id):
     return proposal, None
 
 
+def can_see(user, proposal):
+    """The initiating office, every participating office, and - read only -
+    the system admin and QMS staff. The one rule for seeing a proposal and
+    everything attached to it."""
+    from .models import CustomUser
+    mine = {o.pk for o in access.current_offices(user)}
+    involved = (
+        proposal.initiating_office_id in mine
+        or proposal.participants.filter(office_id__in=mine).exists()
+    )
+    oversight = user.system_role in (CustomUser.SYSTEM_ADMIN, CustomUser.QMS_STAFF)
+    return involved or oversight
+
+
 def _head_of(user, office):
     """The Head position this person holds at that office, or None.
 
@@ -544,16 +558,7 @@ def proposal_full(request, proposal_id):
     if error:
         return error
 
-    mine = {o.pk for o in access.current_offices(request.user)}
-    involved = (
-        proposal.initiating_office_id in mine
-        or proposal.participants.filter(office_id__in=mine).exists()
-    )
-    from .models import CustomUser
-    oversight = request.user.system_role in (
-        CustomUser.SYSTEM_ADMIN, CustomUser.QMS_STAFF,
-    )
-    if not (involved or oversight):
+    if not can_see(request.user, proposal):
         return Response({'error': 'Access denied'}, status=403)
 
     data = _full_payload(proposal)
