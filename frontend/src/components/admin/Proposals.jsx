@@ -246,7 +246,7 @@ function ProposalDetail({ proposalId, onBack }) {
             <div key={i} className="row" style={{ gap: "0.6rem", alignItems: "baseline" }}>
               <span className="text-sm">{e.label}</span>
               <span className="subtle text-xs">
-                {e.office} · {e.actor} · {when(e.at)}
+                {e.by.position}{e.by.name && ` · ${e.by.name}`} · {when(e.at)}
               </span>
               {e.detail && <span className="subtle text-xs">— {e.detail}</span>}
             </div>

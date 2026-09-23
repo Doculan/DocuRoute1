@@ -679,7 +679,9 @@ function Participants({ rows }) {
                 {!r.decision && <span className="subtle text-xs">waiting</span>}
                 {r.recorded_by && (
                   <span className="subtle text-xs">
-                    {r.recorded_by} · {when(r.recorded_at)}
+                    {r.recorded_by.position}
+                    {r.recorded_by.name && ` · ${r.recorded_by.name}`}
+                    {` · ${when(r.recorded_at)}`}
                   </span>
                 )}
               </div>

@@ -28,6 +28,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import access, documents
+from .generation.common import position_title
 from .models import (
     AuditEvent, Concurrence, OfficeLink, Position, Proposal,
     ProposalParticipant, ProposalVersion, SectionChange,
@@ -48,6 +49,20 @@ def _record(proposal, version, event, user, office, detail=''):
     )
 
 
+def _who(user, office_name, position=None, kind=None):
+    """A person as the screens show them: position first, then full name.
+
+    Never the username - it is a login, not a name, and it says nothing
+    about the part someone played. The position is built from the office
+    name recorded at the time, so a rename does not rewrite it. Generated
+    documents do not use this: they print titles only.
+    """
+    kind = kind or (position.kind if position is not None else None)
+    title = position_title(office_name, kind) if kind else office_name
+    name = user.get_full_name().strip() if user is not None else ''
+    return {'position': title, 'name': name or None}
+
+
 def _participants_payload(proposal):
     """Who must agree, who signs, and where each has got to.
 
@@ -58,7 +73,7 @@ def _participants_payload(proposal):
     decisions = {
         c.office_id: c for c in
         Concurrence.objects.filter(version=version).select_related(
-            'office', 'recorded_by'
+            'office', 'recorded_by', 'recorded_by_position'
         )
     } if version else {}
 
@@ -76,7 +91,13 @@ def _participants_payload(proposal):
                 decision.section.subtitle
                 if decision and decision.section_id else None
             ),
-            'recorded_by': decision.recorded_by.username if decision else None,
+            # Only a Head records a decision, so that is the fallback
+            # when the position has since been removed.
+            'recorded_by': _who(
+                decision.recorded_by, participant.office_name_at_time,
+                decision.recorded_by_position,
+                kind=None if decision.recorded_by_position_id else Position.HEAD,
+            ) if decision else None,
             'recorded_at': decision.recorded_at if decision else None,
         })
     return rows
@@ -89,7 +110,10 @@ def _full_payload(proposal):
         {
             'number': v.number,
             'overall_reason': v.overall_reason,
-            'submitted_by': v.submitted_by.username if v.submitted_by_id else None,
+            # Only the initiating office's Head submits.
+            'submitted_by': _who(
+                v.submitted_by, proposal.initiating_office.name, kind=Position.HEAD,
+            ) if v.submitted_by_id else None,
             'submitted_at': v.submitted_at,
             'decisions': [
                 {'office': c.office.name, 'decision': c.decision,
@@ -103,9 +127,10 @@ def _full_payload(proposal):
     ]
     data['events'] = [
         {'event': e.event, 'label': e.get_event_display(),
-         'office': e.office_name_at_time, 'actor': e.actor.username,
+         'office': e.office_name_at_time,
+         'by': _who(e.actor, e.office_name_at_time, e.position),
          'at': e.at, 'detail': e.detail}
-        for e in proposal.events.select_related('actor').order_by('at')
+        for e in proposal.events.select_related('actor', 'position').order_by('at')
     ]
     return data
 

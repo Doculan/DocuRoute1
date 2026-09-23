@@ -1542,10 +1542,14 @@ defence in depth doing its job, not a weak test.
   test database is in memory per process, and the file held both guards
   throughout. Recorded rather than dismissed; the full suite now keeps
   its complete log so a recurrence leaves a traceback.
-- **Pre-existing, not changed here:** the participant rows on the proposal
-  screen (from 2c) show the recording person's **username** beside
-  "Concurred". Everything 3 generates or displays uses positions; whether
-  that row should too is a question for the owner.
+- ~~Participant rows showed the recording person's username.~~ **Decided
+  at Checkpoint 3C:** the screens show the **position first, then the
+  person's full name**, never the username; generated documents stay
+  titles-only. Applied to all three places a username appeared on the
+  proposal screens - the participant rows, the admin history rows, and
+  the version's submitter - since the rule is the same for each. A person
+  with no full name shows as the position alone, not the username.
+  Tests shown to fail when broken, 2 of 2.
 
 ---
 

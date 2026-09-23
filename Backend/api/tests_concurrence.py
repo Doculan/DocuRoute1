@@ -680,3 +680,47 @@ class SwitchOffTests(ConcurrenceFixture):
             )
             self.assertEqual(response.status_code, 409, path)
             self.assertEqual(response.data['reason'], 'switch_off', path)
+
+
+class WhoIsShownTests(ConcurrenceFixture):
+    """Position first, then the person's full name - never the username.
+
+    A username is a login, not a name, and says nothing about the part
+    someone played. Generated documents are separate: titles only.
+    """
+
+    def concurred(self):
+        self.bud_head.first_name, self.bud_head.last_name = 'Rosa', 'Tan'
+        self.bud_head.save(update_fields=['first_name', 'last_name'])
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.bud_head, 'concur')
+        return self.as_(self.acc_enc).get(f'/api/proposals/{proposal_id}/full/').data
+
+    def test_a_decision_shows_the_position_then_the_name(self):
+        data = self.concurred()
+        budget = next(p for p in data['participants'] if p['office'] == 'Budget Office')
+        self.assertEqual(budget['recorded_by'],
+                         {'position': 'Budget Office \u2014 Head', 'name': 'Rosa Tan'})
+
+    def test_no_username_appears_anywhere_in_the_proposal(self):
+        data = self.concurred()
+        shown = str({k: data[k] for k in ('participants', 'versions', 'events')})
+        for username in ('bud_head', 'acc_head', 'acc_enc'):
+            self.assertNotIn(username, shown)
+
+    def test_the_history_names_the_position_it_was_done_in(self):
+        data = self.concurred()
+        concurred = next(e for e in data['events'] if e['event'] == AuditEvent.CONCURRED)
+        self.assertEqual(concurred['by'],
+                         {'position': 'Budget Office \u2014 Head', 'name': 'Rosa Tan'})
+
+    def test_without_a_full_name_the_position_stands_alone(self):
+        """Not a fallback to the username."""
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.cmo_head, 'concur')
+        data = self.as_(self.acc_enc).get(f'/api/proposals/{proposal_id}/full/').data
+        cash = next(p for p in data['participants'] if p['office'] == 'Cash Management Office')
+        self.assertEqual(cash['recorded_by'],
+                         {'position': 'Cash Management Office \u2014 Head', 'name': None})
