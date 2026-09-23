@@ -955,6 +955,53 @@ test problem.
 
 ---
 
+## `TIME_ZONE` is now `Asia/Manila` — 2026-09-23
+
+Verified **before** changing it, on the real database: `USE_TZ = True`, and
+`api_office.created_at` was stored raw as `2026-09-22 17:48:49` while
+Manila read 01:48 on the 23rd. DateTimeFields are held in UTC and
+converted only for display; DateFields carry no timezone at all.
+
+**Nothing stored moved.** The same raw bytes before and after; what
+changed is `timezone.localdate()`, from `2026-09-22` to `2026-09-23`.
+
+**No stored dates needed correcting and no reseed was necessary.** The
+demo assignments were written with `timezone.localdate()` under UTC, so
+they read a day early rather than a day late - still `starts_on <= today`.
+Zero assignments start in the future.
+
+### A correction to the earlier framing
+
+The window where the two dates disagree is Manila **00:00-07:59**, not the
+afternoon. Manila is UTC+8 and never behind it, so the small hours are
+when a date picked as "today" in a browser was tomorrow to the server.
+
+### What visibly changes
+
+**No displayed timestamp changes in the React UI.** The API now sends
+`2026-09-23T01:48:49+08:00` where it sent `2026-09-22T17:48:49Z` - the
+same instant - and every screen renders through
+`toLocaleDateString("en-PH")`, which converts to the *browser's*
+timezone. A Manila browser was already showing Manila time.
+
+What changes is everything derived from the server's "today":
+
+| Where | Change |
+|---|---|
+| Position assignments | A post assigned 00:00-07:59 takes effect at once rather than eight hours later |
+| Admin activity chart | Day buckets shift to Manila boundaries |
+| Upcoming announcements | "Today" starts at Manila midnight, not 08:00 |
+| Oldest-pending counts | Match the calendar people are looking at |
+| Django `/admin/` | Renders in Manila - the one place with genuinely new text |
+
+Four tests, including one that **pins the bug**: under `TIME_ZONE='UTC'`
+the same assignment is *not* current, so reverting the setting fails at
+the cause rather than somewhere distant. Another guards the fixture
+itself, in case it stops straddling midnight and the others start passing
+without proving anything.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
@@ -965,7 +1012,6 @@ provisional choice and its reason stay next to the work.*
 |---|---|---|
 | **A** | **May a university have more than one IMR, or more than one Document Custodian, at once?** | Unrestricted. `Position.SOLE_HOLDER_KINDS` is `(HEAD,)` only. The permissive choice on purpose: a wrong restriction blocks real work, a missing one can be added later. |
 | **B** | Does the approval route always continue upward from the owner, or stop at the owner for some manuals? *(plan section 8, question 5)* | Continues upward by default; `Manual.approval_stops_at_owner` overrides per manual. |
-| **D** | **Should `TIME_ZONE` be `Asia/Manila` rather than `UTC`?** The application's "today" is currently a day behind the users' from 08:00 Manila time. A position assigned from the UI in the afternoon does not take effect until the next day, and a proposal dated today is filed as yesterday. Not changed, because it shifts every displayed date at once. | Left as `UTC`. |
 | **C** | Is multi-office concurrence actual practice? The DCR has no section for it. *(question 1 — the largest one)* | Built as designed, with the concurrence record printed as an annex. |
 
 ---

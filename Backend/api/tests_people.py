@@ -15,11 +15,16 @@ A 400 is not a claim about anything.
 
 import datetime
 
-from django.test import TestCase
+from unittest import mock
+
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from api.models import CustomUser, Office, Position, PositionAssignment
+from api import access
+from api.models import (
+    CustomUser, Office, Position, PositionAssignment,
+)
 from api.views import holds_current_qms_position, issue_reauth_token
 
 PASSWORD = "correct-horse-battery"
@@ -75,6 +80,78 @@ class PeopleFixture(TestCase):
         body = {"office_id": office.id, "kind": kind}
         body.update(extra)
         return self.confirmed(f"/api/org/people/{person.id}/assign/", body)
+
+
+class TimezoneTests(PeopleFixture):
+    """A post assigned today must work today, in the university's timezone.
+
+    `TIME_ZONE` was `UTC` while the university is in Leyte, so the
+    application's "today" ran behind its users'. Manila is UTC+8 and never
+    behind it, so the window where the two dates disagree is Manila
+    **00:00-07:59** - the small hours, not the afternoon. In that window a
+    date picked as "today" in a browser was tomorrow to the server, and
+    the assignment did not take effect until UTC caught up eight hours
+    later.
+
+    The clock is moved rather than waited for: these assertions have to
+    hold at 02:00 whatever time the suite happens to run.
+    """
+
+    # 2026-09-22 18:00 UTC is 2026-09-23 02:00 in Manila - the two
+    # calendar dates disagree, which is the whole point.
+    DIVERGENT_INSTANT = datetime.datetime(
+        2026, 9, 22, 18, 0, tzinfo=datetime.timezone.utc
+    )
+
+    def test_the_two_dates_really_do_diverge_at_that_instant(self):
+        """Guards the test itself. If the fixture stopped straddling
+        midnight, the ones below would pass without proving anything."""
+        with mock.patch('django.utils.timezone.now',
+                        return_value=self.DIVERGENT_INSTANT):
+            self.assertEqual(timezone.localdate(), datetime.date(2026, 9, 23))
+            self.assertEqual(
+                self.DIVERGENT_INSTANT.date(), datetime.date(2026, 9, 22)
+            )
+
+    def test_a_post_assigned_today_is_current_today(self):
+        with mock.patch('django.utils.timezone.now',
+                        return_value=self.DIVERGENT_INSTANT):
+            today_in_manila = timezone.localdate()
+            response = self.assign(
+                self.alice, self.accounting, Position.ENCODER,
+                starts_on=str(today_in_manila),
+            )
+            self.assertEqual(response.status_code, 201, response.data)
+            self.assertEqual(
+                [str(o) for o in access.current_offices(self.alice)],
+                ['Accounting Services Office'],
+            )
+
+    def test_the_default_start_date_is_current_too(self):
+        """Assigning without naming a date must not file it for tomorrow."""
+        with mock.patch('django.utils.timezone.now',
+                        return_value=self.DIVERGENT_INSTANT):
+            self.assign(self.alice, self.accounting, Position.ENCODER)
+            assignment = PositionAssignment.objects.get(user=self.alice)
+            self.assertEqual(assignment.starts_on, timezone.localdate())
+            self.assertTrue(access.current_offices(self.alice))
+
+    @override_settings(TIME_ZONE='UTC')
+    def test_under_utc_the_same_assignment_would_not_be_current(self):
+        """The bug, pinned. Kept so that reverting the setting fails here
+        rather than somewhere far from the cause."""
+        with mock.patch('django.utils.timezone.now',
+                        return_value=self.DIVERGENT_INSTANT):
+            manila_today = datetime.date(2026, 9, 23)
+            self.assertEqual(timezone.localdate(), datetime.date(2026, 9, 22))
+
+            position, _ = Position.objects.get_or_create(
+                office=self.accounting, kind=Position.ENCODER,
+            )
+            PositionAssignment.objects.create(
+                user=self.alice, position=position, starts_on=manila_today,
+            )
+            self.assertEqual(access.current_offices(self.alice), [])
 
 
 class ConcurrentHeadsTests(PeopleFixture):

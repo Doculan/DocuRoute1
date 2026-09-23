@@ -281,7 +281,17 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# The university is in Leyte. With UTC, the application's "today" ran a
+# day behind its users from 08:00 local onwards - so a position assigned
+# in the afternoon did not take effect until the next day, and a proposal
+# filed in the evening was dated yesterday.
+#
+# Safe to change, and verified before changing it: `USE_TZ = True` means
+# every DateTimeField is **stored in UTC** and converted only for display,
+# and DateFields carry no timezone at all. Nothing stored moves. What
+# changes is what `timezone.localdate()` returns, and how timestamps are
+# rendered.
+TIME_ZONE = 'Asia/Manila'
 
 USE_I18N = True
 
