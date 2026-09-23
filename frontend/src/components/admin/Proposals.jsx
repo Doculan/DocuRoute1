@@ -12,8 +12,14 @@ const STATUS_LABEL = {
   draft: "Draft",
   concurrence: "Out for concurrence",
   locked: "Locked",
+  awaiting_signature: "Awaiting signature",
+  ready_for_imr: "Ready for the IMR",
   withdrawn: "Withdrawn",
 };
+
+// Agreed and frozen. Until 3c gives these their own screens, they read
+// as the lock they grew out of.
+const FROZEN = ["locked", "awaiting_signature", "ready_for_imr"];
 
 function when(value) {
   if (!value) return "";
@@ -112,7 +118,7 @@ export default function Proposals() {
                   : `version ${p.version}`}
               </span>
               <span className={`status-mark is-${
-                p.status === "locked" ? "approved"
+                FROZEN.includes(p.status) ? "approved"
                   : p.status === "withdrawn" ? "returned" : "pending"}`}>
                 {STATUS_LABEL[p.status]}
               </span>

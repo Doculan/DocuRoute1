@@ -20,8 +20,14 @@ const STATUS_LABEL = {
   draft: "Draft",
   concurrence: "Out for concurrence",
   locked: "Locked",
+  awaiting_signature: "Awaiting signature",
+  ready_for_imr: "Ready for the IMR",
   withdrawn: "Withdrawn",
 };
+
+// Agreed and frozen. Until 3c gives these their own screens, they read
+// as the lock they grew out of.
+const FROZEN = ["locked", "awaiting_signature", "ready_for_imr"];
 
 const VERDICT_WORDS = {
   approve: "no concerns",
@@ -163,7 +169,7 @@ export default function StaffProposals({ startManualId, onDone }) {
                 {p.version > 1 ? ` · version ${p.version}` : ""}
               </span>
               <span className={`status-mark is-${
-                p.status === "locked" ? "approved"
+                FROZEN.includes(p.status) ? "approved"
                   : p.status === "withdrawn" ? "returned" : "pending"}`}>
                 {STATUS_LABEL[p.status]}
               </span>
@@ -245,7 +251,7 @@ function Proposal({ proposalId, onBack, onSay }) {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      {data.status === "locked" && (
+      {FROZEN.includes(data.status) && (
         <div className="alert alert-success">
           Every office has agreed and the content is frozen. The document
           itself changes once the paperwork is signed and the custodian

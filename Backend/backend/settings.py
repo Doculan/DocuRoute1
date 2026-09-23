@@ -305,6 +305,10 @@ STATIC_URL = 'static/'
 
 # settings.py
 MEDIA_URL = "/media/"
+
+# Tests get a temporary MEDIA_ROOT: locking a proposal writes documents,
+# and those must never land among the real ones. See api/test_runner.py.
+TEST_RUNNER = "api.test_runner.TemporaryMediaRunner"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 
 CORS_ALLOWED_ORIGINS = [

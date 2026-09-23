@@ -226,7 +226,7 @@ class SubmissionTests(ConcurrenceFixture):
         ).delete()
         proposal_id = self.a_draft()
         response = self.submit(proposal_id)
-        self.assertEqual(response.data['status'], Proposal.LOCKED)
+        self.assertEqual(response.data['status'], Proposal.AWAITING_SIGNATURE)
         self.assertTrue(
             AuditEvent.objects.filter(
                 proposal_id=proposal_id, event=AuditEvent.LOCKED,
@@ -343,7 +343,7 @@ class FrozenParticipantTests(ConcurrenceFixture):
         response = self.decide(
             self.proposal_id, self.cmo_head, Concurrence.CONCUR
         )
-        self.assertEqual(response.data['status'], Proposal.LOCKED)
+        self.assertEqual(response.data['status'], Proposal.AWAITING_SIGNATURE)
 
     def test_a_renamed_office_still_reads_as_it_was(self):
         """`office_name_at_time`. An office renamed next year must not
@@ -435,7 +435,7 @@ class ConcurrenceTests(ConcurrenceFixture):
     def test_every_office_concurring_locks_it(self):
         self.decide(self.proposal_id, self.bud_head, Concurrence.CONCUR)
         response = self.decide(self.proposal_id, self.cmo_head, Concurrence.CONCUR)
-        self.assertEqual(response.data['status'], Proposal.LOCKED)
+        self.assertEqual(response.data['status'], Proposal.AWAITING_SIGNATURE)
         self.assertIsNotNone(
             Proposal.objects.get(pk=self.proposal_id).locked_at
         )

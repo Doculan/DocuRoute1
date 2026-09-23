@@ -18,6 +18,13 @@ Working log for the plan in `REVISION_AI_OVERHAUL.md`.
   anything. The example: `test_a_document_override_must_still_be_an_approving_office`
   checked only for 400 and passed on an unrelated blank-field error, so
   for one run it asserted nothing while looking green.
+- **A test that passes must be shown to fail without the thing it
+  tests.** Remove or break the behaviour, watch the test go red, put it
+  back. Green on its own proves only that nothing raised. Two cases so
+  far: the approving-level test above, passing on a blank-field error;
+  and the 3a transaction guard, passing because Django's `TestCase` wraps
+  every test in a transaction, so the guard's condition could never be
+  met. Record the demonstration in the phase notes.
 - **A staleness check must compare against live state**, never two stored
   values. `SectionChange.check_is_current` first compared the change's
   stored hash with the assessment's stored hash - which is comparing the
@@ -1118,7 +1125,9 @@ wide - ending at **524.64pt, over by 2.69**. Removing the five spaces
 brings it back to 324-510.73pt, inside the cell with 11pt to spare.
 
 The happy part: the signature line beneath runs 346.5-488.25pt, centre
-**417.375**. The trimmed title's centre is **417.367**. It is not a
+**417.375**. The trimmed title's centre is **417.367**, and Word's own render (via
+COM, exported to PDF and measured) puts it within **0.1pt** of the line's
+centre, overhanging 22.5pt left and 22.3pt right. It is not a
 coincidence - the name it replaced was set to sit centred on that line,
 and dropping the spaces puts the title in the same place, at the same
 size, rather than shrinking it. So the fix is five bytes and no font
@@ -1219,6 +1228,235 @@ not have complained, which is what makes it worth saying out loud.
 
 ---
 
+## Checkpoint 3A — approved; what followed
+
+**Migration 0026 applied to the live database**, after a fresh backup
+(`db.sqlite3.bak-20260923-pre-0026`). The database runs in WAL mode, so a
+copy of the main file alone can miss committed pages still in `-wal`; there
+was no `-wal` file, the backup passed `integrity_check`, and its counts
+matched the live file.
+
+**The full suite at 3A: 479 tests, 1 failure** - the dashboard test added
+in 3A, whose fixture made an admin the dashboard does not recognise
+(`is_superuser` rather than `role='admin'`). A fixture error, not a code
+error; corrected.
+
+**Every 3A test was then shown to fail without the thing it tests** - 10
+of 10, by breaking each target in turn (a scratch harness that patches one
+string, runs the named tests, and restores the file whatever happens).
+
+### Personal names in the templates' properties
+
+All four template files were checked, not only the one that prompted it.
+
+| File | Found | Done |
+|---|---|---|
+| DCR `.docx` | nothing (scrubbed at 3A) | - |
+| DCR `.doc` (legacy) | Author, Last saved by - in the OLE summary stream, and again in UTF-16 in Word's own tables | blanked in place, same length, so no offset moves; only name bytes changed |
+| `MANUAL_BLANK.docx` | creator, last modified by, Company | cleared |
+| `MANUAL_BLANK.docx.bak-20260914-172404` | the same | cleared |
+
+No `w:author` on tracked changes or comments in any of them.
+
+> **Three of these files were already committed, names and all.** Clearing
+> them now fixes every future checkout; it does not remove the names from
+> history. Rewriting pushed history is the owner's decision, not a side
+> effect of this phase. Separately, the `.bak` template is tracked and
+> probably should not be.
+
+A standing test now reads every file in both template folders -
+`.docx` through its property parts, the legacy `.doc` through a small
+reader for its summary property sets, which raises rather than reporting
+a file it cannot read as clean.
+
+---
+
+## Phase 3b — generating the documents (Checkpoint 3B approved)
+
+**Decided at the checkpoint:** one draft-copy file per request; Document
+Title and Revision Status left for hand-filling; an over-long reason goes
+to the annex in full with section 2 saying so. The tracked
+`MANUAL_BLANK.docx.bak` is removed from the repository. **`api/__init__.py`
+is added as its own small commit after Phase 3**, with the full suite as
+the check - not before.
+
+No migration. Three generators, registered with the lock from 3A, so a
+proposal that locks now comes to rest at `AWAITING_SIGNATURE` holding its
+DCR, its draft copy, and - when there is something to put in it - an
+annex.
+
+### Rendering through Word itself
+
+Word 16 turned out to be installed and registered for COM, so every
+layout claim below was checked on Word's own output: the file opened
+headless, exported to PDF, and measured with PyMuPDF. That is how the
+earlier IMR-title claim was confirmed too - its centre is within **0.1pt**
+of its line in Word's render, not only in my arithmetic.
+
+It is a development check, not a test: the suite cannot assume Word.
+What the suite checks instead is the invariant that produces the result
+(below).
+
+### The DCR: one page, nothing moved
+
+Every row of the form is `atLeast` height, so content that outgrows its
+space grows the row and pushes sections 3 to 5 down. Section 2 is
+therefore measured before it is written:
+
+- **Line height is set, not predicted.** Every paragraph generation writes
+  uses exact line spacing, and explicit line breaks at the measured wrap
+  points, so the height Word lays out is the height computed.
+- **The spacer keeps the total.** The last paragraph in each area takes up
+  whatever height its lines leave, so the area is exactly as tall as the
+  empty lines it replaced. The test checks precisely that.
+- **Widths come from a table**, generated once from Arial and embedded, so
+  wrapping decides the same way on any server. Liberation Sans shares
+  Arial's widths by design. Every approximation errs towards one line too
+  many.
+
+Measured in Word across three scenarios - ordinary; long office names
+with fourteen changed sections; a reason too long for any size - every
+DCR is **one page**, section 3 starts at **exactly** the blank form's
+489.9pt, and the printed labels sit within 0.1pt of where the form put
+them.
+
+**Section 2, as decided:** "Sections amended: ...", then "See attached
+draft copy." The list shrinks to 8pt and then abbreviates ("...; and 1
+other section") - it is a summary, and the draft copy lists them all. The
+reason is verbatim, shrinking to 7pt; **when it cannot fit even then, the
+box reads "Stated in full in the annex to this request."** and the annex
+carries it in full. Neither half of the instruction had to give: the form
+stays on one page and the reason is still printed verbatim, one sheet
+further on.
+
+### The signature labels, both copies
+
+The position titles go into the two label boxes - in the DrawingML copy
+and the VML copy, identically. Each title sits **on** the rule above its
+label, as the IMR's title does in section 3: bottom at 460.6pt against a
+rule at 460.7 on the left, 460.2 against 460.3 on the right. To make
+room, each box is widened to 190pt, centred on its rule, and raised by the
+title's height; the label inside it stays exactly where it was.
+
+A long office name takes two lines, and the reason's room shrinks to keep
+clear of it (in the stress case the reason ends 8pt above the titles).
+The boxes were switched from square wrapping to "in front of text" in the
+generated copies only: square wrapping would have pushed the reason's
+lines aside wherever the raised boxes overlapped them. The space is kept
+clear by measurement instead.
+
+**Which copy Word shows**: a diagnostic file with the DrawingML title
+changed to "CHOICE COPY" and the VML one to "FALLBACK COPY", rendered
+through Word, shows **CHOICE COPY** only. Current Word reads DrawingML;
+older readers (Word 2007, some viewers) read VML. Nothing here can render
+a VML-only reader, so the fallback is confirmed by content - the test
+reads both copies - not by a render.
+
+### A second properties part
+
+The first sandbox run warned `Duplicate name: 'docProps/core.xml'` for
+every DCR. LibreOffice, which converted the form, had declared its
+properties under a relationship type with the wrong namespace
+(`.../officedocument/2006/relationships/metadata/core-properties` instead
+of `.../package/2006/...`). `python-docx` did not recognise it, so the
+first touch of `core_properties` created a *second* part under the same
+name. Every generated DCR would have held two sets of properties, one
+scrubbed, and which one a reader believed was up to the reader.
+
+Fixed in the template (one relationship type). And **every generated
+file is now checked as bytes before it is stored** - no repeated part, no
+personal property - failing the lock if not. Scrubbing the object said
+nothing about what the file contained; reading the file does. A test
+round-trips both templates through `python-docx` for repeated parts; run
+against the original conversion it fails, 13 entries for 12 names.
+
+### The draft copy
+
+**One file per request, not one per section** - a deviation from the
+approved design. Separate files each number their pages from one, and a
+sheaf of "Page 1 of 1" is not a draft copy of a document; one file makes
+"Page 2 of 5" mean something. `slot` still allows the other if wanted.
+
+The header is left blank as decided, except that `NUMPAGES` is added
+beside `PAGE` in every header that numbers pages: "1 of 2", "2 of 2",
+confirmed in Word. Text is printed as agreed, line for line. The one
+structure recognised is the pipe table the extraction wrote - 46 of the
+198 sections have one - printed as a bordered Word table with its header
+row repeated across pages, and with deliberately empty columns kept
+(`|Responsibility||Activity|`), by the same rule the extraction uses.
+
+### The annex
+
+Offices, decision, date, and the **position** that recorded each -
+using the office names frozen at submission, so a rename reads as it was.
+Earlier versions' returns are listed with their feedback. A4, to travel
+stapled to the DCR. Not generated when there is neither concurrence nor
+an over-long reason.
+
+### Left for hand-filling, and why
+
+- **Document Title** - the system stores the document's number
+  (`FAM 6.02`) but not its name.
+- **Revision Status** - `Manual.revision` is v3's own counter, not the
+  official revision, and printing it on a controlled form would mislead.
+- **Section 4, Approving Authority** - unchanged. Note the approval route
+  can have two levels (VP then President) and the form has one slot;
+  that is a P4 question.
+
+### Smaller things
+
+- **A long FROM** shrinks to fit its rule, no smaller than 9pt; past that
+  it runs beyond the rule rather than wrapping - a wrapped FROM would push
+  the whole form down a line.
+- **The Amend tick** first came out as a small red "x": the template's
+  blank carries a red, 9pt run. It now takes the brackets' 12pt and prints
+  black.
+- **Dates** read "September 23, 2026", in Manila time.
+- **Tests never write into `media/`**: locking now writes files, so the
+  suite runs under a test runner with a temporary `MEDIA_ROOT`.
+- **The 2C screens** label the two new statuses and treat them as agreed;
+  their real screens - downloads, uploads - are 3C.
+
+### `api/` has no `__init__.py`
+
+The first full run came back 503 tests, one error - not a test but a
+failure to *import* `api/generation` during discovery. `api/` is a
+namespace package, so Django's top-level finder stops at `api/` itself
+and unittest imports everything under it by bare name: every test module
+has always been `tests_x`, not `api.tests_x`. Absolute imports survive
+that; `from ..models` in the new package reached above the top level.
+
+(My first theory - Django handling the relative label "api" badly - was
+wrong; its runner already resolves the path. Reverted before it
+landed.)
+
+Fixed by following the convention `api/management` already keeps:
+absolute imports for anything outside the package, recorded in its
+docstring. **Adding `api/__init__.py` is the conventional repair** but
+changes how all the tests are imported, so it is left as a decision
+rather than folded into this phase.
+
+### Test state
+
+**502 tests, all passing** - 23 new in 3b. Nothing is left in `media/`
+after a run.
+
+**Every 3b test shown to fail without the thing it tests: 15 of 15.** The
+first pass was 14 of 15, and the odd one out was a real finding. The
+pipe-table test used the empty *middle* column of
+`|Responsibility||Activity|` - which survives stripping every pipe from
+the ends anyway, so the test proved nothing. The case that breaks is an
+empty cell at an *end* (`||VERSION NO.|...`); the test now checks that,
+and the docstring that repeated the wrong claim is corrected. The two
+tests that read the committed template files were shown to fail against
+the original files instead: the name check flags three of them, the
+round-trip check catches the repeated part.
+
+`check_setup.py` reports Ready, fingerprint `6a6a5c667a3c4d11` unchanged;
+nothing under `ml/` was touched.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
@@ -1230,6 +1468,7 @@ provisional choice and its reason stay next to the work.*
 | **A** | **May a university have more than one IMR, or more than one Document Custodian, at once?** | Unrestricted. `Position.SOLE_HOLDER_KINDS` is `(HEAD,)` only. The permissive choice on purpose: a wrong restriction blocks real work, a missing one can be added later. |
 | **B** | Does the approval route always continue upward from the owner, or stop at the owner for some manuals? *(plan section 8, question 5)* | Continues upward by default; `Manual.approval_stops_at_owner` overrides per manual. |
 | **C** | Is multi-office concurrence actual practice? The DCR has no section for it. *(question 1 — the largest one)* | Built as designed, with the concurrence record printed as an annex. |
+| **D** | Does section 4's **approving authority** mean the owning office's head (the VP), with the draft copy's two unlabelled footer boxes carrying the VP and the President? The approval route can have two levels; the form has one slot. *(raised in 3b; also a P4 design question)* | **Not guessed.** Section 4's printed title is left blank, and the footer boxes are left empty. |
 
 ---
 
@@ -3572,7 +3811,13 @@ What follows from that, for now:
   blob at `291744e` still returns 200 to an anonymous request. Untracking
   stops the bleeding; it does not undo it.
 - Nothing further should be pushed while training runs.
-
+- **Added 2026-09-23: personal names in template properties.** Three
+  committed template files carried names in their document properties -
+  the legacy DCR `.doc` (author, last saved by) and `MANUAL_BLANK.docx`
+  with its `.bak` (creator, last modified by, company). Cleared in the
+  working tree in phase 3b, and the `.bak` removed from the repository;
+  the earlier versions are **still in the public history**. Same
+  deferral: part of the history cleanup that needs the repository owner.
 
 
 

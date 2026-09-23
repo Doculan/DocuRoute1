@@ -168,10 +168,11 @@ class GenerationAtLockTests(ConcurrenceFixture):
     def test_without_generators_it_rests_at_locked(self):
         """The honest description of a proposal with nothing to sign.
 
-        3b registers the generators; until then `AWAITING_SIGNATURE` would
-        tell the office to go and sign documents that do not exist.
+        `AWAITING_SIGNATURE` would tell the office to go and sign
+        documents that do not exist.
         """
-        proposal = self.a_locked_proposal()
+        with mock.patch.object(documents, 'GENERATORS', []):
+            proposal = self.a_locked_proposal()
         self.assertEqual(proposal.status, Proposal.LOCKED)
         self.assertEqual(proposal.attachments.count(), 0)
 
@@ -242,7 +243,7 @@ class GenerationAtLockTests(ConcurrenceFixture):
         self.decide(proposal_id, self.cmo_head, 'concur')
 
         proposal = Proposal.objects.get(pk=proposal_id)
-        self.assertEqual(proposal.status, Proposal.LOCKED)
+        self.assertEqual(proposal.status, Proposal.AWAITING_SIGNATURE)
         self.assertEqual(proposal.dcr_number, 'DCR-%d-001' % self.today.year)
 
 

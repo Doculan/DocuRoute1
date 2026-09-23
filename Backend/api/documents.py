@@ -75,9 +75,10 @@ def allocate_dcr_number(when=None):
 # ─── Generation ──────────────────────────────────────────────
 
 # Each entry takes (proposal, version, actor) and returns the Attachment
-# rows it created. Empty until 3b, which is why locking still rests at
-# `LOCKED` for now rather than advancing to `AWAITING_SIGNATURE`.
-GENERATORS = []
+# rows it created: the DCR, the draft copy, and the annex when there is
+# something to put in it. Tests replace this list to exercise the
+# machinery on its own.
+from .generation import GENERATORS  # noqa: E402
 
 
 def generate_package(proposal, version, actor):
@@ -108,7 +109,8 @@ def package_is_complete(proposal, version):
 
     Read from the rows rather than from the status, so the two cannot
     drift apart. With no generators registered this is false, and the
-    proposal correctly stays `LOCKED`.
+    proposal correctly stays `LOCKED`. The annex is not required: it
+    exists only when there was concurrence or an over-long reason.
     """
     if not GENERATORS:
         return False
