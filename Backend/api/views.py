@@ -1354,9 +1354,12 @@ def admin_dashboard(request):
         'proposals_in_concurrence': proposals_open.filter(
             status=Proposal.CONCURRENCE
         ).count(),
-        # Agreed and waiting for the paperwork that P3 and P4 build.
+        # Agreed and waiting for the paperwork. Every frozen status, not
+        # just `LOCKED`: once 3b generates the documents a new lock rests
+        # at `AWAITING_SIGNATURE`, and a counter reading one status would
+        # quietly fall to zero while the proposals piled up.
         'proposals_locked': Proposal.objects.filter(
-            status=Proposal.LOCKED
+            status__in=Proposal.FROZEN_STATUSES
         ).count(),
     })
 

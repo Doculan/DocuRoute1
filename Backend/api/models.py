@@ -1,3 +1,4 @@
+import os
 import uuid
 
 from django.core.exceptions import ValidationError
@@ -1001,14 +1002,28 @@ class Proposal(models.Model):
     DRAFT = 'draft'
     CONCURRENCE = 'concurrence'
     LOCKED = 'locked'
+    AWAITING_SIGNATURE = 'awaiting_signature'
+    READY_FOR_IMR = 'ready_for_imr'
     WITHDRAWN = 'withdrawn'
 
     STATUS_CHOICES = [
         (DRAFT, 'Draft'),
         (CONCURRENCE, 'Out for concurrence'),
         (LOCKED, 'Locked'),
+        (AWAITING_SIGNATURE, 'Awaiting signature'),
+        (READY_FOR_IMR, 'Ready for the IMR'),
         (WITHDRAWN, 'Withdrawn'),
     ]
+
+    # `LOCKED` means the content is frozen. `AWAITING_SIGNATURE` means
+    # frozen **and** the documents to be signed exist. They are separate
+    # because a lock that froze the text but produced nothing to sign is a
+    # dead end, and the difference has to be visible rather than inferred
+    # from whether any rows happen to be in `attachments`.
+    #
+    # From 3b the two happen in one transaction, so nothing new rests in
+    # `LOCKED`; rows locked before then legitimately do.
+    FROZEN_STATUSES = (LOCKED, AWAITING_SIGNATURE, READY_FOR_IMR)
 
     # Still being worked on or decided. A section may be in only one of
     # these at a time - see `SectionChange.is_open`.
@@ -1024,7 +1039,7 @@ class Proposal(models.Model):
         Office, on_delete=models.PROTECT, related_name='proposals_initiated',
     )
     status = models.CharField(
-        max_length=16, choices=STATUS_CHOICES, default=DRAFT,
+        max_length=32, choices=STATUS_CHOICES, default=DRAFT,
     )
 
     created_by = models.ForeignKey(
@@ -1034,6 +1049,13 @@ class Proposal(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     locked_at = models.DateTimeField(null=True, blank=True)
+
+    # The number the paper form carries, allocated when the content
+    # freezes - there is no request to number before that. Blank, not
+    # null, so the partial unique index below has one thing to exclude
+    # rather than two.
+    dcr_number = models.CharField(max_length=32, blank=True)
+
     withdrawn_at = models.DateTimeField(null=True, blank=True)
     withdrawn_by = models.ForeignKey(
         'CustomUser', on_delete=models.SET_NULL,
@@ -1043,6 +1065,12 @@ class Proposal(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dcr_number'], condition=~Q(dcr_number=''),
+                name='one_proposal_per_dcr_number',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.manual.title} — {self.get_status_display()}"
@@ -1373,6 +1401,9 @@ class AuditEvent(models.Model):
     RETURNED = 'returned'
     REDRAFTED = 'redrafted'
     LOCKED = 'locked'
+    DOCUMENTS_GENERATED = 'documents_generated'
+    SCAN_UPLOADED = 'scan_uploaded'
+    SCAN_REPLACED = 'scan_replaced'
     WITHDRAWN = 'withdrawn'
 
     EVENT_CHOICES = [
@@ -1382,6 +1413,9 @@ class AuditEvent(models.Model):
         (RETURNED, 'Returned with feedback'),
         (REDRAFTED, 'Redrafted'),
         (LOCKED, 'Locked'),
+        (DOCUMENTS_GENERATED, 'Documents generated'),
+        (SCAN_UPLOADED, 'Signed copy uploaded'),
+        (SCAN_REPLACED, 'Signed copy replaced'),
         (WITHDRAWN, 'Withdrawn'),
     ]
 
@@ -1392,7 +1426,7 @@ class AuditEvent(models.Model):
         ProposalVersion, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='events',
     )
-    event = models.CharField(max_length=16, choices=EVENT_CHOICES)
+    event = models.CharField(max_length=32, choices=EVENT_CHOICES)
 
     actor = models.ForeignKey(
         'CustomUser', on_delete=models.PROTECT, related_name='proposal_events',
@@ -1414,6 +1448,127 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_display()} — {self.office_name_at_time}"
+
+
+def attachment_path(instance, filename):
+    """Where an attachment's bytes land.
+
+    The name on disk is generated, never the name the browser sent. An
+    uploaded filename is attacker-controlled: it can traverse directories,
+    collide with another upload, or - as `Manual.file` once did - be
+    written back into the very folder something else is scanning. The name
+    the person chose is kept in `original_filename`, where it is data
+    rather than a path.
+    """
+    suffix = os.path.splitext(filename)[1].lower()[:10]
+    return f"proposals/{instance.proposal_id}/{uuid.uuid4().hex}{suffix}"
+
+
+class Attachment(models.Model):
+    """A document belonging to a request: generated, or a signed scan.
+
+    **The system stores and records; it does not verify.** It cannot tell
+    whether a scan shows the right document, whether the signature is
+    genuine, or whether the person who signed held the position. The QMS
+    office checks that against the physical copies. So every field here is
+    a fact about the upload - who, when, what the file was called, what
+    type it claimed to be - and none is a judgement about its contents.
+
+    **Replacement supersedes; it never overwrites.** A scan is evidence
+    that a piece of paper was signed. Quietly replacing the bytes would
+    leave the record saying something different from what it said
+    yesterday, with nothing to show that it had changed.
+    """
+
+    DCR_GENERATED = 'dcr_generated'
+    PAGES_GENERATED = 'pages_generated'
+    CONCURRENCE_RECORD = 'concurrence_record'
+    SIGNED_DCR = 'signed_dcr'
+    SIGNED_PAGES = 'signed_pages'
+
+    KIND_CHOICES = [
+        (DCR_GENERATED, 'Document Change Request (generated)'),
+        (PAGES_GENERATED, 'Draft copy of the document (generated)'),
+        (CONCURRENCE_RECORD, 'Record of concurrence (generated)'),
+        (SIGNED_DCR, 'Signed Document Change Request'),
+        (SIGNED_PAGES, 'Signed draft copy'),
+    ]
+
+    # Made by the system, from frozen content. Never replaced: the content
+    # cannot change, so a second generation could only either repeat
+    # itself or disagree with the paper already in somebody's hand.
+    GENERATED_KINDS = (DCR_GENERATED, PAGES_GENERATED, CONCURRENCE_RECORD)
+    # Came in from a scanner. These are the ones that get replaced.
+    SCAN_KINDS = (SIGNED_DCR, SIGNED_PAGES)
+
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.CASCADE, related_name='attachments',
+    )
+    # Against the version, like a concurrence: the documents were made
+    # from particular text, and a redraft makes them wrong.
+    version = models.ForeignKey(
+        ProposalVersion, on_delete=models.CASCADE, related_name='attachments',
+    )
+    kind = models.CharField(max_length=32, choices=KIND_CHOICES)
+
+    # Which section this one is about, for the per-section kinds. Kept as
+    # a foreign key for reading and as `slot` for the index below, because
+    # SQLite counts NULLs as distinct and a unique index over a nullable
+    # column would let the same section through twice.
+    section = models.ForeignKey(
+        ManualSection, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='attachments',
+    )
+    slot = models.CharField(max_length=32, blank=True)
+
+    file = models.FileField(upload_to=attachment_path)
+    # What the browser called it, what it claimed to be, how big it was.
+    # Recorded, not trusted.
+    original_filename = models.CharField(max_length=255, blank=True)
+    content_type = models.CharField(max_length=100, blank=True)
+    size_bytes = models.PositiveIntegerField(default=0)
+
+    created_by = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='attachments_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    supersedes = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='superseded_by',
+    )
+    superseded_at = models.DateTimeField(null=True, blank=True)
+    replacement_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['proposal', 'kind', 'created_at']
+        constraints = [
+            # One live file per slot. The superseded ones stay, so the
+            # condition is what makes the index mean "current".
+            models.UniqueConstraint(
+                fields=['version', 'kind', 'slot'],
+                condition=Q(superseded_at__isnull=True),
+                name='one_current_attachment_per_slot',
+            ),
+            # A replaced file has exactly one replacement. Two rows both
+            # claiming to supersede it would make the chain unreadable.
+            models.UniqueConstraint(
+                fields=['supersedes'],
+                condition=Q(supersedes__isnull=False),
+                name='one_replacement_per_attachment',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.proposal_id}"
+
+    @property
+    def is_current(self):
+        return self.superseded_at is None
+
+    @property
+    def is_generated(self):
+        return self.kind in self.GENERATED_KINDS
 
 
 class Announcement(models.Model):

@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access
+from . import access, documents
 from .models import (
     AuditEvent, Concurrence, OfficeLink, Position, Proposal,
     ProposalParticipant, ProposalVersion, SectionChange,
@@ -284,10 +284,32 @@ def _freeze_participants(proposal):
 
 
 def _lock(proposal, version, user, office, detail=''):
+    """Freeze the content, number the request, make the documents.
+
+    **Call inside a transaction.** Generation runs here rather than on
+    demand afterwards, so that a proposal is never frozen with nothing to
+    sign: if a generator fails, the lock fails with it and the offices
+    keep a proposal they can still work on.
+
+    The status advances to `AWAITING_SIGNATURE` only once the documents
+    exist. Until 3b registers the generators, nothing is produced and the
+    proposal rests at `LOCKED` - which is the honest description of it.
+    """
     proposal.status = Proposal.LOCKED
     proposal.locked_at = timezone.now()
-    proposal.save(update_fields=['status', 'locked_at'])
+    if not proposal.dcr_number:
+        proposal.dcr_number = documents.allocate_dcr_number(proposal.locked_at)
+    proposal.save(update_fields=['status', 'locked_at', 'dcr_number'])
     _record(proposal, version, AuditEvent.LOCKED, user, office, detail=detail)
+
+    documents.generate_package(proposal, version, user)
+    if documents.package_is_complete(proposal, version):
+        proposal.status = Proposal.AWAITING_SIGNATURE
+        proposal.save(update_fields=['status'])
+        _record(
+            proposal, version, AuditEvent.DOCUMENTS_GENERATED, user, office,
+            detail=f'Document Change Request {proposal.dcr_number}',
+        )
 
 
 # ─── Concurrence ─────────────────────────────────────────────

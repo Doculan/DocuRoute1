@@ -1086,6 +1086,139 @@ decides.
 
 ---
 
+## Phase 3a — the documents a request produces (awaiting Checkpoint 3A)
+
+Migration **0026**, tested on a copy of the live database first. The copy
+held **0 proposals**, so there was nothing to backfill: the migration adds
+tables and columns and rewrites nothing.
+
+### The template blocker, cleared
+
+The DCR template shipped as a legacy binary `.doc`, and nothing in this
+environment can open or convert one - `python-docx` reads only `.docx`,
+`docxtpl` and `reportlab` are not installed, and neither LibreOffice nor
+Word is on PATH. It was converted by hand outside the project and
+committed beside the original.
+
+Two things about that file are worth knowing before 3b touches it:
+
+**The signature labels are floating text boxes.** `Requested by` and
+`Department/Unit Head` are not in the table at all, so `python-docx`'s
+ordinary API walks straight past them; they turned up only in a raw
+search of `document.xml`. Each also exists **twice**, once as DrawingML
+and once as a VML fallback, and a generator that writes one copy and not
+the other will produce a file that reads correctly in one application and
+wrongly in another.
+
+**The IMR title wrapped**, and the arithmetic says exactly why. The cell's
+text area is 521.95pt. The tick-box line ends at 294.18pt, the tab throws
+to the next default stop at 324pt, five spaces carry it to 337.91pt, and
+`Integrated Management Representative` in 10pt Arial Bold is 186.73pt
+wide - ending at **524.64pt, over by 2.69**. Removing the five spaces
+brings it back to 324-510.73pt, inside the cell with 11pt to spare.
+
+The happy part: the signature line beneath runs 346.5-488.25pt, centre
+**417.375**. The trimmed title's centre is **417.367**. It is not a
+coincidence - the name it replaced was set to sit centred on that line,
+and dropping the spaces puts the title in the same place, at the same
+size, rather than shrinking it. So the fix is five bytes and no font
+change, and the package was rewritten entry by entry so every other byte
+of the official form is untouched.
+
+**Two personal names were in the file and neither was printed.**
+`docProps/core.xml` carried a `dc:creator` and a `cp:lastModifiedBy` -
+the people who wrote and last saved the official form. Personal data
+under RA 10173, about to go into version control, and invisible to anyone
+who opened the document. Both removed, and `CLAUDE.md`'s rule now says to
+check the properties as well as the page.
+
+### Locked is not the same as ready to sign
+
+`LOCKED` means the content is frozen. `AWAITING_SIGNATURE` means frozen
+**and** the documents to be signed exist. They are separate statuses
+because a lock that froze the text but produced nothing to sign is a dead
+end - no screen could act on it, and nobody could undo it - and that
+difference has to be visible rather than inferred from whether any rows
+happen to be in `attachments`.
+
+3a builds the machinery with **no generators registered**, so locking
+still rests at `LOCKED`. That is the honest description: telling an office
+to go and sign documents that do not exist would be worse than saying
+nothing. 3b registers the generators and the same code path then advances.
+
+**Generation runs inside the locking transaction.** A generator that
+raises takes the lock with it, and the offices keep a proposal they can
+still work on. The guard that enforces this raises rather than asserting:
+under `python -O` an assertion vanishes and the protection with it.
+
+> That guard needed a test that is not itself inside a transaction.
+> Django's `TestCase` wraps every test in one, so the check passed there
+> whatever it did - the first version of the test was green for no
+> reason. It now runs under `SimpleTestCase`.
+
+### The DCR number
+
+`DCR-YYYY-NNN`, **provisional**, one constant, pending the QMS office.
+Counted per year from the numbers already issued rather than from a stored
+counter, so restoring a backup cannot hand the same number out twice; a
+partial unique index is the backstop when two locks race, because the
+alternative is two requests going out on paper as the same DCR.
+
+Allocated at the lock, not at submission, so a proposal that is returned
+and resubmitted does not burn a number.
+
+### Attachments record; they do not verify
+
+The system cannot tell whether a scan shows the right document, whether a
+signature is genuine, or whether the signer held the position. The QMS
+office checks that against the physical copies. So every field is a fact
+about the upload - who, when, what it was called, what type it claimed to
+be - and none is a judgement about the contents.
+
+**Replacement supersedes; it never overwrites.** A scan is evidence that a
+piece of paper was signed, and quietly replacing the bytes would leave the
+record saying something different from what it said yesterday with nothing
+to show it had changed. Two partial unique indexes hold the shape: one
+live file per slot, and one replacement per file.
+
+`slot` exists because the per-section kinds put several rows under one
+kind, and SQLite counts NULLs as distinct - a unique index over a nullable
+`section_id` would let the same section through twice.
+
+**The name on disk is never the name the browser sent.** `Manual.file`
+once wrote uploads back into the folder being scanned; this one generates
+the path and keeps the chosen name in `original_filename`, where it is
+data rather than a path.
+
+### A counter that would have gone quiet
+
+The admin dashboard counted `status=LOCKED` for "agreed and waiting for
+the paperwork". Once 3b advances a new lock to `AWAITING_SIGNATURE` that
+counter falls to **zero** while the proposals pile up, and nothing says
+so. Widened to every frozen status now, with a test, rather than left for
+3b to trip over.
+
+The activity chart is fine: it reads `locked_at`, not the status.
+
+### A rollback undoes rows, not bytes
+
+If one generator writes its file and a later one fails, the file stays on
+disk with no row pointing at it. Harmless - nothing reads an attachment
+except through its row - but it wants a sweep once 3b has real generators
+capable of orphaning anything.
+
+### Two fields were too narrow
+
+`Proposal.status` and `AuditEvent.event` were `max_length=16`.
+`awaiting_signature` is 18 and `documents_generated` is 19. SQLite would
+not have complained, which is what makes it worth saying out loud.
+
+### Test state
+
+**21 new tests.**
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
@@ -3439,6 +3572,7 @@ What follows from that, for now:
   blob at `291744e` still returns 200 to an anonymous request. Untracking
   stops the bleeding; it does not undo it.
 - Nothing further should be pushed while training runs.
+
 
 
 

@@ -15,14 +15,16 @@ Reference documents in the repo:
 - `PHASE1_ORGANISATION_SPEC.md` — the current build spec (later phases get their own)
 - `PROGRESS.md` — what has been done and decided
 - `EVALUATION.md`, `MODEL_EXPLAINED.md` — the AI pipeline and its published figures
-- **The official DCR form** — `Backend/media/templates/F-QMS-001-Document-Change-Request-Rev.1-01-05-26.doc` (F-QMS-001, Rev. 1, 01-05-26) — the template the system pre-fills. Note the filename reads `Rev.1`, with a dot. It is a legacy `.doc`; generation in P3 needs it converted to `.docx` first, since the fields cannot be filled in the old binary format. **The IMR's printed name has been removed from section 3.**
+- **The official DCR form** — `Backend/media/templates/F-QMS-001-Document-Change-Request-Rev.1-01-05-26.doc` (F-QMS-001, Rev. 1, 01-05-26) — the template the system pre-fills. Note the filename reads `Rev.1`, with a dot. The legacy `.doc` is kept beside a **`.docx` converted by hand** (Sept 2026) — nothing in this environment can convert one, and that `.docx` is what generation fills.
+  - **The IMR's printed name is gone from section 3**, replaced by the position title *Integrated Management Representative*. The five spaces before it were removed so it fits on one line — that puts its centre within 0.01pt of the signature line's, where the name sat, at the same 10pt.
+  - **The signature labels live in floating text boxes**, not in the table, so `python-docx`'s ordinary API walks straight past `Requested by` and `Department/Unit Head`. Each also exists **twice**, as DrawingML and as a VML fallback; write both or Word may render the stale one.
 - `ORG_STRUCTURE_REFERENCE.md` — the university's offices (no names), for the system admin's data entry. **Reference only — never seed or hardcode it.**
 - `Backend/media/MANUAL_BLANK_FORMAT/MANUAL_BLANK.docx` — the blank document template (currently untracked), filled with approved revisions for printing. Its structure:
   - **Header, every page:** Version No. · Manual Title · Document No. · Document Name · Revision No. · Effectivity Date · Page No., with the LNU seal. One template serves every document. **Decided: generated drafts leave these header fields blank** for hand-filling — extraction never labelled them reliably, and the revision number and effectivity date are only known after approval (DCR section 5). Only the page numbering is automatic.
   - **Body:** empty — the document's sections go here.
   - **Footer, every page:** the confidentiality notice and **two unlabelled bordered boxes** at bottom right (presumed approval spaces). **[open]** confirm what they are for and whether generated copies print position titles under them.
   - **Page number** is a `PAGE` field only; real documents show *"1 of 4"*, so generation must add the total-pages field.
-- **Before committing either template to the repo**, remove any printed personal names (the DCR's section 3 carries the IMR's name). Generated documents print position titles, never names.
+- **Before committing either template to the repo**, remove personal names — **printed and in the document properties**. The DCR's section 3 carried the IMR's printed name; `docProps/core.xml` separately carried a `dc:creator` and a `cp:lastModifiedBy`, which no one would have seen. Check both. Generated documents print position titles, never names.
 
 ---
 
@@ -109,11 +111,14 @@ Require the password again (the existing short-lived re-auth token, held in memo
 | Area | Actions |
 |---|---|
 | **Proposals** | Submitting a proposal for concurrence; a Head recording the office's concurrence or return; withdrawing a proposal |
+| **Signed copies** | Replacing a signed scan that has already been uploaded, with a reason |
 | **QMS** | IMR accept or deny; custodian making a change effective |
 | **Manuals** | Any direct edit to manual content (outside a proposal); deleting a manual or section |
 | **Organisation** | Merging, moving or deactivating an office; changing a manual's owner or its office relationships (concurring / reader); assigning or ending Head, IMR or Custodian positions |
 
-**Not** on drafting, editing a section box, running the AI check, commenting, or viewing — prompts on routine actions teach people to type the password without reading.
+**Not** on drafting, editing a section box, running the AI check, commenting, uploading a signed copy for the first time, or viewing — prompts on routine actions teach people to type the password without reading.
+
+Uploading a scan is ordinary work on paper that has already been signed; **replacing** one changes the evidence record, which is why only the second asks.
 
 ---
 
@@ -121,8 +126,8 @@ Require the password again (the existing short-lived re-auth token, held in memo
 
 1. **Draft** — a proposal covers **one whole manual**. Each section is its own box with its **own mandatory AI check**; only changed sections carry changes and checks. Editing a section clears only that section's check. One required overall reason, optional per-section notes.
 2. **Concurrence** — the concurring offices (minus the initiator) are **notified** when a proposal is submitted; the owner and readers are not asked. Skipped if no other office must concur. Each office concurs or returns with feedback on the whole proposal; feedback is visible to all offices involved. Any return → new version, all concurrences reset.
-3. **Locked** — content frozen; no further amendment. The system generates the pre-filled DCR, the revised manual pages, and the concurrence record, and **notifies the requesting office and the signatory offices** (the manual's owner and the approving levels above it, e.g. VP → President) so they know documents are coming physically.
-4. **Signing** — on paper, by requester and Head; scans uploaded.
+3. **Locked** — content frozen; no further amendment. The request is numbered (**provisionally `DCR-YYYY-NNN`, one constant, pending the QMS office**). The system generates the pre-filled DCR, the revised manual pages, and the concurrence record — **once, inside the locking transaction**, so a generator that fails takes the lock with it rather than freezing a proposal with nothing to sign — and **notifies the requesting office and the signatory offices** (the manual's owner and the approving levels above it, e.g. VP → President) so they know documents are coming physically.
+4. **Signing** — on paper, by requester and Head; scans uploaded. **The system stores and records; it does not verify.** It cannot tell whether a scan shows the right document or whether a signature is genuine — the QMS checks that against the physical copies, and the screen says so. Each upload records who, when, the file name and the type; PDF or image, within a size limit; empty or corrupt files refused. A replaced scan becomes a superseded row and is never overwritten, and replacement is refused once the IMR has decided.
 5. **IMR** — accept or deny.
 6. **Approving authority** — signs on paper; scan uploaded.
 7. **Custodian** — receives the complete package (locked content, AI snapshots, concurrence record, signed scans) alongside the physical originals. Either **Accepts** — records document status (number, version, revision, effectivity date) and the change becomes effective — or **Returns for package defects only** (missing signature, unreadable scan), back to the uploading step. Content cannot be changed here; it was locked at stage 3.
