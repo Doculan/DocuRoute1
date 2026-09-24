@@ -1667,8 +1667,10 @@ class Attachment(models.Model):
     # cannot change, so a second generation could only either repeat
     # itself or disagree with the paper already in somebody's hand.
     GENERATED_KINDS = (DCR_GENERATED, PAGES_GENERATED, CONCURRENCE_RECORD)
-    # Came in from a scanner. These are the ones that get replaced.
-    SCAN_KINDS = (SIGNED_DCR, SIGNED_PAGES)
+    # Came in from a scanner. These are the ones that get replaced. The
+    # approving authority's signed DCR arrives later than the others -
+    # after the IMR accepts - but is a signed copy like them.
+    SCAN_KINDS = (SIGNED_DCR, SIGNED_PAGES, APPROVED_DCR)
 
     proposal = models.ForeignKey(
         Proposal, on_delete=models.CASCADE, related_name='attachments',

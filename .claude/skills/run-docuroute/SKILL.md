@@ -86,7 +86,11 @@ Order matters where a drive changes the request's state:
 | `imr-accept` | ready for the IMR | awaiting the approving authority |
 | `imr-deny` | ready for the IMR | denied |
 | `denial-seen-by-office` | denied | - |
+| `approval-upload` | awaiting the approving authority | with the custodian |
+| `custodian-return` | with the custodian | returned (signed DCR named) |
+| `office-fixes-return` | returned | with the custodian |
 | `qms-reading`, `package-admin` | anything | - |
+| `admin-direct-edit` | anything (edits FAM 4.01 from the copy) | - |
 
 The seed leaves one request, so accepting and denying need separate
 fresh copies.

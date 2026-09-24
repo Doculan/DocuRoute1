@@ -605,8 +605,9 @@ def proposal_full(request, proposal_id):
         proposal.status == Proposal.DRAFT
         and _head_of(request.user, proposal.initiating_office) is not None
     )
-    from .qms_views import can_imr_decide
+    from .qms_views import can_custodian_return, can_imr_decide
     data['can_imr_decide'] = can_imr_decide(request.user, proposal)
+    data['can_custodian_return'] = can_custodian_return(request.user, proposal)
     return Response(data)
 
 

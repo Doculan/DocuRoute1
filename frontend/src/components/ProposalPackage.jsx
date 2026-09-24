@@ -138,8 +138,8 @@ export default function ProposalPackage({ proposalId, onChanged }) {
             key={kind}
             kind={kind}
             scan={scan}
-            canUpload={pkg.can_upload}
-            canReplace={pkg.can_replace}
+            canUpload={scan.can_upload ?? pkg.can_upload}
+            canReplace={scan.can_replace ?? pkg.can_replace}
             busy={busy === kind}
             onUpload={(file) => upload(kind, file)}
             onReplace={() => setReplacing(scan.current)}
@@ -173,6 +173,28 @@ function Status({ pkg }) {
       </div>
     );
   }
+  if (pkg.status === "awaiting_approval") {
+    const office = pkg.scans.approved_dcr?.can_upload;
+    return (
+      <div className="alert alert-success">
+        {office
+          ? "Accepted by the IMR. Once the approving authority has signed the DCR, upload it."
+          : "Accepted by the IMR. Waiting for the approving authority's signature."}
+      </div>
+    );
+  }
+  if (pkg.status === "with_custodian") {
+    return <div className="alert alert-success">With the Document Custodian.</div>;
+  }
+  if (pkg.status === "package_returned") {
+    return (
+      <div className="alert alert-warning">
+        {pkg.can_replace
+          ? "Returned by the Document Custodian. Replace the copies marked below."
+          : "Returned to the requesting office for defects in the signed copies."}
+      </div>
+    );
+  }
   if (pkg.status === "awaiting_signature") {
     return (
       <div className="alert alert-success">
@@ -196,6 +218,7 @@ function ScanRow({ kind, scan, canUpload, canReplace, busy, onUpload, onReplace,
     <div className="package-row">
       <span className="package-name text-sm">
         {scan.label}
+        {scan.returned && <span className="status-mark is-returned" style={{ marginLeft: "0.5rem" }}>Returned</span>}
         <span className="package-meta">
           {current
             ? `${current.filename} · ${size(current.size)} · ${current.by} · ${when(current.at)}`

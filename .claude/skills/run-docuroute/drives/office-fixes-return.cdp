@@ -1,0 +1,22 @@
+# The office replaces the copy the custodian named; the package goes back.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | verify_enc
+type #login-password | Verify-scratch-pass!
+click button[type=submit] | 
+wait Proposals
+click .nav-item | Proposals
+wait VRF 1.01
+click .series-row | VRF 1.01
+wait Replace the copies marked below
+shot 54-office-sees-return
+click button | Replace
+wait Replace this signed copy?
+upload #replace-file | ${SCRATCH}/signed-dcr-rescan.pdf
+type #replace-reason | Signed again by the Head.
+type #replace-password | Verify-scratch-pass!
+click .modal-foot button | Replace
+wait With the Document Custodian.
+shot 55-back-with-custodian
+errors

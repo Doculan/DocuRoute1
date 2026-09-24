@@ -77,6 +77,7 @@ urlpatterns = [
     path('proposals/awaiting/', concurrence.awaiting_my_office),
     path('proposals/<int:proposal_id>/package/', package.package),
     path('proposals/<int:proposal_id>/imr/', qms.imr_decide),
+    path('proposals/<int:proposal_id>/custodian/return/', qms.custodian_return),
     path('qms/queue/', qms.queue),
     path('auth/me/', qms.me),
     path('proposals/<int:proposal_id>/scans/', package.upload_scan),

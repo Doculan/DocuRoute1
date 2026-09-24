@@ -1,0 +1,21 @@
+# The custodian returns the package, naming the signed DCR as defective.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | verify_custodian
+type #login-password | Verify-scratch-pass!
+click button[type=submit] | 
+wait Requests
+click .nav-item | Requests
+wait With you as Document Custodian
+click .series-row | VRF 1.01
+wait Return for defects
+click button | Return for defects
+wait What is wrong
+click #return-signed_dcr | 
+type #return-comments | The Head's signature is missing on page 1.
+shot 52-return-form
+click button | Return to the office
+wait Returned for package defects
+shot 53-returned
+errors

@@ -33,7 +33,7 @@ from rest_framework.response import Response
 from . import access, documents
 from .concurrence_views import _load, _record, can_see
 from .generation.common import position_title
-from .models import Attachment, AuditEvent, Position, Proposal
+from .models import Attachment, AuditEvent, Position, Proposal, QmsDecision
 from .proposal_views import _held_position, _switch_off
 from .views import reauth_failure
 
@@ -142,26 +142,41 @@ def package_payload(proposal, user):
     order = {k: i for i, (k, _) in enumerate(Attachment.KIND_CHOICES)}
     generated.sort(key=lambda f: order[f['kind']])
 
+    office = _can_upload(user, proposal)
+    returned = latest_return(proposal) if proposal.status == Proposal.PACKAGE_RETURNED else None
     scans = {}
     for kind in Attachment.SCAN_KINDS:
         of_kind = [a for a in rows if a.kind == kind]
         current = next((a for a in of_kind if a.is_current), None)
+        # The approving authority's copy has no row until it can exist:
+        # an empty "not uploaded yet" line before the IMR has even looked
+        # would be a panel for nothing.
+        if kind == Attachment.APPROVED_DCR and current is None \
+                and proposal.status not in _APPROVAL_ONWARD:
+            continue
         scans[kind] = {
             'label': _SCAN_LABEL[kind],
             'current': _file_payload(current) if current else None,
             'earlier': [_file_payload(a) for a in reversed(of_kind) if not a.is_current],
+            # Per copy, because each has its own moment (see stage_refusal).
+            'can_upload': bool(office and current is None
+                               and stage_refusal(proposal, kind, 'upload') is None),
+            'can_replace': bool(office and current is not None
+                                and stage_refusal(proposal, kind, 'replace') is None),
+            'returned': bool(returned and kind in returned.returned_kinds),
         }
 
-    accepting = proposal.status in Proposal.SCAN_STATUSES
-    allowed = accepting and _can_upload(user, proposal)
     return {
         'status': proposal.status,
         'dcr_number': proposal.dcr_number,
         'generated': generated,
         'scans': scans,
         'outstanding': documents.scans_outstanding(proposal, version) if version else [],
-        'can_upload': allowed,
-        'can_replace': allowed,
+        # Whether this person may upload or replace anything at all here.
+        'can_upload': any(row['can_upload'] for row in scans.values()) or bool(
+            office and proposal.status in Proposal.SCAN_STATUSES),
+        'can_replace': any(row['can_replace'] for row in scans.values()) or bool(
+            office and proposal.status in Proposal.SCAN_STATUSES),
         'max_bytes': MAX_SCAN_BYTES,
     }
 
@@ -203,19 +218,60 @@ def download(request, proposal_id, attachment_id):
 # --- writing -------------------------------------------------
 
 def _refuse_writing(request, proposal):
-    """Who may upload, and when. `None` when the answer is yes."""
+    """Who may upload: the requesting office. `None` when the answer is yes."""
     if not can_see(request.user, proposal) or not _can_upload(request.user, proposal):
         return Response({
             'error': f'Signed copies are uploaded by {proposal.initiating_office.name}.',
             'reason': 'not_in_office',
         }, status=403)
-    if proposal.status not in Proposal.SCAN_STATUSES:
-        if proposal.status == Proposal.LOCKED:
-            message = 'The documents for this request have not been generated yet.'
-        else:
-            message = 'Signed copies can only be added or replaced while the request awaits them.'
-        return Response({'error': message, 'reason': 'not_accepting_scans'}, status=409)
     return None
+
+
+def latest_return(proposal):
+    """The custodian's most recent return of this package, if any."""
+    return proposal.qms_decisions.filter(
+        stage=QmsDecision.CUSTODIAN, outcome=QmsDecision.RETURN,
+    ).order_by('-decided_at').first()
+
+
+_SIGNED_BEFORE_IMR = (Attachment.SIGNED_DCR, Attachment.SIGNED_PAGES)
+_APPROVAL_ONWARD = (
+    Proposal.AWAITING_APPROVAL, Proposal.WITH_CUSTODIAN,
+    Proposal.PACKAGE_RETURNED, Proposal.EFFECTIVE,
+)
+
+
+def stage_refusal(proposal, kind, action):
+    """When a signed copy may be added or replaced. `None` when it may.
+
+    Each copy has its moment. The requester's and Head's copies come in
+    before the IMR decides; the approving authority's once the IMR has
+    accepted. After that nothing changes unless the custodian returns the
+    package - and then only the copies they named.
+    """
+    status = proposal.status
+    if kind in _SIGNED_BEFORE_IMR and status in Proposal.SCAN_STATUSES:
+        return None
+    if action == 'upload':
+        if kind == Attachment.APPROVED_DCR and status == Proposal.AWAITING_APPROVAL:
+            return None
+    elif status == Proposal.PACKAGE_RETURNED:
+        returned = latest_return(proposal)
+        if returned and kind in returned.returned_kinds:
+            return None
+        named = ', '.join(_SCAN_LABEL[k] for k in (returned.returned_kinds if returned else []))
+        return Response({
+            'error': f'Only the copies the custodian returned can be replaced: {named}.',
+            'reason': 'not_returned',
+        }, status=409)
+
+    if status == Proposal.LOCKED:
+        message = 'The documents for this request have not been generated yet.'
+    elif kind == Attachment.APPROVED_DCR and action == 'upload':
+        message = 'The approving authority signs only after the IMR has accepted the request.'
+    else:
+        message = 'Signed copies can only be added or replaced while the request awaits them.'
+    return Response({'error': message, 'reason': 'not_accepting_scans'}, status=409)
 
 
 def _store(proposal, version, kind, upload, data, content_type, extension, user,
@@ -235,6 +291,36 @@ def _store(proposal, version, kind, upload, data, content_type, extension, user,
     attachment.file.save(f'scan{extension}', ContentFile(data), save=False)
     attachment.save()
     return attachment
+
+
+def _to_custodian_if_approved(proposal, version, kind, user):
+    """The approving authority has signed: the package goes to the custodian."""
+    if kind != Attachment.APPROVED_DCR or proposal.status != Proposal.AWAITING_APPROVAL:
+        return
+    proposal.status = Proposal.WITH_CUSTODIAN
+    proposal.save(update_fields=['status'])
+    _record(proposal, version, AuditEvent.APPROVAL_UPLOADED, user,
+            proposal.initiating_office, detail='With the Document Custodian')
+
+
+def _back_to_custodian_if_fixed(proposal, version, user):
+    """Every copy the custodian returned is replaced since: back to them."""
+    if proposal.status != Proposal.PACKAGE_RETURNED:
+        return
+    returned = latest_return(proposal)
+    if returned is None:
+        return
+    fixed = set(Attachment.objects.filter(
+        version=version, superseded_at__isnull=True,
+        kind__in=returned.returned_kinds, created_at__gt=returned.decided_at,
+    ).values_list('kind', flat=True))
+    if fixed != set(returned.returned_kinds):
+        return
+    proposal.status = Proposal.WITH_CUSTODIAN
+    proposal.save(update_fields=['status'])
+    _record(proposal, version, AuditEvent.PACKAGE_COMPLETE, user,
+            proposal.initiating_office,
+            detail='Every returned copy replaced; back with the Document Custodian')
 
 
 def _complete_if_ready(proposal, version, user):
@@ -266,6 +352,9 @@ def upload_scan(request, proposal_id):
     if kind not in Attachment.SCAN_KINDS:
         return Response({'error': 'Say which signed copy this is.', 'reason': 'unknown_kind'},
                         status=400)
+    refused = stage_refusal(proposal, kind, 'upload')
+    if refused:
+        return refused
     upload = request.FILES.get('file')
     if upload is None:
         return Response({'error': 'Choose a file to upload.', 'reason': 'no_file'}, status=400)
@@ -290,6 +379,7 @@ def upload_scan(request, proposal_id):
                     proposal.initiating_office,
                     detail=f'{_SCAN_LABEL[kind]}: {upload.name}')
             _complete_if_ready(proposal, version, request.user)
+            _to_custodian_if_approved(proposal, version, kind, request.user)
     except IntegrityError:
         # Two people uploading the same copy at once: the index kept one.
         return Response({
@@ -328,6 +418,9 @@ def replace_scan(request, proposal_id, attachment_id):
             'error': 'That file has already been replaced. Replace the current one.',
             'reason': 'not_current',
         }, status=409)
+    refused = stage_refusal(proposal, old.kind, 'replace')
+    if refused:
+        return refused
 
     reason = (request.data.get('reason') or '').strip()
     if not reason:
@@ -355,6 +448,7 @@ def replace_scan(request, proposal_id, attachment_id):
         _record(proposal, old.version, AuditEvent.SCAN_REPLACED, request.user,
                 proposal.initiating_office,
                 detail=f'{_SCAN_LABEL[old.kind]}: {reason}')
+        _back_to_custodian_if_fixed(proposal, old.version, request.user)
 
     proposal.refresh_from_db()
     return Response(package_payload(proposal, request.user))

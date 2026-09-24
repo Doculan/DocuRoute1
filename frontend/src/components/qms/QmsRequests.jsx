@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { ProposalDetail } from "../admin/Proposals";
 import ImrDecisionPanel from "./ImrDecisionPanel";
+import CustodianReturnPanel from "./CustodianReturnPanel";
 import { STATUS_LABEL } from "../proposalStatus";
 
 const getAuth = () => ({
@@ -44,17 +45,31 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
         proposalId={openId}
         backLabel="Requests"
         onBack={() => { onOpen(null); load(); }}
-        renderActions={(data, reload) => data.can_imr_decide && (
-          <ImrDecisionPanel
-            proposalId={openId}
-            onDecided={(decision) => {
-              setMessage(decision === "accept"
-                ? "Accepted. It goes to the approving authority next."
-                : "Denied. Every office involved can read your reason.");
-              reload();
-              load();
-            }}
-          />
+        renderActions={(data, reload) => (
+          <>
+            {data.can_imr_decide && (
+              <ImrDecisionPanel
+                proposalId={openId}
+                onDecided={(decision) => {
+                  setMessage(decision === "accept"
+                    ? "Accepted. It goes to the approving authority next."
+                    : "Denied. Every office involved can read your reason.");
+                  reload();
+                  load();
+                }}
+              />
+            )}
+            {data.can_custodian_return && (
+              <CustodianReturnPanel
+                proposalId={openId}
+                onReturned={() => {
+                  setMessage("Returned. The office replaces the copies you named.");
+                  reload();
+                  load();
+                }}
+              />
+            )}
+          </>
         )}
       />
     );

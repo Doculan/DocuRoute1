@@ -1585,7 +1585,7 @@ confirmed as having held. Retiring `Department` stays separate.
 
 ---
 
-## Phase 4a — the IMR, the hold, the QMS portal (awaiting Checkpoint 4A)
+## Phase 4a — the IMR, the hold, the QMS portal (Checkpoint 4A approved)
 
 Migration **0028**, tested on copies of the live database and **not yet
 applied to the live one**. It holds the whole Phase 4 schema, database
@@ -1711,6 +1711,77 @@ reason for a denial, the password, the status check, the decision shown
 to every office, the queue, the server's portal, the direct-write refusal
 and its text-only scope, QMS reading and list reach, and the department
 gate.
+
+---
+
+## Phase 4b — the approving authority, the custodian's return (Checkpoint 4B approved)
+
+No migration: 0028 already holds the schema.
+
+**Before 4b, as its own commit:** re-authentication on every direct edit
+to a section (see the 4a notes), 568 tests.
+
+### The approving authority's signed DCR
+
+Once the IMR accepts, the requesting office uploads the DCR the approving
+authority has signed - the same paper, now with section 4 - and the
+request goes to the Document Custodian. It is the requesting office that
+uploads it, per project rule 6: the owning office signs on paper and does
+no work in the system. It cannot arrive before the IMR has accepted, nor
+after a denial, and it is checked like any scan.
+
+### Each signed copy has its moment
+
+`stage_refusal` decides, per copy and per action, whether it may be added
+or replaced now: the requester's and Head's copies before the IMR decides;
+the approving authority's once the IMR has accepted; after that, nothing -
+unless the custodian returns the package, and then only the copies they
+named. The package payload carries this per row (`can_upload`,
+`can_replace`, `returned`), so the screen shows Replace exactly where it
+is allowed. Every refusal Phase 3 already had keeps its reason code.
+
+The approving authority's row appears only once it can exist - an empty
+"not uploaded yet" line before the IMR has even looked would be a panel
+for nothing.
+
+### The custodian's return - for defects, never content
+
+The custodian names which signed copies are defective and says why (both
+required); only signed copies can be named, because the generated
+documents come from locked content. No password: a return commits no
+office and changes no document. Only a current Document Custodian, never
+on a request from an office where they hold a position, and only a package
+actually with them.
+
+While returned, **only the named copies can be replaced** (reason and
+password, as any replacement), and once every one of them has been
+replaced since the return, the package goes back to the custodian by
+itself. Nothing in this stage writes a section; a test holds that.
+
+**The custodian's queue now holds only what waits on them.** 4a listed
+returned packages too, but those wait on the requesting office.
+
+### Seen working in the real app
+
+From a cold start, in order: the Encoder's signed copies; the IMR
+accepting; the office told to upload the approving authority's DCR and
+doing so; the custodian's return form listing the three signed copies,
+naming the signed DCR with a reason; the office seeing the return, the
+copy marked RETURNED and Replace on that row alone; the replacement, and
+the package back with the custodian. No console errors. The skill gains
+three drives for it.
+
+### Test state
+
+**592 tests, all passing** - 24 new in 4b. No `IntegrityError` in the
+log: the duplicate-upload failure has not recurred.
+
+**Shown to fail without what they test: 14 of 14** - the approving
+authority's moment, the move to the custodian, no replacement without a
+return, only the named copies, back only when every named copy is
+replaced, back at all, the per-row marks, only the custodian, the conflict
+of interest, only a package with the custodian, a named defect, only
+signed copies, a reason, and the custodian's queue.
 
 ---
 

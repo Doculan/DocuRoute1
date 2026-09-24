@@ -22,7 +22,7 @@ from . import access
 from .concurrence_views import _full_payload, _load, can_see
 from .generation.common import position_title
 from .models import (
-    AuditEvent, CustomUser, Position, Proposal, QmsDecision,
+    Attachment, AuditEvent, CustomUser, Position, Proposal, QmsDecision,
 )
 from .proposal_views import _current_assignments, _switch_off
 from .views import reauth_failure
@@ -108,10 +108,9 @@ def queue(request):
             _queue_row(p) for p in base.filter(status=Proposal.READY_FOR_IMR)
         ]
     if qms_position(user, Position.DOCUMENT_CUSTODIAN):
+        # Not a returned package: that waits on the requesting office.
         waiting['custodian'] = [
-            _queue_row(p) for p in base.filter(
-                status__in=(Proposal.WITH_CUSTODIAN, Proposal.PACKAGE_RETURNED)
-            )
+            _queue_row(p) for p in base.filter(status=Proposal.WITH_CUSTODIAN)
         ]
     return Response(waiting)
 
@@ -204,6 +203,101 @@ def imr_decide(request, proposal_id):
     proposal.refresh_from_db()
     data = _full_payload(proposal)
     data['can_imr_decide'] = False
+    data['can_custodian_return'] = False
+    return Response(data)
+
+
+# --- the custodian's return ----------------------------------
+
+def can_custodian_return(user, proposal):
+    return bool(
+        proposal.status == Proposal.WITH_CUSTODIAN
+        and qms_position(user, Position.DOCUMENT_CUSTODIAN) is not None
+        and conflicting_office(user, proposal) is None
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def custodian_return(request, proposal_id):
+    """Send the package back for defects in it - never for its content.
+
+    The custodian names which signed copies are defective and says why. The
+    content was frozen at the lock and the IMR has judged it; what can be
+    wrong now is the paperwork - a missing signature, an unreadable scan -
+    so only the named copies may be replaced, and nothing else changes.
+
+    No password: a return commits no office and changes no document. It is
+    not in the table of actions that ask for one.
+    """
+    if not access.by_position():
+        return _switch_off()
+    proposal, error = _load(request, proposal_id)
+    if error:
+        return error
+
+    position = qms_position(request.user, Position.DOCUMENT_CUSTODIAN)
+    if position is None:
+        return Response({
+            'error': 'Only the Document Custodian returns a package.',
+            'reason': 'not_custodian',
+        }, status=403)
+    conflict = conflicting_office(request.user, proposal)
+    if conflict is not None:
+        return Response({
+            'error': (
+                f'You hold a position in {conflict.name}, which made this '
+                f'request. Another custodian must handle it.'
+            ),
+            'reason': 'conflict_of_interest',
+        }, status=403)
+    if proposal.status != Proposal.WITH_CUSTODIAN:
+        return Response({
+            'error': 'This package is not with the Document Custodian.',
+            'reason': 'not_with_custodian',
+        }, status=409)
+
+    kinds = request.data.get('kinds') or []
+    if not isinstance(kinds, list) or not kinds:
+        return Response({
+            'error': 'Name the signed copies that are defective.',
+            'reason': 'no_defect_named',
+        }, status=400)
+    if any(kind not in Attachment.SCAN_KINDS for kind in kinds):
+        return Response({
+            'error': 'Only signed copies can be returned. The generated documents come '
+                     'from the locked content, which does not change here.',
+            'reason': 'unknown_kind',
+        }, status=400)
+    comments = (request.data.get('comments') or '').strip()
+    if not comments:
+        return Response({
+            'error': 'Say what is wrong, so the office knows what to fix.',
+            'reason': 'comments_required',
+        }, status=400)
+
+    version = proposal.current_version()
+    office = position.office
+    kinds = [k for k in Attachment.SCAN_KINDS if k in kinds]   # canonical order, no repeats
+    with transaction.atomic():
+        QmsDecision.objects.create(
+            proposal=proposal, version=version, stage=QmsDecision.CUSTODIAN,
+            outcome=QmsDecision.RETURN, comments=comments, returned_kinds=kinds,
+            decided_by=request.user,
+            decided_as=position_title(office.name, position.kind),
+        )
+        proposal.status = Proposal.PACKAGE_RETURNED
+        proposal.save(update_fields=['status'])
+        AuditEvent.objects.create(
+            proposal=proposal, version=version, event=AuditEvent.PACKAGE_RETURNED,
+            actor=request.user, position=position, office=office,
+            office_name_at_time=office.name, detail=comments,
+        )
+
+    proposal.refresh_from_db()
+    data = _full_payload(proposal)
+    data['can_imr_decide'] = False
+    data['can_custodian_return'] = False
     return Response(data)
 
 
