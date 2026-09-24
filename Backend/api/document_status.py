@@ -39,6 +39,28 @@ def revision_goes_backwards(current, new):
     return old is not None and new is not None and new < old
 
 
+def _same_version(current, new):
+    old_n, new_n = _as_number(current), _as_number(new)
+    if old_n is not None and new_n is not None:
+        return old_n == new_n          # "01" and "1" are one version
+    return (current or '').strip() == (new or '').strip()
+
+
+def status_goes_backwards(current, version, revision):
+    """Which of version or revision would go backwards, or None.
+
+    A lower version is refused. Within the same version, a lower revision
+    is refused. A new version may start its revisions again. Only plain
+    numbers are ordered; anything else is recorded as written.
+    """
+    if revision_goes_backwards(current.version, version):
+        return 'version'
+    if _same_version(current.version, version) and revision_goes_backwards(
+            current.revision, revision):
+        return 'revision'
+    return None
+
+
 def _date(data, field, label):
     raw = (data.get(field) or '').strip() if isinstance(data.get(field), str) else data.get(field)
     if not raw:
@@ -62,11 +84,13 @@ def _date(data, field, label):
     return value, None
 
 
-def read_status_fields(data, manual, with_ids_date):
+def read_status_fields(data, manual, with_ids_date, compare=True):
     """The section 5 entry from a request body, or a response refusing it.
 
     `with_ids_date` is false for a baseline: the date the document was
     updated in the IDS belongs to a change, and a baseline records none.
+    `compare` is false when correcting a baseline: the entry replaces the
+    current one rather than following it.
     """
     fields = {}
     for field, label, limit in _TEXT_FIELDS:
@@ -90,12 +114,22 @@ def read_status_fields(data, manual, with_ids_date):
             return None, error
         fields[field] = value
 
-    current = manual.current_status
-    if current is not None and revision_goes_backwards(current.revision, fields['revision']):
+    current = manual.current_status if compare else None
+    backwards = current and status_goes_backwards(
+        current, fields['version'], fields['revision'])
+    if backwards == 'version':
+        return None, Response({
+            'error': (
+                f'Version {fields["version"]} is lower than the current '
+                f'version, {current.version}.'
+            ),
+            'field': 'version', 'reason': 'version_backwards',
+        }, status=400)
+    if backwards == 'revision':
         return None, Response({
             'error': (
                 f'Revision {fields["revision"]} is lower than the current '
-                f'revision, {current.revision}.'
+                f'revision of version {current.version}, {current.revision}.'
             ),
             'field': 'revision', 'reason': 'revision_backwards',
         }, status=400)

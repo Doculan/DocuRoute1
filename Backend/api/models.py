@@ -1615,6 +1615,18 @@ class DocumentStatus(models.Model):
     recorded_as = models.CharField(max_length=255)
     recorded_at = models.DateTimeField(auto_now_add=True)
 
+    # A baseline corrected by the custodian - allowed only until a request
+    # has been made effective on the document. The mistaken row is kept,
+    # pointing at the one that corrected it, never overwritten: what
+    # readers were shown, and for how long, stays on record.
+    superseded_by = models.OneToOneField(
+        'self', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='supersedes',
+    )
+    superseded_at = models.DateTimeField(null=True, blank=True)
+    # Why the correction was made, on the row that makes it.
+    correction_reason = models.TextField(blank=True)
+
     class Meta:
         ordering = ['manual', 'recorded_at']
         verbose_name_plural = 'document statuses'

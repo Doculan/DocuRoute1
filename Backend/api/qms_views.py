@@ -18,6 +18,7 @@ in one transaction, or not at all.
 """
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -529,6 +530,96 @@ def record_baseline(request, manual_id):
         manual.current_status = status
         manual.save(update_fields=['current_status'])
     return Response(status_payload(status), status=201)
+
+
+def _correctable_baseline(manual):
+    """The baseline that may still be corrected, or None.
+
+    Only while no request has been made effective on the document: after
+    that, readers have seen a status that rests on a signed DCR, and the
+    baseline beneath it is history.
+    """
+    current = manual.current_status
+    if current is None:
+        return None
+    # Until then the current status can only be a baseline.
+    if manual.statuses.filter(proposal__isnull=False).exists():
+        return None
+    return current
+
+
+def can_correct_baseline(user, manual):
+    return bool(
+        access.by_position()
+        and _correctable_baseline(manual) is not None
+        and qms_position(user, Position.DOCUMENT_CUSTODIAN) is not None
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def correct_baseline(request, manual_id):
+    """Correct a starting status the custodian recorded wrongly.
+
+    The mistaken row is kept and marked superseded by the new one, never
+    overwritten. A reason, and the password: readers take the status as
+    the document's official standing.
+    """
+    if not access.by_position():
+        return _switch_off()
+    try:
+        manual = Manual.objects.get(pk=manual_id)
+    except Manual.DoesNotExist:
+        return Response({'error': 'Document not found.'}, status=404)
+
+    position = qms_position(request.user, Position.DOCUMENT_CUSTODIAN)
+    if position is None:
+        return Response({
+            'error': "Only the Document Custodian corrects a document's status.",
+            'reason': 'not_custodian',
+        }, status=403)
+    not_correctable = Response({
+        'error': (
+            'Only a starting status can be corrected, and only until a change '
+            'has been made effective on the document.'
+        ),
+        'reason': 'not_correctable',
+    }, status=409)
+    if _correctable_baseline(manual) is None:
+        return not_correctable
+
+    fields, refusal = read_status_fields(
+        request.data, manual, with_ids_date=False, compare=False)
+    if refusal:
+        return refusal
+    reason = (request.data.get('reason') or '').strip()
+    if not reason:
+        return Response({
+            'error': 'Say what was wrong with the recorded status.',
+            'reason': 'reason_required',
+        }, status=400)
+
+    failure = reauth_failure(request)
+    if failure is not None:
+        return failure
+
+    office = position.office
+    with transaction.atomic():
+        manual = Manual.objects.select_for_update().get(pk=manual.pk)
+        old = _correctable_baseline(manual)
+        if old is None:
+            return not_correctable
+        new = DocumentStatus.objects.create(
+            manual=manual, proposal=None, recorded_by=request.user,
+            recorded_as=position_title(office.name, position.kind),
+            correction_reason=reason, **fields,
+        )
+        old.superseded_by = new
+        old.superseded_at = timezone.now()
+        old.save(update_fields=['superseded_by', 'superseded_at'])
+        manual.current_status = new
+        manual.save(update_fields=['current_status'])
+    return Response(status_payload(new), status=201)
 
 
 def decisions_payload(proposal):

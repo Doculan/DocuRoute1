@@ -2180,7 +2180,7 @@ def list_sections(request, manual_id):
         'changes': document_status.section_changes(s) if s.status_changed_id else [],
     } for s in sections_qs]
 
-    from .qms_views import can_record_baseline
+    from .qms_views import can_correct_baseline, can_record_baseline
     return Response({
         # v3's counters, still sent for the admin's screens. Readers are
         # shown `status` instead.
@@ -2189,6 +2189,7 @@ def list_sections(request, manual_id):
         'display_status': f"v{manual.version} rev{manual.revision}",
         'status': document_status.status_payload(manual.current_status),
         'can_record_baseline': can_record_baseline(request.user, manual),
+        'can_correct_baseline': can_correct_baseline(request.user, manual),
         'sections': data,
         'file_url': manual.file.url if manual.file else None,
         'file_name': manual.file.name if manual.file else None,

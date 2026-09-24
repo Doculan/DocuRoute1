@@ -14,12 +14,21 @@ const today = () => {
 
 /**
  * Where a document stands on paper before any request touches it - its
- * number, version, revision and effectivity date. Recorded once, by the
+ * number, version, revision and effectivity date. Recorded by the
  * Document Custodian; after that, its status changes through requests.
+ *
+ * With `current`, it corrects the recorded one instead - allowed until a
+ * change has been made effective on the document, with a reason. The
+ * mistaken entry is kept on record, marked as corrected.
  */
-export default function BaselineForm({ manualId, onDone, onCancel }) {
+export default function BaselineForm({ manualId, current, onDone, onCancel }) {
+  const correcting = Boolean(current);
   const [entry, setEntry] = useState({
-    document_number: "", version: "", revision: "", effective_on: "",
+    document_number: current?.document_number || "",
+    version: current?.version || "",
+    revision: current?.revision || "",
+    effective_on: current?.effective_on || "",
+    reason: "",
   });
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,7 +44,8 @@ export default function BaselineForm({ manualId, onDone, onCancel }) {
       const { data: confirmation } = await axios.post(
         "/api/auth/confirm-password/", { password }, getAuth());
       setPassword("");
-      await axios.post(`/api/manuals/${manualId}/status/baseline/`, entry,
+      await axios.post(
+        `/api/manuals/${manualId}/status/baseline/${correcting ? "correct/" : ""}`, entry,
         { headers: { ...getAuth().headers, ...reauthHeader(confirmation.token) } });
       onDone();
     } catch (err) {
@@ -46,7 +56,9 @@ export default function BaselineForm({ manualId, onDone, onCancel }) {
 
   return (
     <section className="card" style={{ marginBottom: "1.5rem", padding: "1.1rem 1.25rem" }}>
-      <h2 className="section-title" style={{ marginTop: 0 }}>Starting status</h2>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        {correcting ? "Correct the starting status" : "Starting status"}
+      </h2>
       <div className="col" style={{ gap: "0.9rem" }}>
         <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
           <div className="field">
@@ -70,6 +82,13 @@ export default function BaselineForm({ manualId, onDone, onCancel }) {
                    value={entry.effective_on} onChange={set("effective_on")} />
           </div>
         </div>
+        {correcting && (
+          <div className="field">
+            <label className="label" htmlFor="baseline-reason">What was wrong</label>
+            <input id="baseline-reason" className="input" value={entry.reason}
+                   onChange={set("reason")} />
+          </div>
+        )}
         <div className="field">
           <label className="label" htmlFor="baseline-password">Confirm with your password</label>
           <input id="baseline-password" className="input" type="password"

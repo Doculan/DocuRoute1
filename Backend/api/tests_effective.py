@@ -30,7 +30,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from api import qms_views
-from api.document_status import revision_goes_backwards
+from api.document_status import revision_goes_backwards, status_goes_backwards
 from api.models import (
     Attachment, AuditEvent, CustomUser, DocumentStatus, Manual, ManualSection, Position,
     PositionAssignment, Proposal, QmsDecision, SectionHistory,
@@ -242,6 +242,19 @@ class MakeEffectiveRefusalTests(EffectiveFixture):
         self.assertEqual(response.data['reason'], 'revision_backwards')
         self.assertEqual(self.status(), Proposal.WITH_CUSTODIAN)
 
+    def test_a_lower_version_is_refused(self):
+        self.assertEqual(self.baseline(version='02', revision='5').status_code, 201)
+        response = self.make_effective(version='01', revision='6')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['reason'], 'version_backwards')
+        self.assertEqual(response.data['field'], 'version')
+        self.assertEqual(self.status(), Proposal.WITH_CUSTODIAN)
+
+    def test_a_new_version_may_restart_its_revisions(self):
+        self.assertEqual(self.baseline(version='01', revision='5').status_code, 201)
+        response = self.make_effective(version='02', revision='0')
+        self.assertEqual(response.status_code, 200, response.data)
+
     def test_a_revision_that_is_not_a_number_is_recorded_as_written(self):
         self.assertEqual(self.baseline(revision='5').status_code, 201)
         response = self.make_effective(revision='Rev. A')
@@ -267,6 +280,14 @@ class RevisionOrderTests(SimpleTestCase):
         self.assertFalse(revision_goes_backwards('3', '3'))
         self.assertFalse(revision_goes_backwards('Rev. 3', '1'))
         self.assertFalse(revision_goes_backwards('3', 'A'))
+
+    def test_version_first_then_revision_within_it(self):
+        now = DocumentStatus(version='02', revision='5')
+        self.assertEqual(status_goes_backwards(now, '01', '9'), 'version')
+        self.assertEqual(status_goes_backwards(now, '2', '4'), 'revision')   # "02" is "2"
+        self.assertIsNone(status_goes_backwards(now, '03', '0'))             # a new version restarts
+        self.assertIsNone(status_goes_backwards(now, '02', '6'))
+        self.assertIsNone(status_goes_backwards(now, 'B', '0'))              # not ordered
 
 
 # --- the form's starting values ------------------------------
@@ -379,3 +400,109 @@ class ReaderTests(EffectiveFixture):
         row = [r for r in rows if r['id'] == self.manual.id][0]
         self.assertEqual(row['status']['revision'], '3')
         self.assertEqual(row['status']['effective_on'], self.today)
+
+
+# --- correcting a baseline -----------------------------------
+
+class BaselineCorrectionTests(EffectiveFixture):
+
+    def setUp(self):
+        super().setUp()
+        response = self.baseline(revision='2')
+        assert response.status_code == 201, response.data
+        self.first = Manual.objects.get(pk=self.manual.pk).current_status
+
+    def correct(self, user=None, token=True, reason='The paper copy reads revision 4.', **fields):
+        user = user or self.custodian
+        extra = {'HTTP_X_REAUTH_TOKEN': self.token(user)} if token else {}
+        body = {'document_number': 'FAM 6.02', 'version': '01', 'revision': '4',
+                'effective_on': (self.today - datetime.timedelta(days=300)).isoformat(),
+                'reason': reason}
+        body.update(fields)
+        return self.as_(user).post('/api/manuals/%d/status/baseline/correct/' % self.manual.id,
+                                   body, format='json', **extra)
+
+    def current(self):
+        return Manual.objects.get(pk=self.manual.pk).current_status
+
+    def test_the_custodian_corrects_it_and_the_old_row_is_kept(self):
+        response = self.correct()
+        self.assertEqual(response.status_code, 201, response.data)
+        new = self.current()
+        self.assertEqual((new.revision, new.correction_reason),
+                         ('4', 'The paper copy reads revision 4.'))
+        self.assertTrue(new.is_baseline)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.revision, '2', 'superseded, not overwritten')
+        self.assertEqual(self.first.superseded_by, new)
+        self.assertIsNotNone(self.first.superseded_at)
+
+    def test_a_correction_may_go_lower(self):
+        """It replaces a mistake; it does not follow it."""
+        self.assertEqual(self.correct(revision='1').status_code, 201)
+        self.assertEqual(self.current().revision, '1')
+
+    def test_corrected_twice_the_chain_holds(self):
+        self.correct(revision='3')
+        second = self.current()
+        self.correct(revision='4')
+        second.refresh_from_db()
+        self.assertEqual(second.superseded_by, self.current())
+        self.assertEqual(DocumentStatus.objects.filter(manual=self.manual).count(), 3)
+
+    def test_it_needs_the_password(self):
+        response = self.correct(token=False)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['reason'], 'reauth_required')
+        self.assertEqual(self.current(), self.first)
+
+    def test_it_needs_a_reason(self):
+        response = self.correct(reason='  ')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['reason'], 'reason_required')
+        self.assertEqual(self.current(), self.first)
+
+    def test_only_the_custodian(self):
+        for user in (self.imr, self.acc_head):
+            response = self.correct(user=user)
+            self.assertEqual(response.status_code, 403, user.username)
+            self.assertEqual(response.data['reason'], 'not_custodian')
+        self.assertEqual(self.current(), self.first)
+
+    def test_not_in_the_future(self):
+        response = self.correct(effective_on=(self.today + datetime.timedelta(days=1)).isoformat())
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['reason'], 'future_date')
+
+    def test_not_once_a_change_has_been_made_effective(self):
+        self.assertEqual(self.make_effective().status_code, 200)
+        response = self.correct()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'not_correctable')
+        self.assertEqual(DocumentStatus.objects.filter(manual=self.manual).count(), 2)
+
+    def test_the_reader_screen_offers_it_only_while_it_is_allowed(self):
+        path = '/api/manuals/%d/sections/' % self.manual.id
+        self.assertTrue(self.as_(self.custodian).get(path).data['can_correct_baseline'])
+        self.assertFalse(self.as_(self.imr).get(path).data['can_correct_baseline'])
+        self.make_effective()
+        self.assertFalse(self.as_(self.custodian).get(path).data['can_correct_baseline'])
+
+    def test_the_next_change_follows_the_correction(self):
+        self.correct(revision='4')
+        data = self.as_(self.custodian).get(self.url + 'custodian/effective/').data
+        self.assertEqual(data['suggested']['revision'], '5')
+        response = self.make_effective(revision='3')
+        self.assertEqual(response.data['reason'], 'revision_backwards')
+
+
+class NoBaselineToCorrectTests(EffectiveFixture):
+
+    def test_there_must_be_a_baseline(self):
+        response = self.as_(self.custodian).post(
+            '/api/manuals/%d/status/baseline/correct/' % self.manual.id,
+            {'document_number': 'FAM 6.02', 'version': '01', 'revision': '1',
+             'effective_on': self.today.isoformat(), 'reason': 'x'},
+            format='json', HTTP_X_REAUTH_TOKEN=self.token(self.custodian))
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'not_correctable')

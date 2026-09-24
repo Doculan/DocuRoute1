@@ -295,7 +295,11 @@ export default function StaffSections({
         setFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
         // The document's official status, as the custodian recorded it.
         // v3's version counters are not shown to readers.
-        setManual({ status: res.data.status, canRecordBaseline: res.data.can_record_baseline });
+        setManual({
+          status: res.data.status,
+          canRecordBaseline: res.data.can_record_baseline,
+          canCorrectBaseline: res.data.can_correct_baseline,
+        });
         if (res.data.sections?.length > 0) {
           setIsFullDoc(true);
         }
@@ -584,6 +588,11 @@ export default function StaffSections({
                 Record starting status
               </button>
             )}
+            {manual?.canCorrectBaseline && !recordingBaseline && (
+              <button className="link-btn text-xs" onClick={() => setRecordingBaseline(true)}>
+                Correct starting status
+              </button>
+            )}
           </div>
 
           <div className="toc-filters">
@@ -661,6 +670,7 @@ export default function StaffSections({
           {recordingBaseline && (
             <BaselineForm
               manualId={manualId}
+              current={manual?.canCorrectBaseline ? manual.status : null}
               onCancel={() => setRecordingBaseline(false)}
               onDone={() => { setRecordingBaseline(false); setReloadKey((k) => k + 1); }}
             />
