@@ -331,8 +331,24 @@ peak.** The database is not the constraint at this scale; memory and CPU are.
 The configuration now also enables:
 
 - **WAL journalling**, so readers are never blocked by a writer;
-- a **20-second busy timeout**, so a writer that does collide waits its turn
-  instead of raising `database is locked`.
+- a **20-second busy timeout**, so a writer that finds the write lock held
+  waits for it;
+- **immediate transactions** (`transaction_mode: IMMEDIATE`, added in Phase
+  4c), so every transaction takes the write lock when it begins.
+
+**Correction.** This section used to say the busy timeout alone meant a
+colliding writer "waits its turn instead of raising `database is locked`".
+It did not, for the most common kind of transaction here: one that reads
+before it writes. SQLite begins such a transaction as a reader and upgrades
+it at the first write; if another request has written in between, the
+upgrade is refused at once and the timeout is never consulted. A real run
+hit it - saving a section a moment after the reason field had saved itself
+failed with `database is locked`. Immediate transactions close it: the
+second writer now waits at `BEGIN` for up to the 20 seconds, as this
+section always claimed. `api/tests_database.py` runs the collision through
+Django's own SQLite backend with these options, and fails without them.
+The cost is that two transactions no longer overlap even when one would
+only have read - at this scale, milliseconds.
 
 For the two-to-three concurrent users of the demonstration, against a 6 MB
 database, this is comfortably sufficient — and it was verified rather than

@@ -184,6 +184,12 @@ _ENGINES = {
 SQLITE_OPTIONS = {
     'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
     'timeout': 20,
+    # A transaction takes the write lock when it begins. By default it
+    # begins as a reader and upgrades at its first write - and if another
+    # request has written in between, SQLite refuses the upgrade at once,
+    # "database is locked", without consulting the timeout above. Saving a
+    # section just after the reason field saved itself did exactly that.
+    'transaction_mode': 'IMMEDIATE',
 }
 
 
