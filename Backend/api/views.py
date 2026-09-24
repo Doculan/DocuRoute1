@@ -22,7 +22,7 @@ from ml.revision_pipeline.change_reason import (
     blocks_submission,
     classify_reason,
 )
-from api import access, pre_assessment
+from api import access, document_status, pre_assessment
 from ml.svm_model import predict, predict_section
 import difflib
 import logging
@@ -787,6 +787,7 @@ def staff_list_manuals(request):
         'version': m.version,
         'revision': m.revision,
         'display_status': f"v{m.version} rev{m.revision}",
+        'status': document_status.status_payload(m.current_status),
     } for m in manuals]
     return Response(data)
 
@@ -1811,6 +1812,7 @@ def list_manuals(request):
         'version': m.version,
         'revision': m.revision,
         'display_status': f"v{m.version} rev{m.revision}",
+        'status': document_status.status_payload(m.current_status),
     } for m in manuals]
     return Response(data)
 
@@ -2139,7 +2141,9 @@ def list_sections(request, manual_id):
     # served, and survives moving to another device.
     _record_recently_opened(request.user, manual)
 
-    sections_qs = manual.sections.all().order_by('order')
+    sections_qs = manual.sections.select_related(
+        'parent', 'reviewed_by', 'status_changed__proposal',
+    ).order_by('order')
 
     # Apply filters
     tag_filter = request.query_params.get('tag')
@@ -2170,12 +2174,21 @@ def list_sections(request, manual_id):
         'is_reviewed': s.is_reviewed,
         'reviewed_at': s.reviewed_at,
         'reviewed_by': s.reviewed_by.username if s.reviewed_by else None,
+        # v4: the revision under which a request last changed this section,
+        # and those requests. Nothing for a section none has changed.
+        'revision': document_status.section_revision(s),
+        'changes': document_status.section_changes(s) if s.status_changed_id else [],
     } for s in sections_qs]
 
+    from .qms_views import can_record_baseline
     return Response({
+        # v3's counters, still sent for the admin's screens. Readers are
+        # shown `status` instead.
         'manual_version': manual.version,
         'manual_revision': manual.revision,
         'display_status': f"v{manual.version} rev{manual.revision}",
+        'status': document_status.status_payload(manual.current_status),
+        'can_record_baseline': can_record_baseline(request.user, manual),
         'sections': data,
         'file_url': manual.file.url if manual.file else None,
         'file_name': manual.file.name if manual.file else None,
@@ -2537,7 +2550,7 @@ def section_history(request, section_id):
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
 
-    history = section.history.select_related('edited_by').order_by('version')
+    history = section.history.select_related('edited_by', 'proposal').order_by('version')
     data = [{
         'version': h.version,
         'subtitle': h.subtitle,
@@ -2549,6 +2562,8 @@ def section_history(request, section_id):
         'source_label': h.get_source_display(),
         'change_reason': h.change_reason,
         'revision_id': h.revision_id,
+        'proposal_id': h.proposal_id,
+        'dcr_number': h.proposal.dcr_number if h.proposal_id else None,
     } for h in history]
 
     # The live section, appended as the last row. It has no source of its
@@ -2565,6 +2580,8 @@ def section_history(request, section_id):
         'source_label': 'Current version',
         'change_reason': '',
         'revision_id': None,
+        'proposal_id': None,
+        'dcr_number': None,
     })
 
     return Response(data)

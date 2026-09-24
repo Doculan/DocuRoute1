@@ -251,7 +251,7 @@ function Proposal({ proposalId, onBack, onSay }) {
         </div>
       )}
 
-      <QmsDecisions decisions={data.qms_decisions} />
+      <QmsDecisions decisions={data.qms_decisions} documentStatus={data.document_status} />
 
       {WITH_PACKAGE.includes(data.status) && (
         <ProposalPackage key={data.status} proposalId={proposalId} onChanged={load} />

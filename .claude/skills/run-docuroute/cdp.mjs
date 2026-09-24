@@ -8,10 +8,14 @@
 //   wait <text>                  wait until the page text contains <text>
 //   click <css> | <text>         click the first <css> element whose text contains <text>
 //   type <css> | <text>          focus <css>, then type <text> as real input
+//   fill <css> | <text>          the same, replacing what the field holds
+//   set <css> | <value>          set an input's value directly (dates)
+//   slowwait <text>              wait, for up to 3 minutes (the AI check)
 //   select <css> | <text>        choose the option whose text contains <text>
 //   upload <css> | <path>        set a file input's file (fires change)
 //   shot <name>                  screenshot to <dir>/<name>.png
 //   text <css>                   print the innerText of <css>
+//   value <css>                  print an input's value
 //   errors                       print console errors and exceptions so far
 //   ? <command>                  optional: on failure, report and carry on
 import fs from 'node:fs';
@@ -82,8 +86,8 @@ for (const raw of lines) {
     if (cmd === 'nav') {
       await send('Page.navigate', { url: rest });
       await sleep(1500);
-    } else if (cmd === 'wait') {
-      const until = Date.now() + 20000;
+    } else if (cmd === 'wait' || cmd === 'slowwait') {
+      const until = Date.now() + (cmd === 'slowwait' ? 180000 : 20000);
       let found = false;
       while (Date.now() < until) {
         found = await evaluate(`document.body && document.body.innerText.includes(${JSON.stringify(rest)})`);
@@ -115,12 +119,25 @@ for (const raw of lines) {
         return true; })()`);
       if (chosen !== true) throw new Error(chosen);
       await sleep(800);
-    } else if (cmd === 'type') {
+    } else if (cmd === 'type' || cmd === 'fill') {
+      // `fill` selects what is there first, so the text replaces it.
       const [css, text] = split(rest);
       const focused = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(css)});
-        if (!el) return false; el.focus(); return true; })()`);
+        if (!el) return false; el.focus(); ${cmd === 'fill' ? 'el.select();' : ''} return true; })()`);
       if (!focused) throw new Error('no such input');
       await send('Input.insertText', { text });
+    } else if (cmd === 'set') {
+      // For inputs that do not take typed text, such as dates: set the
+      // value through the setter React tracks, then fire `input`.
+      const [css, value] = split(rest);
+      const done = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(css)});
+        if (!el) return false;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        setter.call(el, ${JSON.stringify(value)});
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true; })()`);
+      if (!done) throw new Error('no such input');
+      await sleep(300);
     } else if (cmd === 'upload') {
       const [css, file] = split(rest);
       const { root } = await send('DOM.getDocument', { depth: -1 });
@@ -134,6 +151,10 @@ for (const raw of lines) {
     } else if (cmd === 'text') {
       console.log('TEXT', rest, '=>', JSON.stringify(await evaluate(
         `(document.querySelector(${JSON.stringify(rest)}) || {}).innerText || null`)));
+      continue;
+    } else if (cmd === 'value') {
+      console.log('VALUE', rest, '=>', JSON.stringify(await evaluate(
+        `(document.querySelector(${JSON.stringify(rest)}) || {}).value ?? null`)));
       continue;
     } else if (cmd === 'errors') {
       console.log('ERRORS', problems.length ? problems : 'none');

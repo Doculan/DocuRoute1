@@ -978,7 +978,7 @@ export default function Sections({ openManualId = null }) {
                             <option key={h.version} value={h.version}>
                               {h.version === activeSection.version
                                 ? `v${h.version} — Current`
-                                : `v${h.version} — ${h.edited_by} (${h.edited_at ? new Date(h.edited_at).toLocaleDateString() : ""})`}
+                                : `v${h.version} — ${h.dcr_number ? `before ${h.dcr_number} · ` : ""}${h.edited_by} (${h.edited_at ? new Date(h.edited_at).toLocaleDateString() : ""})`}
                             </option>
                           ))}
                         </select>

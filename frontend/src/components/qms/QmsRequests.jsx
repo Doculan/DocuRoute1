@@ -3,6 +3,7 @@ import axios from "axios";
 import { ProposalDetail } from "../admin/Proposals";
 import ImrDecisionPanel from "./ImrDecisionPanel";
 import CustodianReturnPanel from "./CustodianReturnPanel";
+import CustodianEffectivePanel from "./CustodianEffectivePanel";
 import { STATUS_LABEL } from "../proposalStatus";
 
 const getAuth = () => ({
@@ -54,6 +55,16 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
                   setMessage(decision === "accept"
                     ? "Accepted. It goes to the approving authority next."
                     : "Denied. Every office involved can read your reason.");
+                  reload();
+                  load();
+                }}
+              />
+            )}
+            {data.can_make_effective && (
+              <CustodianEffectivePanel
+                proposalId={openId}
+                onDone={(entry) => {
+                  setMessage(`Effective. Readers now see revision ${entry.revision}.`);
                   reload();
                   load();
                 }}

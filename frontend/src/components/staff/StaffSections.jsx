@@ -3,6 +3,8 @@ import axios from "axios";
 import DiffView from "../DiffView";
 import DocTable from "../DocTable";
 import { parseTableRow, isTableSeparator } from "../../docTable";
+import BaselineForm from "../qms/BaselineForm";
+import { formatDate, formatRevision, revisionLine } from "../documentStatus";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
 // server diffs submitted text against content normalized the same way.
@@ -230,6 +232,8 @@ export default function StaffSections({
   readOnly = false,
 }) {
   const [manual, setManual]           = useState(null);
+  const [reloadKey, setReloadKey]     = useState(0);
+  const [recordingBaseline, setRecordingBaseline] = useState(false);
   const [sections, setSections]       = useState([]);
   const [activeSection, setActive]    = useState(null);
   const [isFullDoc, setIsFullDoc]     = useState(false);
@@ -289,8 +293,10 @@ export default function StaffSections({
 
         setSections(res.data.sections || []);
         setFileUrl(res.data.file_url ? `${BASE_URL}${res.data.file_url}` : null);
+        // The document's official status, as the custodian recorded it.
+        // v3's version counters are not shown to readers.
+        setManual({ status: res.data.status, canRecordBaseline: res.data.can_record_baseline });
         if (res.data.sections?.length > 0) {
-          setManual({ version: res.data.manual_version });
           setIsFullDoc(true);
         }
       } catch (err) {
@@ -303,7 +309,7 @@ export default function StaffSections({
     if (manualId) {
       loadSections();
     }
-  }, [manualId, tagFilter, searchQuery]);
+  }, [manualId, tagFilter, searchQuery, reloadKey]);
 
   // Arriving from the Sections tab: open the section that was clicked, once
   // the list has loaded. Both routes land on this same view - that is what
@@ -568,7 +574,16 @@ export default function StaffSections({
         <aside className="reader-toc">
           <div className="toc-head">
             <div className="toc-head-title">Table of Contents</div>
-            {manual && <div className="toc-head-meta">Document v{manual.version}</div>}
+            {manual?.status && (
+              <div className="toc-head-meta">
+                {manual.status.document_number} · {revisionLine(manual.status)}
+              </div>
+            )}
+            {manual?.canRecordBaseline && !recordingBaseline && (
+              <button className="link-btn text-xs" onClick={() => setRecordingBaseline(true)}>
+                Record starting status
+              </button>
+            )}
           </div>
 
           <div className="toc-filters">
@@ -643,6 +658,13 @@ export default function StaffSections({
 
         {/* ── Content panel ── */}
         <section className="reader-panel">
+          {recordingBaseline && (
+            <BaselineForm
+              manualId={manualId}
+              onCancel={() => setRecordingBaseline(false)}
+              onDone={() => { setRecordingBaseline(false); setReloadKey((k) => k + 1); }}
+            />
+          )}
           {showOriginal && fileUrl ? (
             <div className="reader-frame">
               <div className="row" style={{ justifyContent: "space-between", marginBottom: "0.75rem" }}>
@@ -661,6 +683,7 @@ export default function StaffSections({
                     <span>{s.subtitle}</span>
                     <span className={`badge ${tagClass(s.tag)}`}>{s.tag}</span>
                   </div>
+                  {s.revision && <p className="subtle text-xs" style={{ margin: "-0.35rem 0 0.6rem" }}>{revisionLine(s.revision)}</p>}
                   <SectionContent content={s.content} />
                   {idx < sections.length - 1 && <hr className="divider" />}
                 </div>
@@ -683,17 +706,21 @@ export default function StaffSections({
                   <span className="doc-header-label">Section</span>
                   <span className="doc-header-value">{activeSection.subtitle}</span>
                 </div>
-                {activeSection.version != null && (
-                  <div className="doc-header-field">
-                    <span className="doc-header-label">Revision no.</span>
-                    <span className="doc-header-value">{activeSection.version}</span>
-                  </div>
-                )}
-                {manual?.version != null && (
-                  <div className="doc-header-field">
-                    <span className="doc-header-label">Manual version</span>
-                    <span className="doc-header-value">v{manual.version}</span>
-                  </div>
+                {manual?.status && (
+                  <>
+                    <div className="doc-header-field">
+                      <span className="doc-header-label">Document no.</span>
+                      <span className="doc-header-value">{manual.status.document_number}</span>
+                    </div>
+                    <div className="doc-header-field">
+                      <span className="doc-header-label">Revision</span>
+                      <span className="doc-header-value">{formatRevision(manual.status.revision)}</span>
+                    </div>
+                    <div className="doc-header-field">
+                      <span className="doc-header-label">Effective</span>
+                      <span className="doc-header-value">{formatDate(manual.status.effective_on)}</span>
+                    </div>
+                  </>
                 )}
                 {activeSection.page_number && (
                   <div className="doc-header-field">
@@ -710,6 +737,11 @@ export default function StaffSections({
               <div className="page-head" style={{ marginBottom: "1.25rem" }}>
                 <div>
                   <h2 className="doc-title">{activeSection.subtitle}</h2>
+                  {activeSection.revision && (
+                    <p className="subtle text-xs" style={{ margin: "0.2rem 0 0" }}>
+                      {revisionLine(activeSection.revision)}
+                    </p>
+                  )}
                 </div>
 
                 {!readOnly && (
@@ -981,9 +1013,12 @@ export default function StaffSections({
                     </div>
                   </div>
                 ) : (
-                  <div className="doc-body">
-                    <SectionContent content={formatOCRContent(activeSection.content)} />
-                  </div>
+                  <>
+                    <div className="doc-body">
+                      <SectionContent content={formatOCRContent(activeSection.content)} />
+                    </div>
+                    <SectionChanges changes={activeSection.changes} />
+                  </>
                 )
               ) : sectionRevisions.length === 0 ? (
                 <div className="empty-state">
@@ -1047,3 +1082,35 @@ export default function StaffSections({
   );
 }
 
+
+/**
+ * The requests that changed this section, newest first. Collapsed: reading
+ * comes first, and most readers never need to open it.
+ */
+function SectionChanges({ changes }) {
+  if (!changes || changes.length === 0) return null;
+  return (
+    <details style={{ marginTop: "1.5rem" }}>
+      <summary className="subtle text-sm" style={{ cursor: "pointer" }}>
+        History
+      </summary>
+      <div className="col" style={{ gap: "0.9rem", marginTop: "0.75rem" }}>
+        {changes.map((c, i) => (
+          <div key={i} className="text-sm">
+            <div>
+              <span className="strong">{c.dcr_number}</span>
+              {c.revision && <span className="subtle">{` · ${revisionLine(c)}`}</span>}
+            </div>
+            {c.reason && <p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap" }}>{c.reason}</p>}
+            <details style={{ marginTop: "0.35rem" }}>
+              <summary className="subtle text-xs" style={{ cursor: "pointer" }}>Text before</summary>
+              <div className="doc-body" style={{ marginTop: "0.5rem" }}>
+                <SectionContent content={formatOCRContent(c.text_before)} />
+              </div>
+            </details>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}

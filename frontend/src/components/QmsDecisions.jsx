@@ -9,7 +9,7 @@ function when(value) {
  * it closes the request, and every office involved should see why
  * without looking for it. Everything else is one quiet line.
  */
-export default function QmsDecisions({ decisions }) {
+export default function QmsDecisions({ decisions, documentStatus }) {
   if (!decisions || decisions.length === 0) return null;
   const denial = decisions.find((d) => d.outcome === "deny");
 
@@ -30,6 +30,12 @@ export default function QmsDecisions({ decisions }) {
           <span className="subtle text-xs">
             {` · ${d.by.position}`}{d.by.name && ` · ${d.by.name}`} · {when(d.at)}
           </span>
+          {d.outcome === "effective" && documentStatus && (
+            <span className="subtle" style={{ display: "block" }}>
+              {documentStatus.document_number} · version {documentStatus.version} ·
+              revision {documentStatus.revision} · effective {when(documentStatus.effective_on)}
+            </span>
+          )}
           {d.comments && (
             <span className="subtle" style={{ display: "block" }}>{d.comments}</span>
           )}

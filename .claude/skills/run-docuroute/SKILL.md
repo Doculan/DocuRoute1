@@ -12,7 +12,9 @@ talks to Chrome's DevTools protocol. Nothing is installed.
 **Never run against `Backend/db.sqlite3`.** Always a copy. `scratch_settings.py`
 refuses the live file, and it also moves `MEDIA_ROOT`: locking a proposal
 writes three documents, and a scratch run must not leave them among the
-real files.
+real files. It keeps the project's SQLite options (WAL, the lock timeout,
+immediate transactions), so a scratch run fails only where the real app
+would.
 
 Paths below: `ROOT` is the repository, `SK` this folder, `SCRATCH` any
 temporary folder of your choosing (use the session scratchpad).
@@ -92,12 +94,17 @@ Order matters where a drive changes the request's state:
 | `qms-reading`, `package-admin` | anything | - |
 | `admin-direct-edit` | anything (edits FAM 4.01 from the copy) | - |
 
+The seed starts at the lock. For the **whole process from a draft**, use
+the demo data instead - see section 3a.
+
 The seed leaves one request, so accepting and denying need separate
 fresh copies.
 
-Commands are listed at the top of `cdp.mjs`: `nav`, `wait`, `click`,
-`type`, `upload`, `shot`, `text`, `errors`, and `? ` for an optional
-step. `${NAME}` is filled from the environment - `package-encoder.cdp`
+Commands are listed at the top of `cdp.mjs`: `nav`, `wait`, `slowwait`
+(3 minutes, for the AI check), `click`, `type`, `fill` (replaces what the
+field holds), `set` (date inputs, which take no typed text), `select`,
+`upload`, `shot`, `text`, `value` (an input's value), `errors`, and `? `
+for an optional step. `${NAME}` is filled from the environment - `package-encoder.cdp`
 needs `SCRATCH` holding `signed-dcr.pdf`, `signed-dcr-rescan.pdf` and
 `signed-pages.png` (any real PDF and PNG; the server checks they open).
 
@@ -123,6 +130,32 @@ App-specific points:
   `#replace-file`.
 - A fresh Chrome profile starts signed out; the profile persists between
   drives, so a second drive may need `? click button | Sign out` first.
+
+## 3a. The whole process, on the demo data
+
+`drives/demo/` runs one change from draft to effective with the fictional
+organisation `manage.py seed_demo_org` creates: the Accounting Encoder
+drafts a change to FAM 6.02 section 2.0 and runs the check, the Head
+submits, Budget and Cash Management concur, the Encoder uploads the signed
+copies, the IMR accepts, the Encoder uploads the approving authority's
+DCR, the custodian records FAM 6.02's starting status and makes the change
+effective, and a Budget reader opens the document. Demo password
+`Office123!`.
+
+Start from a copy of a database that holds the demo organisation (the
+live one does), not the seed above:
+
+```bash
+cp "$ROOT/Backend/db.sqlite3" "$SCRATCH/demo.sqlite3"
+export DOCUROUTE_SCRATCH_DB="$SCRATCH/demo.sqlite3" DOCUROUTE_SCRATCH_MEDIA="$SCRATCH/media"
+PYTHONPATH="$SK" ../venv/Scripts/python.exe manage.py shell --settings=scratch_settings   -c "exec(open(r'$SK/drives/demo/prep_demo.py', encoding='utf-8').read())"
+# start the three processes, then, in order:
+for f in "$SK"/drives/demo/*.cdp; do node "$SK/cdp.mjs" "$f" "$SCRATCH/shots" || break; done
+```
+
+`prep_demo.py` turns access by position on in the copy and refuses a copy
+where FAM 6.02 has already been through a request. The drives run in
+order and each leaves what the next needs; a fresh copy for every run.
 
 ## 4. Stop
 

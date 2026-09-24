@@ -1,0 +1,27 @@
+# 1. The Accounting Encoder drafts a change to FAM 6.02, section 2.0.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ACC_Juan
+type #login-password | Office123!
+click button[type=submit] |
+wait My Manuals
+click .nav-item | My Manuals
+wait FAM 6.02
+click .card | FAM 6.02
+wait Table of Contents
+shot 01-reader-before
+click .toc-item | 2.0 SCOPE
+wait Propose changes
+click button | Propose changes
+wait Why this change is being made
+type #overall-reason | The LNU Dormitory now bills its residents through the Accounting Office, so its receivables fall within these procedures.
+click .proposal-section-head | 2.0 SCOPE
+wait Save this section
+fill .proposal-section-body textarea | These procedures apply to all accounts receivable arising from the official transactions of the University such as from the operations of the LNU House, of the LNU Dormitory, of the LNU Cafeteria, and Inter-Agency transaction with the Commission on Higher Education (CHED) for the implementation of the Free Higher Education, among others.
+click button | Save this section
+wait Run the check
+click button | Run the check
+slowwait checked —
+shot 02-drafted-and-checked
+errors

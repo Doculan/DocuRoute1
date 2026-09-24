@@ -78,6 +78,8 @@ urlpatterns = [
     path('proposals/<int:proposal_id>/package/', package.package),
     path('proposals/<int:proposal_id>/imr/', qms.imr_decide),
     path('proposals/<int:proposal_id>/custodian/return/', qms.custodian_return),
+    path('proposals/<int:proposal_id>/custodian/effective/', qms.make_effective),
+    path('manuals/<int:manual_id>/status/baseline/', qms.record_baseline),
     path('qms/queue/', qms.queue),
     path('auth/me/', qms.me),
     path('proposals/<int:proposal_id>/scans/', package.upload_scan),

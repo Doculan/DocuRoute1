@@ -1,0 +1,19 @@
+# 2. The Accounting Head submits it for concurrence.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ACC_Maria
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+wait FAM 6.02
+click .series-row | FAM 6.02
+wait Submit for concurrence
+click button | Submit for concurrence
+wait Submit for concurrence?
+type #confirm-destructive-password | Office123!
+click .modal-foot button | Submit
+wait Out for concurrence
+shot 03-submitted
+errors

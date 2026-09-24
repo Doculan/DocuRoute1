@@ -1,0 +1,20 @@
+# 3. BUD_Jose concurs for their office.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | BUD_Jose
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+click .tab | Awaiting my office
+wait FAM 6.02
+click .series-row | FAM 6.02
+wait Concur
+click .btn-primary | Concur
+wait Concur on FAM 6.02?
+type #confirm-destructive-password | Office123!
+click .modal-foot button | Concur
+wait CONCURRED
+shot 04-concurred-BUD_Jose
+errors

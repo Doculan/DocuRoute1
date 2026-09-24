@@ -1785,6 +1785,145 @@ signed copies, a reason, and the custodian's queue.
 
 ---
 
+## Phase 4c — section 5, making changes effective, the reader display (Checkpoint 4C approved)
+
+No migration: 0028 already holds the schema.
+
+### Making a change effective
+
+The Document Custodian records DCR section 5 - document number, version,
+revision, effectivity date, date updated in the IDS - with the password,
+and the change becomes effective in **one transaction**:
+
+1. every changed section must still read as the offices saw it; if
+   anything touched one since, **nothing is written** and the section is
+   named (`section_changed`) rather than overwriting words nobody saw;
+2. section 5 becomes the document's current status;
+3. each changed section keeps its old text in its history - source
+   "proposal", linked to the request, with the request's reason - takes
+   the locked text, and is tagged again, as v3's approval did;
+4. the request is Effective, and its sections are free.
+
+Only a current custodian; never on a request from an office where they
+hold a position; only a package with them (checked again inside the
+transaction). Decision 2: a future effectivity date is refused, and so is
+a future IDS date. Decision 3: the form starts from the current entry with
+the revision one higher; a lower revision is refused where both are plain
+numbers, and anything else ("Rev. A") is recorded as written. v3's
+`Manual.revision` still counts (decision 7).
+
+### A baseline, once
+
+Decision 4: the custodian may record where a document stands on paper -
+number, version, revision, effectivity date - **once, while it has no
+status at all**; after that, status changes through requests. With the
+password: readers take it as the document's official standing. The QMS
+reader offers "Record starting status" only to a custodian, and only while
+there is none.
+
+### What readers see
+
+- The document: number, revision and effectivity date, at the head of the
+  table of contents and in the page-header block - **the baseline or the
+  latest status**.
+- A section a request changed: one muted line under its title, "Rev. 3 ·
+  effective 24 Sep 2026", and a **History** collapsed below the text -
+  the DCR number, the reason, and the text before, each on a click.
+- A section no request changed: nothing of its own.
+- **v3's counters are gone from the reader screens** ("Document v1",
+  "Revision no.", "Manual version", the "v1 rev0" badge). The admin's
+  screens keep them for now; they are management tools, not reading, and
+  the admin's history now names the DCR a version was replaced under.
+
+A revision stored as "Rev. 2" is shown as written, never "Rev. Rev. 2".
+
+### The end-to-end run, on a fresh copy of the demo data
+
+Asked for at Checkpoint 4B. With the `run-docuroute` skill, on a copy of
+the live database (which holds the fictional demo organisation), access by
+position switched on in the copy only: the Accounting Encoder drafted a
+change to FAM 6.02 section 2.0 and ran the check; the Head submitted;
+Budget and Cash Management concurred - locked as DCR-2026-001, documents
+generated; the Encoder uploaded the signed copies; the IMR accepted; the
+Encoder uploaded the approving authority's DCR; the custodian recorded
+FAM 6.02's baseline (Rev. 2) and made the change effective, the form
+prefilled with Rev. 3; a Budget Office reader opened the document.
+
+Confirmed, on screen and in the database: **the section text changed**
+(and no other section of FAM 6.02); **its history row links DCR-2026-001**,
+with the reason and the old text; **readers see Rev. 3 and 24 Sep 2026**
+on the document and on the section, History collapsed, and nothing on an
+unchanged section. No console errors, no server errors, no holds left.
+The nine drives are saved in the skill (`drives/demo/`), and the final
+run was clean, start to finish, from a fresh copy.
+
+### What the run found - fixed, each kept apart from 4c
+
+Four things the tests could not see, because each lives between the
+screen and the server, or between two requests:
+
+1. **Concur, Return with feedback and Withdraw had never worked from the
+   screen.** Each set the action in React state and called `act` in the
+   same click; `act` read the state before it had changed, and sent
+   nothing. Submit worked only because its dialog opens after the state
+   settles. Every earlier run seeded concurrences in the database, so none
+   drove them. `act` now takes the action as an argument.
+2. **A concurring office could not read what it was asked to agree to.**
+   The document with its changes came from an endpoint that admitted only
+   the requesting office; a concurring Head saw "1 of 0 changed" and no
+   text, and concurred blind. Reading now follows the one rule for seeing
+   a proposal (`can_see`); writing stays with the requesting office.
+3. **"database is locked" on saving a section** a moment after the
+   reason field had saved itself. A transaction that reads before it
+   writes begins as a reader; if another request writes in between,
+   SQLite refuses the upgrade at once - the 20-second timeout never
+   applies. DEPLOYMENT.md claimed the timeout covered collisions; it did
+   not cover this one. **`transaction_mode: IMMEDIATE`** takes the write
+   lock when a transaction begins, so the second writer waits. Reproduced
+   first, standalone, and a test runs Django's own SQLite backend with the
+   project's options through the collision. Making a change effective is
+   exactly such a transaction.
+4. **The skill's scratch settings dropped the project's SQLite options**,
+   so scratch runs waited 5 seconds where the app waits 20. They now keep
+   them.
+
+### Open
+
+- **Two drafts from one click.** In development, React runs the "start a
+  proposal" effect twice, and the server's one-open-proposal check is
+  check-then-insert - both requests passed and FAM 6.02 got an empty
+  second draft. A production build does not double-run effects, but a
+  double click can race the same way. A real fix is a constraint, and a
+  migration; not done here.
+- **A baseline cannot be corrected** once recorded. A typo waits for the
+  next request. Worth deciding whether the custodian may correct it while
+  no request has been made effective.
+- **Revision order and a new version.** If a new version restarts the
+  revision at 0, the rule refuses it as "lower". The rule as agreed
+  compares revisions only; it may want to apply within one version.
+- The "Recorded." message after concurring shows on the list, not on the
+  open proposal; the page itself changes, so it is only a missing word.
+
+### Test state
+
+**631 tests, all passing** - 35 new for 4c, 3 for a concurring office's
+reading, 1 for the lock. No `IntegrityError` anywhere in the log: the
+duplicate-upload failure has not recurred. `check_setup.py` Ready,
+fingerprint `6a6a5c667a3c4d11` unchanged; nothing under `ml/` touched.
+
+**Shown to fail without what they test: 30 of 30** - only the custodian,
+the conflict of interest, only a package with them, the password, a
+section changed since, all or nothing, the history link, the text
+written, each section's pointer, the document's status, v3's counter, the
+release, the re-tag, section 5 shown to the offices, the action offered;
+no future date, every field required, no lower revision, only numbers
+ordered, the form one revision up; the baseline's custodian, once,
+password and offer; nothing on an unchanged section, the document's
+status for readers; and the three fixes - a concurring office reads, an
+outsider does not, writing stays with the requester - and the lock.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

@@ -1,0 +1,28 @@
+# 9. A Budget Office reader opens FAM 6.02.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | BUD_Rosa
+type #login-password | Office123!
+click button[type=submit] |
+wait My Manuals
+click .nav-item | My Manuals
+wait FAM 6.02
+shot 12-manual-list
+click .card | FAM 6.02
+wait Table of Contents
+text .toc-head-meta
+click .toc-item | 2.0 SCOPE
+wait LNU Dormitory
+text .doc-header
+text .doc-title + p
+shot 13-changed-section
+click summary | History
+wait DCR-
+click details details summary | Text before
+shot 14-history-open
+click .toc-item | 3.0 POLICIES
+wait 3.1 Any records
+text .page-head
+shot 15-unchanged-section
+errors

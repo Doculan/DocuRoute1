@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { formatDate, formatRevision } from "../documentStatus";
 
 // Empty on purpose: every request goes out as a relative path, so the
 // browser sends it to whatever host served the page and Vite's proxy
@@ -74,9 +75,13 @@ export default function StaffManuals({ onSelectManual }) {
                   glyph is the sort of thing that would look wrong printed.
                   The version tag carries the same "this is a record" signal
                   and is true information. */}
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              {/* A fixed height, so a card with a revision badge lines up
+                  with one that has none. */}
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", minHeight: "1.5rem" }}>
                 <span className="doc-kicker">Manual</span>
-                <span className="badge badge-id">v{manual.version} rev{manual.revision}</span>
+                {manual.status && (
+                  <span className="badge badge-id">{formatRevision(manual.status.revision)}</span>
+                )}
               </div>
 
               {/* The document's own name, set as the document. */}
@@ -94,6 +99,9 @@ export default function StaffManuals({ onSelectManual }) {
                   <MetaRow label="Series" value={`${manual.series} — ${manual.series_title}`} />
                 )}
                 {manual.owner && <MetaRow label="Owner" value={manual.owner} />}
+                {manual.status && (
+                  <MetaRow label="Effective" value={formatDate(manual.status.effective_on)} />
+                )}
                 <MetaRow label="Sections" value={manual.section_count} />
                 <MetaRow label="Uploaded" value={new Date(manual.uploaded_at).toLocaleDateString()} />
                 <MetaRow label="By" value={manual.uploaded_by} />

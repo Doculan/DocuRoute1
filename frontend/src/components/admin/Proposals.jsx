@@ -177,7 +177,7 @@ export function ProposalDetail({
 
       {renderActions && renderActions(data, load)}
 
-      <QmsDecisions decisions={data.qms_decisions} />
+      <QmsDecisions decisions={data.qms_decisions} documentStatus={data.document_status} />
 
       {/* Keyed on the status: the package loads its own data, and a
           decision elsewhere on this page must not leave it telling the

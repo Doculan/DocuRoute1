@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 from backend.settings import *  # noqa: F401,F403
-from backend.settings import BASE_DIR
+from backend.settings import BASE_DIR, SQLITE_OPTIONS
 
 _db = Path(os.environ['DOCUROUTE_SCRATCH_DB']).resolve()
 if _db == (Path(BASE_DIR) / 'db.sqlite3').resolve():
@@ -28,6 +28,10 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': str(_db),
+        # The project's own: WAL and a 20-second wait for a lock. Without
+        # them a scratch run waited 5 seconds and failed where the real
+        # app would not.
+        'OPTIONS': dict(SQLITE_OPTIONS),
     }
 }
 MEDIA_ROOT = os.environ['DOCUROUTE_SCRATCH_MEDIA']

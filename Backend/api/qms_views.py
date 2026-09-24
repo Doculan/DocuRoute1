@@ -11,6 +11,10 @@ current IMR decides, with the password again - and not on a request from
 an office where they also hold a position. The same rule will apply to the
 custodian making a change effective. Seeing a request is broader: QMS staff
 see every request, as the system admin does.
+
+Phase 4c adds the last stage: **the custodian records section 5 and the
+change becomes effective** - the locked text written into the document,
+in one transaction, or not at all.
 """
 
 from django.db import transaction
@@ -20,12 +24,14 @@ from rest_framework.response import Response
 
 from . import access
 from .concurrence_views import _full_payload, _load, can_see
+from .document_status import read_status_fields, status_payload, suggested_status
 from .generation.common import position_title
 from .models import (
-    Attachment, AuditEvent, CustomUser, Position, Proposal, QmsDecision,
+    Attachment, AuditEvent, CustomUser, DocumentStatus, Manual, ManualSection,
+    Position, Proposal, QmsDecision, SectionHistory,
 )
 from .proposal_views import _current_assignments, _switch_off
-from .views import reauth_failure
+from .views import predict_section, reauth_failure
 
 
 # --- who is signed in ----------------------------------------
@@ -204,6 +210,7 @@ def imr_decide(request, proposal_id):
     data = _full_payload(proposal)
     data['can_imr_decide'] = False
     data['can_custodian_return'] = False
+    data['can_make_effective'] = False
     return Response(data)
 
 
@@ -298,7 +305,230 @@ def custodian_return(request, proposal_id):
     data = _full_payload(proposal)
     data['can_imr_decide'] = False
     data['can_custodian_return'] = False
+    data['can_make_effective'] = False
     return Response(data)
+
+
+# --- making it effective -------------------------------------
+
+def can_make_effective(user, proposal):
+    return can_custodian_return(user, proposal)
+
+
+class _SectionMoved(Exception):
+    """A changed section no longer reads as the offices saw it."""
+
+    def __init__(self, section):
+        super().__init__(section.subtitle)
+        self.section = section
+
+
+def _not_with_custodian():
+    return Response({
+        'error': 'This package is not with the Document Custodian.',
+        'reason': 'not_with_custodian',
+    }, status=409)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def make_effective(request, proposal_id):
+    """Record DCR section 5 and write the locked text into the document.
+
+    GET gives the form's starting values - the document's current entry,
+    with the revision one higher. POST, with the password again, does it,
+    in one transaction:
+
+    1. every changed section must still read as the offices saw it; if
+       anything has touched one since, nothing is written and the section
+       is named, rather than overwriting words nobody on the request saw;
+    2. section 5 becomes the document's current status;
+    3. each changed section keeps its old text in its history, linked to
+       this request, takes the locked text, and is tagged again;
+    4. the request is Effective, and its sections are free.
+
+    An effectivity date in the future is refused: readers would see text
+    that is not yet in force. The custodian makes it effective on the day.
+    """
+    if not access.by_position():
+        return _switch_off()
+    proposal, error = _load(request, proposal_id)
+    if error:
+        return error
+
+    position = qms_position(request.user, Position.DOCUMENT_CUSTODIAN)
+    if position is None:
+        return Response({
+            'error': 'Only the Document Custodian makes a change effective.',
+            'reason': 'not_custodian',
+        }, status=403)
+    conflict = conflicting_office(request.user, proposal)
+    if conflict is not None:
+        return Response({
+            'error': (
+                f'You hold a position in {conflict.name}, which made this '
+                f'request. Another custodian must make it effective.'
+            ),
+            'reason': 'conflict_of_interest',
+        }, status=403)
+    if proposal.status != Proposal.WITH_CUSTODIAN:
+        return _not_with_custodian()
+
+    if request.method == 'GET':
+        return Response({
+            'current': status_payload(proposal.manual.current_status),
+            'suggested': suggested_status(proposal.manual),
+        })
+
+    fields, refusal = read_status_fields(request.data, proposal.manual, with_ids_date=True)
+    if refusal:
+        return refusal
+
+    failure = reauth_failure(request)
+    if failure is not None:
+        return failure
+
+    office = position.office
+    recorded_as = position_title(office.name, position.kind)
+    try:
+        with transaction.atomic():
+            # Again inside the transaction: two custodians pressing at once
+            # must not make one request effective twice.
+            proposal = Proposal.objects.select_for_update().get(pk=proposal.pk)
+            if proposal.status != Proposal.WITH_CUSTODIAN:
+                return _not_with_custodian()
+            manual = Manual.objects.select_for_update().get(pk=proposal.manual_id)
+            version = proposal.current_version()
+            changes = [c for c in version.changes.all() if c.has_changed]
+
+            status = DocumentStatus.objects.create(
+                manual=manual, proposal=proposal, recorded_by=request.user,
+                recorded_as=recorded_as, **fields,
+            )
+            reason = (version.overall_reason or '').strip()
+            for change in changes:
+                section = ManualSection.objects.select_for_update().get(pk=change.section_id)
+                if (section.content or '') != (change.old_text or ''):
+                    raise _SectionMoved(section)
+                note = (change.note or '').strip()
+                SectionHistory.objects.create(
+                    section=section, version=section.version,
+                    subtitle=section.subtitle, content=section.content, tag=section.tag,
+                    edited_by=request.user, source='proposal', proposal=proposal,
+                    change_reason=f'{reason}\n\n{note}' if note else reason,
+                )
+                section.content = change.new_text
+                try:
+                    section.tag = predict_section(change.new_text)
+                except Exception:
+                    section.tag = 'UNTAGGED'
+                section.version += 1
+                section.status_changed = status
+                section.save()
+
+            # v3's counter keeps counting, for what still reads it; readers
+            # see the recorded status instead.
+            manual.revision += 1
+            manual.current_status = status
+            manual.save(update_fields=['revision', 'current_status'])
+
+            QmsDecision.objects.create(
+                proposal=proposal, version=version, stage=QmsDecision.CUSTODIAN,
+                outcome=QmsDecision.EFFECTIVE,
+                comments=(request.data.get('comments') or '').strip(),
+                decided_by=request.user, decided_as=recorded_as,
+            )
+            proposal.status = Proposal.EFFECTIVE
+            proposal.save(update_fields=['status'])
+            AuditEvent.objects.create(
+                proposal=proposal, version=version, event=AuditEvent.MADE_EFFECTIVE,
+                actor=request.user, position=position, office=office,
+                office_name_at_time=office.name,
+                detail=(f'{status.document_number}, version {status.version}, '
+                        f'revision {status.revision}, '
+                        f'effective {status.effective_on:%Y-%m-%d}'),
+            )
+            proposal.refresh_open_changes()
+    except _SectionMoved as moved:
+        return Response({
+            'error': (
+                f'{moved.section.subtitle} no longer reads as the offices saw it: '
+                f'it was changed after this request was drafted. Nothing was '
+                f'made effective.'
+            ),
+            'reason': 'section_changed',
+            'section_id': moved.section.pk,
+        }, status=409)
+
+    proposal.refresh_from_db()
+    data = _full_payload(proposal)
+    data['can_imr_decide'] = False
+    data['can_custodian_return'] = False
+    data['can_make_effective'] = False
+    return Response(data)
+
+
+# --- a document's starting status ----------------------------
+
+def can_record_baseline(user, manual):
+    return bool(
+        access.by_position()
+        and not manual.statuses.exists()
+        and qms_position(user, Position.DOCUMENT_CUSTODIAN) is not None
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def record_baseline(request, manual_id):
+    """Where a document stands before any request touches it.
+
+    The manuals already carry real revisions on paper; without this, the
+    first request made effective would be the first status readers could
+    see. Once, and only while the document has no status at all: after
+    that, its status changes through requests. The password again -
+    readers take this as the document's official standing.
+    """
+    if not access.by_position():
+        return _switch_off()
+    try:
+        manual = Manual.objects.get(pk=manual_id)
+    except Manual.DoesNotExist:
+        return Response({'error': 'Document not found.'}, status=404)
+
+    position = qms_position(request.user, Position.DOCUMENT_CUSTODIAN)
+    if position is None:
+        return Response({
+            'error': "Only the Document Custodian records a document's status.",
+            'reason': 'not_custodian',
+        }, status=403)
+    already = Response({
+        'error': 'This document already has a recorded status. It changes through requests now.',
+        'reason': 'status_exists',
+    }, status=409)
+    if manual.statuses.exists():
+        return already
+
+    fields, refusal = read_status_fields(request.data, manual, with_ids_date=False)
+    if refusal:
+        return refusal
+
+    failure = reauth_failure(request)
+    if failure is not None:
+        return failure
+
+    office = position.office
+    with transaction.atomic():
+        manual = Manual.objects.select_for_update().get(pk=manual.pk)
+        if manual.statuses.exists():
+            return already
+        status = DocumentStatus.objects.create(
+            manual=manual, proposal=None, recorded_by=request.user,
+            recorded_as=position_title(office.name, position.kind), **fields,
+        )
+        manual.current_status = status
+        manual.save(update_fields=['current_status'])
+    return Response(status_payload(status), status=201)
 
 
 def decisions_payload(proposal):

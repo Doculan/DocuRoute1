@@ -136,6 +136,9 @@ def _full_payload(proposal):
     # shown to every office involved.
     from .qms_views import decisions_payload
     data['qms_decisions'] = decisions_payload(proposal)
+    # Section 5, once the custodian has made it effective.
+    from .document_status import status_payload
+    data['document_status'] = status_payload(getattr(proposal, 'document_status', None))
     return data
 
 
@@ -605,9 +608,10 @@ def proposal_full(request, proposal_id):
         proposal.status == Proposal.DRAFT
         and _head_of(request.user, proposal.initiating_office) is not None
     )
-    from .qms_views import can_custodian_return, can_imr_decide
+    from .qms_views import can_custodian_return, can_imr_decide, can_make_effective
     data['can_imr_decide'] = can_imr_decide(request.user, proposal)
     data['can_custodian_return'] = can_custodian_return(request.user, proposal)
+    data['can_make_effective'] = can_make_effective(request.user, proposal)
     return Response(data)
 
 

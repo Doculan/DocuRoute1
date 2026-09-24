@@ -1,0 +1,18 @@
+# 6. The IMR accepts.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | QMS_Ana
+type #login-password | Office123!
+click button[type=submit] |
+wait Requests
+click .nav-item | Requests
+wait Waiting for your decision
+click .series-row | FAM 6.02
+wait Your decision
+type #imr-comments | In order.
+type #imr-password | Office123!
+click button | Accept
+wait Accepted
+shot 07-accepted
+errors
