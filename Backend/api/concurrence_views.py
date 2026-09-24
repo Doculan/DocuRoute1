@@ -594,18 +594,28 @@ def proposal_full(request, proposal_id):
         return Response({'error': 'Access denied'}, status=403)
 
     data = _full_payload(proposal)
-    data['can_decide'] = bool(
-        proposal.status == Proposal.CONCURRENCE
-        and any(
-            _head_of(request.user, o) is not None
-            for o in access.current_offices(request.user)
-            if proposal.participants.filter(
-                office=o, role=ProposalParticipant.CONCURRING
-            ).exists()
-        )
+    # Offered only to an office still to decide on this version. It used
+    # to stay after the office had concurred, so the page looked as if the
+    # concurrence had not been recorded, and a second click logged it twice.
+    undecided = (
+        {p.office_id for p in _offices_yet_to_decide(proposal, proposal.current_version())}
+        if proposal.status == Proposal.CONCURRENCE else set()
+    )
+    data['can_decide'] = any(
+        _head_of(request.user, o) is not None
+        for o in access.current_offices(request.user)
+        if o.pk in undecided
     )
     data['can_submit'] = bool(
         proposal.status == Proposal.DRAFT
+        and _head_of(request.user, proposal.initiating_office) is not None
+    )
+    # The server's own rule for withdrawing, so the screen offers it exactly
+    # where it works. The screen used `can_submit`, which ends at the
+    # draft: a request out for concurrence could be withdrawn, and nobody
+    # was shown how.
+    data['can_withdraw'] = bool(
+        proposal.is_open
         and _head_of(request.user, proposal.initiating_office) is not None
     )
     from .qms_views import can_custodian_return, can_imr_decide, can_make_effective
@@ -650,3 +660,37 @@ def awaiting_my_office(request):
             rows.append(payload)
 
     return Response({'proposals': rows, 'total': len(rows)})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def involving_my_office(request):
+    """Other offices' requests my office concurs on, once they no longer
+    wait on us.
+
+    Without this a concurring office lost sight of a request the moment it
+    concurred: "Awaiting my office" holds only what is waiting, and "From
+    my office" only its own. An IMR's denial - whose reason every office
+    involved is meant to read - had no way to reach them on screen.
+    """
+    if not access.by_position():
+        return _switch_off()
+
+    mine = [o.pk for o in access.current_offices(request.user)]
+    if not mine:
+        return Response({'proposals': []})
+
+    rows = []
+    for proposal in Proposal.objects.filter(
+        participants__office_id__in=mine,
+        participants__role=ProposalParticipant.CONCURRING,
+    ).distinct().select_related(
+        'manual', 'manual__series', 'initiating_office', 'created_by'
+    ):
+        if proposal.status == Proposal.CONCURRENCE:
+            version = proposal.current_version()
+            if any(p.office_id in mine
+                   for p in _offices_yet_to_decide(proposal, version)):
+                continue            # on "Awaiting my office" instead
+        rows.append(_proposal_payload(proposal))
+    return Response({'proposals': rows})

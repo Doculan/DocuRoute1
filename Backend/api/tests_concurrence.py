@@ -757,3 +757,82 @@ class ConcurringOfficesReadTests(ConcurrenceFixture):
         self.assertEqual(response.data['error'], 'Access denied')
         version = Proposal.objects.get(pk=self.proposal_id).current_version()
         self.assertEqual(version.overall_reason, REASON)
+
+
+class InvolvingMyOfficeTests(ConcurrenceFixture):
+    """A concurring office keeps sight of a request after it stops waiting
+    on them - so a denial's reason can reach them on screen."""
+
+    def ids(self, user):
+        return [p['id'] for p in self.as_(user).get('/api/proposals/involving/').data['proposals']]
+
+    def test_while_it_waits_on_us_it_is_under_awaiting_instead(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.assertEqual(self.ids(self.bud_head), [])
+        self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.assertEqual(self.ids(self.bud_head), [proposal_id])
+        self.assertEqual(self.ids(self.bud_enc), [proposal_id], 'the whole office, not only its Head')
+
+    def test_the_office_that_returned_it_follows_the_redraft(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.bud_head, Concurrence.RETURN, feedback='One day is too short.')
+        self.assertEqual(Proposal.objects.get(pk=proposal_id).status, Proposal.DRAFT)
+        self.assertEqual(self.ids(self.bud_head), [proposal_id])
+
+    def test_only_offices_asked_to_concur(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.assertEqual(self.ids(self.acc_head), [], 'the requesting office has its own list')
+        registrar = Office.objects.create(name="Registrar", abbreviation="REG")
+        outsider = self.person("reg_head", registrar, Position.HEAD)
+        self.assertEqual(self.ids(outsider), [])
+
+
+class WithdrawOfferedTests(ConcurrenceFixture):
+    """The screen offers Withdraw exactly where the server allows it."""
+
+    def can(self, user, proposal_id):
+        return self.as_(user).get(f'/api/proposals/{proposal_id}/full/').data['can_withdraw']
+
+    def test_the_head_may_withdraw_while_it_is_out_for_concurrence(self):
+        proposal_id = self.a_draft()
+        self.assertTrue(self.can(self.acc_head, proposal_id))
+        self.submit(proposal_id)
+        self.assertTrue(self.can(self.acc_head, proposal_id))
+        self.assertFalse(self.can(self.acc_enc, proposal_id), 'the Head, not the Encoder')
+        self.assertFalse(self.can(self.bud_head, proposal_id), 'not another office')
+
+    def test_not_once_it_has_locked(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.decide(proposal_id, self.cmo_head, Concurrence.CONCUR)
+        self.assertFalse(self.can(self.acc_head, proposal_id))
+
+
+class DecisionOfferedTests(ConcurrenceFixture):
+    """Concur and Return are offered to an office still to decide."""
+
+    def can(self, user, proposal_id):
+        return self.as_(user).get(f'/api/proposals/{proposal_id}/full/').data['can_decide']
+
+    def test_not_again_once_the_office_has_concurred(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.assertTrue(self.can(self.bud_head, proposal_id))
+        self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.assertFalse(self.can(self.bud_head, proposal_id))
+        self.assertTrue(self.can(self.cmo_head, proposal_id), 'the other office still decides')
+
+    def test_again_on_a_new_version(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.decide(proposal_id, self.cmo_head, Concurrence.RETURN, feedback='One day is too short.')
+        self.as_(self.acc_enc).post(f'/api/proposals/{proposal_id}/sections/{self.s1.id}/check/',
+                                    {}, format='json')
+        self.submit(proposal_id)
+        self.assertTrue(self.can(self.bud_head, proposal_id), 'concurrences reset with the version')

@@ -75,6 +75,7 @@ urlpatterns = [
     path('proposals/<int:proposal_id>/decide/', concurrence.decide),
     path('proposals/<int:proposal_id>/withdraw/', concurrence.withdraw),
     path('proposals/awaiting/', concurrence.awaiting_my_office),
+    path('proposals/involving/', concurrence.involving_my_office),
     path('proposals/<int:proposal_id>/package/', package.package),
     path('proposals/<int:proposal_id>/imr/', qms.imr_decide),
     path('proposals/<int:proposal_id>/custodian/return/', qms.custodian_return),

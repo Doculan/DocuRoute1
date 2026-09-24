@@ -47,6 +47,7 @@ export default function StaffProposals({ startManualId, onDone }) {
   const [tab, setTab] = useState("mine");
   const [mine, setMine] = useState([]);
   const [awaiting, setAwaiting] = useState([]);
+  const [involving, setInvolving] = useState([]);
   const [open, setOpen] = useState(null);       // proposal id
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,12 +56,14 @@ export default function StaffProposals({ startManualId, onDone }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ours, theirs] = await Promise.all([
+      const [ours, theirs, others] = await Promise.all([
         axios.get(`${BASE_URL}/api/proposals/`, getAuth()),
         axios.get(`${BASE_URL}/api/proposals/awaiting/`, getAuth()),
+        axios.get(`${BASE_URL}/api/proposals/involving/`, getAuth()),
       ]);
       setMine(ours.data.proposals);
       setAwaiting(theirs.data.proposals);
+      setInvolving(others.data.proposals);
       setError("");
     } catch (err) {
       setError(err.response?.data?.error || "Could not load proposals.");
@@ -111,7 +114,7 @@ export default function StaffProposals({ startManualId, onDone }) {
     return <div className="loading-row"><span className="spinner" /> Loading…</div>;
   }
 
-  const rows = tab === "mine" ? mine : awaiting;
+  const rows = { mine, awaiting, involving }[tab] || [];
 
   return (
     <div>
@@ -136,6 +139,14 @@ export default function StaffProposals({ startManualId, onDone }) {
                 onClick={() => setTab("awaiting")}>
           Awaiting my office{awaiting.length > 0 ? ` (${awaiting.length})` : ""}
         </button>
+        {/* Requests my office agreed to, after they stop waiting on us -
+            including what became of them. Only when there are any. */}
+        {involving.length > 0 && (
+          <button className={`tab${tab === "involving" ? " is-active" : ""}`}
+                  onClick={() => setTab("involving")}>
+            Other offices' requests
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -161,7 +172,7 @@ export default function StaffProposals({ startManualId, onDone }) {
               <span className={`status-mark is-${statusTone(p.status)}`}>
                 {STATUS_LABEL[p.status]}
               </span>
-              {tab === "awaiting" && (
+              {tab !== "mine" && (
                 <span className="subtle text-xs">from {p.initiating_office}</span>
               )}
             </button>
@@ -329,8 +340,7 @@ function Proposal({ proposalId, onBack, onSay }) {
           </>
         )}
 
-        {(data.status === "draft" || data.status === "concurrence")
-          && data.can_submit && (
+        {data.can_withdraw && (
           <button
             className="btn btn-ghost"
             onClick={() => setDecision("withdraw")}
