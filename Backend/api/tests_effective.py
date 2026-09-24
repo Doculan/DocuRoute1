@@ -32,8 +32,9 @@ from django.test import SimpleTestCase
 from api import qms_views
 from api.document_status import revision_goes_backwards, status_goes_backwards
 from api.models import (
-    Attachment, AuditEvent, CustomUser, DocumentStatus, Manual, ManualSection, Position,
-    PositionAssignment, Proposal, QmsDecision, SectionHistory,
+    Attachment, AuditEvent, CustomUser, DocumentStatus, Manual,
+    ManualSection, Position, PositionAssignment, Proposal, QmsDecision,
+    SectionHistory,
 )
 from api.tests_concurrence import REASON
 from api.tests_custodian import ApprovalFixture

@@ -16,7 +16,6 @@ function clearSession() {
   localStorage.removeItem("refresh_token");
   localStorage.removeItem("role");
   localStorage.removeItem("username");
-  localStorage.removeItem("department");
 }
 
 // One in-flight refresh shared by every request that 401s at the same time,

@@ -256,50 +256,10 @@ class QmsReadingTests(QmsFixture):
         self.assertIn(response.data['reason'], ('not_concurring', 'no_office'))
 
 
-class MoreHeldPathsTests(QmsFixture):
-    """Every other way section text is written directly also waits."""
+class ListsNeedAnOfficeTests(QmsFixture):
+    """A current position is what the lists ask for."""
 
-    def admin(self):
-        return CustomUser.objects.create_user(
-            username='sysadmin', password='x', is_approved=True, role='admin',
-            system_role=CustomUser.SYSTEM_ADMIN)
-
-    def test_the_staff_edit_path_waits_too(self):
-        response = self.as_(self.acc_enc).patch(
-            f'/api/sections/{self.s1.id}/review/', {'content': 'Staff edit.'}, format='json',
-            HTTP_X_REAUTH_TOKEN=self.token(self.acc_enc))
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data['reason'], 'section_held')
-
-    def test_a_v3_approval_cannot_write_a_held_section(self):
-        from api.models import ManualRevision
-        revision = ManualRevision.objects.create(
-            section=self.s1, submitted_by=self.acc_enc, proposed_content='Old-flow text.',
-            status='pending', change_reason='Left over from v3.')
-        response = self.as_(self.imr).patch(
-            f'/api/admin/revisions/{revision.id}/review/', {'status': 'approved'}, format='json')
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data['reason'], 'section_held')
-        revision.refresh_from_db()
-        self.assertEqual(revision.status, 'pending')
-
-    def test_merging_a_held_section_waits(self):
-        response = self.as_(self.admin()).post(
-            f'/api/sections/{self.s2.id}/merge/', {'target_id': self.s1.id}, format='json')
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data['reason'], 'section_held')
-
-
-class ListsWithoutADepartmentTests(QmsFixture):
-    """Under position-based access, a v3 department is not required.
-
-    The manual list, the section search and "my revisions" used to refuse
-    anyone without one, while saying "not yet assigned to an office" -
-    turning away people who hold positions, which every v4 account is.
-    """
-
-    def test_a_position_holder_without_a_department_sees_their_documents(self):
-        self.assertIsNone(self.acc_enc.department)
+    def test_a_position_holder_sees_their_documents(self):
         response = self.as_(self.acc_enc).get('/api/staff/manuals/')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIn(self.manual.title, [m['title'] for m in response.data])

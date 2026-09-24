@@ -6,9 +6,9 @@ PDF is read - a table row that used to be dropped, a wrapped row that is now
 joined - the text has to come from the file again.
 
 Sections are matched to their re-extracted counterparts by section number and
-**updated in place**. Nothing is deleted: `SectionHistory.section` and
-`ManualRevision.section` both cascade on delete, so recreating sections would
-take the revision history with them.
+**updated in place**. Nothing is deleted: `SectionHistory.section` cascades
+on delete, so recreating sections would take their history with them, and a
+section a change request has touched cannot be deleted at all.
 
 Dry run by default; pass --apply to write. Back the database up first.
 """

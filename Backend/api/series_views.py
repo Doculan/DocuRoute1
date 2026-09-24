@@ -430,7 +430,7 @@ def document_detail(request, document_id):
         document.approval_stops_at_owner = None if value is None else bool(value)
 
     try:
-        document.full_clean(exclude=['file', 'department'])
+        document.full_clean(exclude=['file'])
     except ValidationError as error:
         return _validation_error(error)
 

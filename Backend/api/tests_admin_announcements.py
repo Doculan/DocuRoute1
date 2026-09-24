@@ -11,42 +11,38 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from api.models import Announcement, CustomUser, Department
+from api.models import Announcement, CustomUser, Office, Position, PositionAssignment
 from api.views import issue_reauth_token
 
 
 class AdminAnnouncementTests(TestCase):
 
     def setUp(self):
-        self.cas = Department.objects.create(name="CAS")
-        self.sdm = Department.objects.create(name="SDM")
         self.admin = CustomUser.objects.create_user(
             username="admin", password="pw", role="admin", is_approved=True,
         )
+        self.today = timezone.localdate()
+        self.cas = Office.objects.create(name="CAS", abbreviation="CAS")
+        self.sdm = Office.objects.create(name="SDM", abbreviation="SDM")
         # Reach counts should only ever count staff who can actually sign in.
-        self.staff_cas = CustomUser.objects.create_user(
-            username="cas1", password="pw", role="staff",
-            is_approved=True, department=self.cas,
-        )
-        CustomUser.objects.create_user(
-            username="cas2", password="pw", role="staff",
-            is_approved=True, department=self.cas,
-        )
-        CustomUser.objects.create_user(
-            username="sdm1", password="pw", role="staff",
-            is_approved=True, department=self.sdm,
-        )
-        CustomUser.objects.create_user(
-            username="waiting", password="pw", role="staff",
-            is_approved=False, department=self.cas,
-        )
+        self.staff_cas = self.person("cas1", self.cas)
+        self.person("cas2", self.cas)
+        self.person("sdm1", self.sdm)
+        self.person("waiting", self.cas, approved=False)
         self.client = APIClient()
         self.client.force_authenticate(user=self.admin)
-        self.today = timezone.localdate()
+
+    def person(self, username, office, approved=True):
+        user = CustomUser.objects.create_user(
+            username=username, password="pw", role="staff", is_approved=approved,
+        )
+        position, _ = Position.objects.get_or_create(office=office, kind=Position.ENCODER)
+        PositionAssignment.objects.create(user=user, position=position, starts_on=self.today)
+        return user
 
     def post(self, **fields):
         body = {"title": "A notice", "body": "", "date": "",
-                "department_id": "", "active": True}
+                "office_id": "", "active": True}
         body.update(fields)
         return self.client.post("/api/admin/announcements/", body, format="json")
 
@@ -96,16 +92,16 @@ class AdminAnnouncementTests(TestCase):
 
     # -- reach --------------------------------------------------
 
-    def test_reach_counts_approved_staff_in_the_target_department(self):
-        response = self.post(title="For CAS", department_id=self.cas.id)
+    def test_reach_counts_approved_staff_in_the_target_office(self):
+        response = self.post(title="For CAS", office_id=self.cas.id)
         # two approved in CAS; the unapproved one cannot sign in to read it
         self.assertEqual(response.data["reach"], 2)
-        self.assertEqual(response.data["department"], "CAS")
+        self.assertEqual(response.data["office"], "CAS")
 
     def test_reach_for_everyone_counts_every_approved_staff_member(self):
         response = self.post(title="For all")
         self.assertEqual(response.data["reach"], 3)
-        self.assertIsNone(response.data["department"])
+        self.assertIsNone(response.data["office"])
 
     # -- the list -----------------------------------------------
 
@@ -165,8 +161,8 @@ class AdminAnnouncementTests(TestCase):
         self.assertIsNone(data["announcement"])
         self.assertEqual(data["upcoming"][0]["title"], "Audit week")
 
-    def test_targeting_a_department_keeps_it_from_the_others(self):
-        self.post(title="CAS only", department_id=self.cas.id)
+    def test_targeting_an_office_keeps_it_from_the_others(self):
+        self.post(title="CAS only", office_id=self.cas.id)
         sdm_staff = CustomUser.objects.get(username="sdm1")
         other = APIClient()
         other.force_authenticate(user=sdm_staff)

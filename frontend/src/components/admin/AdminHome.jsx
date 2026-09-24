@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import { STATUS_LABEL, statusTone } from "../proposalStatus";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -28,26 +29,13 @@ function timeAgo(value) {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-// Read back as English rather than as a stored value. "needs_revision" is a
-// field name, and showing it to a reviewer makes the assessment sound like
-// a system talking about itself.
-const VERDICT_WORDS = {
-  approve: "approve",
-  needs_revision: "needs revision",
-  reject: "reject",
-};
-
 /**
  * The admin landing page: what is waiting, and whether the queue is moving.
  *
- * One request for all six areas. They read the same few tables, and the
+ * One request for every area. They read the same few tables, and the
  * first screen after signing in is the worst one to make slow.
- *
- * Nothing here recomputes an assessment. The verdicts shown beside recent
- * decisions are the ones stored when the revision was submitted, which are
- * the ones the reviewer actually saw.
  */
-export default function AdminHome({ onGo, onOpenRevision }) {
+export default function AdminHome({ onGo }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -81,7 +69,7 @@ export default function AdminHome({ onGo, onOpenRevision }) {
     );
   }
 
-  const { attention, activity, departments, decisions, upcoming,
+  const { attention, activity, proposals, upcoming,
           upcoming_total: upcomingTotal, system } = data;
 
   return (
@@ -101,8 +89,7 @@ export default function AdminHome({ onGo, onOpenRevision }) {
       <div className="dash-grid" style={{ marginTop: "1.75rem" }}>
         <div className="col" style={{ gap: "1.75rem", minWidth: 0 }}>
           <Activity activity={activity} />
-          <ByDepartment rows={departments} onGo={onGo} />
-          <Decisions rows={decisions} onOpenRevision={onOpenRevision} />
+          <RecentProposals rows={proposals} onGo={onGo} />
         </div>
 
         <div className="col" style={{ gap: "1.75rem", minWidth: 0 }}>
@@ -120,19 +107,7 @@ export default function AdminHome({ onGo, onOpenRevision }) {
  *  width above everything else and shows nothing at all when there is
  *  nothing to do. A row of zeroes would be a wall you learn to skip. */
 function Attention({ counts, onGo }) {
-  const waited = counts.oldest_pending_days;
   const rows = [
-    counts.pending_revisions > 0 && {
-      key: "revisions",
-      value: counts.pending_revisions,
-      label: plural(counts.pending_revisions, "revision") + " awaiting review",
-      // Only mentioned once it is old enough to be a fact about the queue
-      // rather than about today.
-      note: waited != null && waited >= 2
-        ? `oldest has waited ${plural(waited, "day")}` : null,
-      tone: "is-warning",
-      go: "review",
-    },
     counts.pending_users > 0 && {
       key: "users",
       value: counts.pending_users,
@@ -140,14 +115,6 @@ function Attention({ counts, onGo }) {
       note: "they cannot sign in until approved",
       tone: "",
       go: "users",
-    },
-    counts.stale_assessments > 0 && {
-      key: "stale",
-      value: counts.stale_assessments,
-      label: "with a section edited since assessment",
-      note: "the advice on those describes older text",
-      tone: "is-danger",
-      go: "review",
     },
     counts.proposals_in_concurrence > 0 && {
       key: "concurrence",
@@ -179,7 +146,7 @@ function Attention({ counts, onGo }) {
     return (
       <div className="card card-pad">
         <p className="text-sm" style={{ margin: 0, color: "var(--n-700)" }}>
-          Nothing is waiting. No revisions to review, no accounts to approve.
+          Nothing is waiting. No accounts to approve, no proposals in progress.
         </p>
       </div>
     );
@@ -226,7 +193,7 @@ function Activity({ activity }) {
   const summary = (
     <p className="subtle text-xs" style={{ margin: "0 0 0.75rem" }}>
       Last {window} days · {totals.submitted} submitted ·{" "}
-      {totals.approved} {activity.mode === "proposals" ? "agreed" : "approved"} ·{" "}
+      {totals.approved} agreed ·{" "}
       {totals.rejected} returned
     </p>
   );
@@ -307,7 +274,7 @@ function ActivityChart({ days }) {
 
       <div className="chart-legend">
         <span className="chart-key is-submitted">Submitted</span>
-        <span className="chart-key is-approved">Approved</span>
+        <span className="chart-key is-approved">Agreed</span>
         <span className="chart-key is-rejected">Returned</span>
       </div>
     </div>
@@ -331,7 +298,7 @@ function ActivityTable({ days, activeDays, minimum }) {
             <tr>
               <th>Day</th>
               <th style={{ textAlign: "right" }}>Submitted</th>
-              <th style={{ textAlign: "right" }}>Approved</th>
+              <th style={{ textAlign: "right" }}>Agreed</th>
               <th style={{ textAlign: "right" }}>Returned</th>
             </tr>
           </thead>
@@ -351,51 +318,29 @@ function ActivityTable({ days, activeDays, minimum }) {
   );
 }
 
-/* ── 3. Revisions by department ─────────────────────────────────────── */
+/* ── 3. Recent proposals ────────────────────────────────────────────── */
 
-/** Where the work is coming from. A bar rather than a number because the
- *  comparison between departments is the whole point, and departments with
- *  nothing pending are still listed — an empty row is information. */
-function ByDepartment({ rows, onGo }) {
-  if (rows.length === 0) {
-    return (
-      <section>
-        <h2 className="section-title">By department</h2>
-        <p className="subtle text-sm" style={{ margin: 0 }}>
-          No revisions have been submitted yet.
-        </p>
-      </section>
-    );
-  }
-
-  const widest = Math.max(...rows.map((r) => r.total));
-
+/** What is moving: the last few proposals and how far each has got. Not
+ *  shown at all until there is one. */
+function RecentProposals({ rows, onGo }) {
+  if (!rows || rows.length === 0) return null;
   return (
     <section>
-      <h2 className="section-title">By department</h2>
-      <div className="col" style={{ gap: "0.7rem" }}>
+      <h2 className="section-title">Recent proposals</h2>
+      <div className="col" style={{ gap: "0.15rem" }}>
         {rows.map((row) => (
-          <button
-            key={row.department}
-            className="dept-row"
-            onClick={() => onGo("review")}
-            title={`${row.pending} pending, ${row.approved} approved, ${row.rejected} returned`}
-          >
-            <span className="dept-name">{row.department}</span>
-            <span className="dept-bar" aria-hidden="true">
-              {["pending", "approved", "rejected"].map((key) => row[key] > 0 && (
-                <span
-                  key={key}
-                  className={`dept-seg is-${key}`}
-                  style={{ width: `${(row[key] / widest) * 100}%` }}
-                />
-              ))}
+          <button key={row.id} className="decision-row" onClick={() => onGo("proposals")}>
+            <span className={`status-mark is-${statusTone(row.status)}`}>
+              {STATUS_LABEL[row.status] || row.status_label}
             </span>
-            <span className="dept-count">
-              {row.pending > 0
-                ? <><strong>{row.pending}</strong> pending</>
-                : <span className="subtle">{plural(row.total, "revision")}</span>}
+            <span className="decision-what">
+              <span className="doc-ref">{row.manual}</span>
+              <span className="subtle text-xs"> · from {row.office}</span>
             </span>
+            <span className="subtle text-xs decision-who">
+              {row.of > 0 ? `${row.concurred} of ${row.of} concurred` : ""}
+            </span>
+            <span className="subtle text-xs decision-when">{timeAgo(row.updated_at)}</span>
           </button>
         ))}
       </div>
@@ -403,65 +348,10 @@ function ByDepartment({ rows, onGo }) {
   );
 }
 
-/* ── 4. Recent decisions ────────────────────────────────────────────── */
-
-/** What has been decided lately, and what the assessment had said where the
- *  two differ.
- *
- *  Worded as a fact about the assessment, never as a verdict on the person:
- *  "assessment said reject", not "overruled". The reviewer has context the
- *  pipeline does not and disagreeing is a normal part of the job - a label
- *  that scores them would make this screen something to be defensive about,
- *  and the only reason to show it at all is that a run of differences is
- *  worth a second look at the model, not at the reviewer. */
-function Decisions({ rows, onOpenRevision }) {
-  return (
-    <section>
-      <h2 className="section-title">Recent decisions</h2>
-      {rows.length === 0 ? (
-        <p className="subtle text-sm" style={{ margin: 0 }}>
-          Nothing has been reviewed yet. Decisions will be listed here.
-        </p>
-      ) : (
-        <div className="col" style={{ gap: "0.15rem" }}>
-          {rows.map((row) => (
-            <button
-              key={row.revision_id}
-              className="decision-row"
-              onClick={() => onOpenRevision(row.revision_id, row.status)}
-            >
-              <span className={`status-mark is-${row.status === "rejected" ? "returned" : row.status}`}>
-                {row.status === "rejected" ? "Returned" : "Approved"}
-              </span>
-              <span className="decision-what">
-                <span className="doc-ref">{row.section}</span>
-                <span className="subtle text-xs"> · {row.manual}</span>
-              </span>
-              <span className="subtle text-xs decision-who">
-                {row.submitted_by}
-                {row.agreed === false && (
-                  <span
-                    className="badge badge-neutral"
-                    style={{ marginLeft: "0.4rem" }}
-                    title="What the pre-check had said when this was submitted. The reviewer's decision stands."
-                  >
-                    assessment said {VERDICT_WORDS[row.ai_verdict] || row.ai_verdict}
-                  </span>
-                )}
-              </span>
-              <span className="subtle text-xs decision-when">{timeAgo(row.at)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/* ── 5. Upcoming ────────────────────────────────────────────────────── */
+/* ── 4. Upcoming ────────────────────────────────────────────────────── */
 
 /** The same list the staff dashboard shows, except unfiltered: this is the
- *  desk the notices are posted from, so every department's are visible. */
+ *  desk the notices are posted from, so every office's are visible. */
 function Upcoming({ rows, total, onGo }) {
   return (
     <section>
@@ -487,7 +377,7 @@ function Upcoming({ rows, total, onGo }) {
               <div style={{ minWidth: 0 }}>
                 <div className="doc-name" style={{ fontSize: "0.95rem" }}>{row.title}</div>
                 <div className="subtle text-xs">
-                  {row.department ? `${row.department} only` : "everyone"}
+                  {row.office ? `${row.office} only` : "everyone"}
                 </div>
               </div>
             </div>
@@ -501,34 +391,24 @@ function Upcoming({ rows, total, onGo }) {
   );
 }
 
-/* ── 6. System state ────────────────────────────────────────────────── */
+/* ── 5. System state ────────────────────────────────────────────────── */
 
 /** What is in the system. Plain figures, because none of these change often
  *  enough for a chart to say anything a number does not. */
 function SystemState({ system, onGo }) {
-  const sources = system.assessment_sources;
   return (
     <section>
       <h2 className="section-title">System</h2>
       <div className="col" style={{ gap: "0.45rem" }}>
         <Figure value={system.manuals} label="manuals" onGo={() => onGo("manuals")}
                 note={`${system.sections} sections`} />
-        <Figure value={system.departments} label="departments" onGo={() => onGo("departments")}
-                note={system.empty_departments > 0
-                  ? `${system.empty_departments} with no manuals`
-                  : null} />
+        <Figure value={system.offices} label="offices" onGo={() => onGo("offices")} />
         <Figure value={system.staff} label="approved staff" onGo={() => onGo("users")}
                 note={`${plural(system.admins, "admin")}`} />
-        <Figure value={system.revisions_total} label="revisions all time"
-                onGo={() => onGo("review")} />
+        <Figure value={system.proposals_total} label="proposals all time"
+                onGo={() => onGo("proposals")} />
       </div>
 
-      {sources.none > 0 && (
-        <p className="subtle text-xs" style={{ marginTop: "0.9rem" }}>
-          {plural(sources.none, "revision")} predate the submitter's pre-check
-          and carry no stored assessment, so their review screens show less.
-        </p>
-      )}
       {system.banners_live > 0 && (
         <p className="subtle text-xs" style={{ marginTop: "0.5rem" }}>
           {plural(system.banners_live, "banner")} showing on the staff

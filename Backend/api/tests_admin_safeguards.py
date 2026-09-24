@@ -18,8 +18,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    Announcement, CustomUser, Department, Manual, ManualRevision,
-    ManualSection, SectionHistory,
+    Announcement, CustomUser, Manual, ManualSection,
+    SectionHistory,
 )
 from api.views import REAUTH_SALT, issue_reauth_token
 
@@ -29,13 +29,12 @@ PASSWORD = "correct-horse-battery"
 class ReauthenticationTests(TestCase):
 
     def setUp(self):
-        self.department = Department.objects.create(name="FAM")
         self.admin = CustomUser.objects.create_user(
             username="guard-admin", password=PASSWORD, role="admin",
             is_approved=True,
         )
         self.manual = Manual.objects.create(
-            title="FAM 6.02", department=self.department, uploaded_by=self.admin,
+            title="FAM 6.02", uploaded_by=self.admin,
         )
         self.section = ManualSection.objects.create(
             manual=self.manual, subtitle="3.0 POLICIES", content="Text.",
@@ -144,46 +143,13 @@ class ReauthenticationTests(TestCase):
 
     # -- every route that deletes, not just the tidy ones ----------
 
-    def test_both_section_delete_routes_are_guarded(self):
-        """The admin screen used to call review-delete first and fall back
-        to the admin route. Guarding one and not the other would have
-        secured the path nothing took."""
-        for route in ("delete", "review-delete"):
-            section = ManualSection.objects.create(
-                manual=self.manual, subtitle=f"9.0 {route}", content="x",
-                tag="POLICY",
-            )
-            response = self.delete(f"/api/sections/{section.id}/{route}/")
-            self.assertEqual(response.status_code, 403, route)
-            self.assertTrue(
-                ManualSection.objects.filter(pk=section.pk).exists(), route
-            )
-
-    def test_departments_can_no_longer_be_deleted_at_all(self):
-        """This used to assert 403 - the deletion was permitted, and
-        re-authentication was what stood in front of it. In v4 phase 1a
-        the action itself was withdrawn, because the cascade destroyed
-        every manual in the department, their sections and every revision
-        against them.
-
-        So the assertion is no longer "you must confirm your password"
-        but "there is nothing here to confirm". 409, not 403: the request
-        was understood and authorised, and refused on its merits.
-        `tests_organisation.py` covers the message and the surviving rows.
-        """
-        response = self.delete(f"/api/departments/{self.department.id}/delete/")
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data["reason"], "deletion_disabled")
-        self.assertTrue(Department.objects.filter(pk=self.department.pk).exists())
-
-    def test_confirming_a_password_does_not_unlock_it_either(self):
-        """The point of withdrawing it: a correct password is not a way
-        back to the cascade."""
-        response = self.delete(
-            f"/api/departments/{self.department.id}/delete/", self.token()
+    def test_the_section_delete_route_is_guarded(self):
+        section = ManualSection.objects.create(
+            manual=self.manual, subtitle="9.0 delete", content="x", tag="POLICY",
         )
-        self.assertEqual(response.status_code, 409)
-        self.assertTrue(Department.objects.filter(pk=self.department.pk).exists())
+        response = self.delete(f"/api/sections/{section.id}/delete/")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ManualSection.objects.filter(pk=section.pk).exists())
 
     def test_rejecting_a_registration_is_guarded(self):
         applicant = CustomUser.objects.create_user(
@@ -227,17 +193,16 @@ class SectionEditAttributionTests(TestCase):
     """Every version of a controlled document should say why it exists."""
 
     def setUp(self):
-        self.department = Department.objects.create(name="FAM")
         self.admin = CustomUser.objects.create_user(
             username="history-admin", password=PASSWORD, role="admin",
             is_approved=True,
         )
         self.staff = CustomUser.objects.create_user(
             username="history-staff", password="pw", role="staff",
-            is_approved=True, department=self.department,
+            is_approved=True,
         )
         self.manual = Manual.objects.create(
-            title="FAM 6.02", department=self.department, uploaded_by=self.admin,
+            title="FAM 6.02", uploaded_by=self.admin,
         )
         self.section = ManualSection.objects.create(
             manual=self.manual, subtitle="3.0 POLICIES",
@@ -259,7 +224,7 @@ class SectionEditAttributionTests(TestCase):
         self.assertEqual(entry.source, "direct")
         self.assertEqual(entry.edited_by, self.admin)
         self.assertIn("audit", entry.change_reason)
-        self.assertIsNone(entry.revision)
+        self.assertIsNone(entry.proposal)
 
     def test_a_direct_edit_without_a_reason_still_saves(self):
         """Recorded, not enforced. An admin fixing a typo mid-audit should
@@ -275,57 +240,18 @@ class SectionEditAttributionTests(TestCase):
         self.assertEqual(entry.source, "direct")
         self.assertEqual(entry.change_reason, "")
 
-    def test_an_approved_revision_carries_the_submitter_s_own_reason(self):
-        revision = ManualRevision.objects.create(
-            section=self.section, submitted_by=self.staff,
-            proposed_content="The Cashier shall release the cheque in a day.",
-            status="pending",
-            change_reason="Aligned with the 2026 management review.",
-        )
-        response = self.client.patch(
-            f"/api/admin/revisions/{revision.id}/review/",
-            {"status": "approved"}, format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-
-        entry = SectionHistory.objects.get(section=self.section)
-        self.assertEqual(entry.source, "revision")
-        self.assertEqual(entry.edited_by, self.staff)
-        self.assertIn("management review", entry.change_reason)
-        self.assertEqual(entry.revision_id, revision.id)
-
-    def test_the_history_survives_the_revision_being_deleted(self):
-        """The reason is copied, not referenced. A deleted revision must
-        not take the record that the document changed with it."""
-        revision = ManualRevision.objects.create(
-            section=self.section, submitted_by=self.staff,
-            proposed_content="Changed text.", status="pending",
-            change_reason="Aligned with the 2026 management review.",
-        )
-        self.client.patch(
-            f"/api/admin/revisions/{revision.id}/review/",
-            {"status": "approved"}, format="json",
-        )
-        revision.delete()
-
-        entry = SectionHistory.objects.get(section=self.section)
-        self.assertIsNone(entry.revision_id)
-        self.assertEqual(entry.source, "revision")
-        self.assertIn("management review", entry.change_reason)
-
     def test_a_direct_edit_without_the_password_is_refused_and_writes_nothing(self):
         """A direct edit changes a controlled document with nothing behind
         it, so it asks for the password again - and a refusal must leave
         no trace: not the text, not a history row."""
         before = self.section.content
-        for path in ("update", "review"):
-            response = self.client.patch(
-                f"/api/sections/{self.section.id}/{path}/",
-                {"content": "Changed without confirming.", "change_reason": "No password."},
-                format="json",
-            )
-            self.assertEqual(response.status_code, 403, path)
-            self.assertEqual(response.data["reason"], "reauth_required", path)
+        response = self.client.patch(
+            f"/api/sections/{self.section.id}/update/",
+            {"content": "Changed without confirming.", "change_reason": "No password."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data["reason"], "reauth_required")
         self.section.refresh_from_db()
         self.assertEqual(self.section.content, before)
         self.assertFalse(SectionHistory.objects.filter(section=self.section).exists())

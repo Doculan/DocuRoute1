@@ -123,10 +123,9 @@ class _ProposalMaker:
     """The smallest thing that can hold a DCR number."""
 
     def __init__(self):
-        from api.models import CustomUser, Department, Manual, Office
+        from api.models import CustomUser, Manual, Office
         self.office = Office.objects.create(name="Some Office", abbreviation="SO")
-        self.department = Department.objects.create(name="Dept")
-        self.manual = Manual.objects.create(title="Doc", department=self.department)
+        self.manual = Manual.objects.create(title="Doc")
         self.user = CustomUser.objects.create_user(
             username="maker", password="x", is_approved=True,
         )
@@ -136,7 +135,7 @@ class _ProposalMaker:
         # one. Each on its own document: an office holds one open proposal
         # per document, and the database refuses a second.
         from api.models import Manual
-        manual = Manual.objects.create(title="Doc", department=self.department)
+        manual = Manual.objects.create(title="Doc")
         return Proposal.objects.create(
             manual=manual, initiating_office=self.office,
             created_by=self.user, dcr_number=number,

@@ -1,22 +1,19 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import UserManagement from "./UserManagement";
-import Departments from "./Departments";
 import Manuals from "./Manuals";
 import Sections from "./Sections";
-import RevisionReview from "./RevisionReview";
 import SVMEvaluation from "./SVMEvaluation";
 import Announcements from "./Announcements";
 import AdminHome from "./AdminHome";
 import Offices from "./Offices";
 import Series from "./Series";
 import People from "./People";
-import Switchover from "./Switchover";
 import Proposals from "./Proposals";
 import Topbar from "../Topbar";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
-import departmentsIcon from '../../assets/nav/departments.svg';
+import officesIcon from '../../assets/nav/offices.svg';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
 import reviewIcon from '../../assets/nav/review.svg';
@@ -38,7 +35,6 @@ const NAV_GROUPS = [
     label: "Access",
     items: [
       { key: "users",       icon: usersIcon,       label: "Users",       badge: "users" },
-      { key: "departments", icon: departmentsIcon, label: "Departments" },
     ],
   },
   {
@@ -46,7 +42,6 @@ const NAV_GROUPS = [
     items: [
       { key: "manuals",  icon: manualsIcon,  label: "Manuals" },
       { key: "sections", icon: sectionsIcon, label: "Sections" },
-      { key: "review",   icon: reviewIcon,   label: "Revisions", badge: "revisions" },
       { key: "proposals", icon: reviewIcon,  label: "Proposals" },
     ],
   },
@@ -66,10 +61,9 @@ const NAV_GROUPS = [
     label: "Organisation",
     systemAdminOnly: true,
     items: [
-      { key: "offices", icon: departmentsIcon, label: "Offices" },
+      { key: "offices", icon: officesIcon, label: "Offices" },
       { key: "series",  icon: manualsIcon,     label: "Manual series" },
       { key: "people",  icon: usersIcon,       label: "People" },
-      { key: "switchover", icon: sectionsIcon, label: "Switchover" },
     ],
   },
   {
@@ -85,12 +79,9 @@ const CRUMBS = {
   offices: "Offices",
   series: "Manual series",
   people: "People and positions",
-  switchover: "Switchover",
   users: "Users",
-  departments: "Departments",
   manuals: "Manuals",
   sections: "Sections",
-  review: "Revisions",
   proposals: "Proposals",
   announcements: "Announcements",
   evaluation: "Model health",
@@ -104,10 +95,7 @@ export default function AdminDashboard({ onLogout }) {
   // nav. Sections keeps its own picker either way - it should behave the
   // same however you arrive - this only says which manual to open on.
   const [drillManual, setDrillManual] = useState(null);
-  // Set when Revisions is opened from a dashboard row rather than the nav,
-  // so the queue can scroll to the one that was clicked.
-  const [revisionToOpen, setRevisionToOpen] = useState(null);
-  const [pending, setPending] = useState({ users: 0, revisions: 0 });
+  const [pending, setPending] = useState({ users: 0 });
   const username = localStorage.getItem("username") || "Admin";
   const systemRole = localStorage.getItem("system_role") || "user";
   const navGroups = NAV_GROUPS.filter(
@@ -128,10 +116,7 @@ export default function AdminDashboard({ onLogout }) {
       try {
         const { data } = await axios.get("/api/admin/dashboard/", auth);
         if (cancelled) return;
-        setPending({
-          users: data.attention.pending_users,
-          revisions: data.attention.pending_revisions,
-        });
+        setPending({ users: data.attention.pending_users });
       } catch {
         // No badge is better than a wrong one.
       }
@@ -143,9 +128,8 @@ export default function AdminDashboard({ onLogout }) {
   const renderPage = () => {
     switch (activePage) {
       case "home":
-        return <AdminHome onGo={goTo} onOpenRevision={openRevision} />;
+        return <AdminHome onGo={goTo} />;
       case "users": return <UserManagement />;
-      case "departments": return <Departments />;
       case "manuals":
         return <Manuals initialSearch={manualQuery} onOpenSections={openSections} />;
       case "sections":
@@ -154,11 +138,9 @@ export default function AdminDashboard({ onLogout }) {
       case "offices": return <Offices />;
       case "series": return <Series />;
       case "people": return <People />;
-      case "switchover": return <Switchover />;
-      case "review": return <RevisionReview openRevision={revisionToOpen} />;
       case "proposals": return <Proposals />;
       case "evaluation": return <SVMEvaluation />;
-      default: return <AdminHome onGo={goTo} onOpenRevision={openRevision} />;
+      default: return <AdminHome onGo={goTo} />;
     }
   };
 
@@ -167,17 +149,7 @@ export default function AdminDashboard({ onLogout }) {
   // reason: arriving at Sections from here is not a drill-down.
   const goTo = (page) => {
     if (page !== "sections") setDrillManual(null);
-    setRevisionToOpen(null);
     setActivePage(page);
-  };
-
-  // Carries the status as well as the id: the queue opens on Pending, and
-  // a decided revision is by definition not in that list, so sending only
-  // an id would land on a tab that cannot show it.
-  const openRevision = (revisionId, status) => {
-    setDrillManual(null);
-    setRevisionToOpen({ id: revisionId, status: status || "pending" });
-    setActivePage("review");
   };
 
   // Global search hands the query to the one page that can answer it.
@@ -241,7 +213,6 @@ export default function AdminDashboard({ onLogout }) {
                       // so it opens on whatever the picker last had rather
                       // than on a manual chosen three clicks ago.
                       if (item.key !== "sections") setDrillManual(null);
-                      setRevisionToOpen(null);
                       setActivePage(item.key);
                     }}
                   >
@@ -273,10 +244,10 @@ export default function AdminDashboard({ onLogout }) {
           search={search}
           onSearchChange={setSearch}
           onSearchSubmit={runSearch}
-          searchPlaceholder="Search manuals by title, department or author"
-          pendingCount={pending.users + pending.revisions}
-          pendingTitle="items waiting for review"
-          onPendingClick={() => setActivePage(pending.revisions > 0 ? "review" : "users")}
+          searchPlaceholder="Search manuals by title, series or author"
+          pendingCount={pending.users}
+          pendingTitle="accounts waiting for approval"
+          onPendingClick={() => setActivePage("users")}
         />
 
         <main className="app-content">

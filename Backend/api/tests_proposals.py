@@ -11,10 +11,6 @@ it silently lets two offices edit the same section at once.
 **The check is per section.** Editing one box clears only that box, which
 is the whole reason a twenty-section document is workable at all.
 
-**Both switch states.** With the switch off the v3 single-section flow is
-still the real one and these endpoints refuse; with it on they work. A
-half-switched application is the failure mode this phase has to avoid.
-
 Every test that expects an error asserts the reason, not only the status.
 """
 
@@ -33,10 +29,9 @@ from rest_framework.test import APIClient
 
 from api import proposal_views
 from api.models import (
-    AccessMode, AuditEvent, CustomUser, Department, Manual, ManualSection,
-    ManualSeries, ManualSeriesOffice, Office, OfficeLink, Position,
-    PositionAssignment, Proposal, ProposalVersion, RevisionPreAssessment,
-    SectionChange,
+    AuditEvent, CustomUser, Manual, ManualSection, ManualSeries,
+    ManualSeriesOffice, Office, OfficeLink, Position, PositionAssignment,
+    Proposal, ProposalVersion, RevisionPreAssessment, SectionChange,
 )
 
 PASSWORD = "correct-horse-battery"
@@ -51,7 +46,6 @@ class ProposalFixture(TestCase):
         # ahead of it - which made every assignment here start
         # tomorrow, and every test that needed one fail.
         self.today = timezone.localdate()
-        self.department = Department.objects.create(name="CAS")
 
         self.president = Office.objects.create(
             name="Office of the President", abbreviation="OP",
@@ -85,7 +79,7 @@ class ProposalFixture(TestCase):
             )
 
         self.manual = Manual.objects.create(
-            title="FAM 6.02", department=self.department, series=self.series,
+            title="FAM 6.02", series=self.series,
         )
         self.s1 = ManualSection.objects.create(
             manual=self.manual, subtitle="1.0 OBJECTIVES", order=0,
@@ -106,7 +100,6 @@ class ProposalFixture(TestCase):
         self.other = self.a_person("other", self.budget, Position.ENCODER)
         self.reader = self.a_person("reader", self.registrar, Position.ENCODER)
 
-        AccessMode.objects.update_or_create(pk=1, defaults={'by_position': True})
 
         self.client = APIClient()
         self.client.force_authenticate(user=self.drafter)
@@ -121,9 +114,6 @@ class ProposalFixture(TestCase):
         )
         return person
 
-    def switch_off(self):
-        AccessMode.objects.filter(pk=1).update(by_position=False)
-
     def start(self, client=None, office=None):
         body = {'manual_id': self.manual.id}
         if office is not None:
@@ -135,35 +125,6 @@ class ProposalFixture(TestCase):
             f'/api/proposals/{proposal_id}/sections/{section.id}/',
             {'new_text': text}, format='json',
         )
-
-
-class SwitchStateTests(ProposalFixture):
-
-    def test_proposals_refuse_while_the_switch_is_off(self):
-        """The v3 flow is still the real one, and two ways to change a
-        document with nothing deciding between them is worse than one."""
-        self.switch_off()
-        response = self.start()
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data['reason'], 'switch_off')
-
-    def test_the_single_section_flow_still_works_with_the_switch_off(self):
-        """Nothing in phase 2 may break what people are using today."""
-        self.switch_off()
-        self.drafter.department = self.department
-        self.drafter.save(update_fields=['department'])
-
-        response = self.client.post(
-            f'/api/revisions/pre-assess/{self.s2.id}/',
-            {'proposed_content': 'The Cashier shall release the cheque in a day.',
-             'change_reason': 'Consolidated after the 2026 management review.'},
-            format='json',
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertIn('assessment_id', response.data)
-
-    def test_proposals_work_with_the_switch_on(self):
-        self.assertEqual(self.start().status_code, 201)
 
 
 class StartingTests(ProposalFixture):
@@ -272,7 +233,7 @@ class EditingTests(ProposalFixture):
 
     def test_a_section_from_another_document_is_refused(self):
         other_manual = Manual.objects.create(
-            title="FAM 6.03", department=self.department, series=self.series,
+            title="FAM 6.03", series=self.series,
         )
         stranger = ManualSection.objects.create(
             manual=other_manual, subtitle="1.0", content="x", tag="POLICY",

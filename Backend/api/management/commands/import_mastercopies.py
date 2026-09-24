@@ -30,28 +30,14 @@ from django.conf import settings
 
 from django.core.management.base import BaseCommand
 
-from api.models import CustomUser, Department, Manual, ManualSection
+from api.models import CustomUser, Manual, ManualSection
 from api.views import _split_into_sections
 from ml.ocr_engine import extract_text
 from ml.svm_model import predict_section
 
-# The filename prefix is the owning office: ASM_3.0.pdf -> ASM. Derived
-# rather than hard-coded per file, so adding a master copy needs no change
-# here, and reproducible on every machine - which a hand-made mapping in one
-# person's database is not.
-_PREFIX_RE = re.compile(r"^([A-Za-z]+)[_\s-]")
-
-DEPARTMENT_NAMES = {
-    "ASM": "ASM",
-    "FAM": "FAM",
-    "HRM": "HRM",
-    "SDM": "SDM",
-}
-
-def _department_for(filename: str) -> str:
-    match = _PREFIX_RE.match(filename)
-    prefix = (match.group(1).upper() if match else "")
-    return DEPARTMENT_NAMES.get(prefix, "Unassigned")
+# Documents arrive unassigned. Which series a document belongs to, and
+# which offices own, concur on or read it, is organisation data the system
+# admin enters on the organisation screens - never derived from a filename.
 
 def _digest(data: bytes) -> str:
     """MD5, and only for spotting an identical file.
@@ -143,7 +129,6 @@ class Command(BaseCommand):
 
         for path in pdfs:
             title = _title_for(path.name)
-            department_name = _department_for(path.name)
 
             file_bytes = path.read_bytes()
             digest = _digest(file_bytes)
@@ -185,14 +170,12 @@ class Command(BaseCommand):
                 # then disagree with its own preview.
                 seen_this_run[digest] = path.name
                 self.stdout.write(
-                    f"  would   {title:<34} -> {department_name}"
+                    f"  would   {title}"
                 )
                 continue
 
             if existing:
                 existing.delete()
-
-            department, _ = Department.objects.get_or_create(name=department_name)
 
             # Point at the file already on disk instead of saving a copy.
             # `Manual.file` has upload_to='mastercopies/', which is the very
@@ -203,7 +186,7 @@ class Command(BaseCommand):
             # then parsed as a different document. The bytes are already in
             # the right place; only the reference is missing.
             manual = Manual.objects.create(
-                title=title, department=department, uploaded_by=owner,
+                title=title, uploaded_by=owner,
             )
             manual.file.name = f"mastercopies/{path.name}"
             manual.save(update_fields=["file"])
@@ -241,7 +224,7 @@ class Command(BaseCommand):
             imported += 1
             seen_this_run[digest] = path.name
             self.stdout.write(
-                f"  ok      {title:<34} {department_name:<6} {count} sections"
+                f"  ok      {title:<34} {count} sections"
             )
 
         if duplicates:

@@ -19,10 +19,6 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("username")
-        parser.add_argument(
-            "--department", default=None,
-            help="optional: attach them to a department by name",
-        )
 
     def handle(self, *args, **options):
         try:
@@ -37,17 +33,9 @@ class Command(BaseCommand):
             return
 
         user.role = "admin"
+        user.system_role = CustomUser.SYSTEM_ADMIN
         user.is_approved = True
-
-        if options["department"]:
-            from api.models import Department
-            department, _ = Department.objects.get_or_create(
-                name=options["department"]
-            )
-            user.department = department
-
-        user.save(update_fields=["role", "is_approved", "department"])
+        user.save(update_fields=["role", "system_role", "is_approved"])
         self.stdout.write(self.style.SUCCESS(
-            f"{user.username} is now an approved admin"
-            + (f" in {user.department}" if user.department else "")
+            f"{user.username} is now an approved system admin"
         ))

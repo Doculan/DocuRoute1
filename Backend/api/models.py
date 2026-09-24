@@ -6,19 +6,6 @@ from django.db import models
 from django.db.models import Q
 from django.contrib.auth.models import AbstractUser
 
-class Department(models.Model):
-    """The v3 organisation: one flat list, no hierarchy.
-
-    Superseded by `Office`. Kept until nothing reads it (phase 1c), because
-    access scoping, three foreign keys and most of the admin screens still
-    depend on it. Do not add to it.
-    """
-    name = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.name
-
 
 # ─── ORGANISATION (v4) ───────────────────────────────────────
 #
@@ -28,10 +15,9 @@ class Department(models.Model):
 #
 # Nothing in this section is ever deleted. Offices are deactivated or
 # merged, people are deactivated, assignments are ended with a date.
-# Note in particular that no relationship below cascades *from* the
-# organisation: deleting a Department today destroys its manuals, their
-# sections and every revision against them, which is exactly what this
-# must not repeat.
+# No relationship below cascades *from* the organisation: v3's
+# Department once took its manuals, their sections and every revision
+# against them with it when deleted, which this must not repeat.
 
 
 class Office(models.Model):
@@ -102,51 +88,6 @@ class Office(models.Model):
                 )
         if self.merged_into_id and self.merged_into_id == self.pk:
             raise ValidationError({'merged_into': 'An office cannot be merged into itself.'})
-
-
-class AccessMode(models.Model):
-    """Whether access is scoped by department (v3) or by position (v4).
-
-    One row. A database row rather than a setting, because flipping it
-    changes who can see which documents - that should be done from a
-    screen, by a named person, at a recorded time, not by a redeploy
-    nobody can point at afterwards.
-
-    It exists because the organisation ships empty. Positions cannot be
-    assigned until offices have been entered, so the switch is an
-    operation the system admin performs when the data is ready, and the
-    system has to be able to say whether it is.
-
-    **Everything scoped reads this**, including `can_propose` - so
-    flipping it back restores v3 behaviour completely rather than mostly.
-    """
-
-    by_position = models.BooleanField(default=False)
-    switched_at = models.DateTimeField(null=True, blank=True)
-    switched_by = models.ForeignKey(
-        'CustomUser', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='switchovers',
-    )
-    # What the admin accepted at the time. Warnings can be passed;
-    # blockers cannot, so this records what was knowingly overlooked.
-    notes = models.TextField(blank=True)
-
-    class Meta:
-        verbose_name = 'access mode'
-
-    def __str__(self):
-        return 'by position' if self.by_position else 'by department'
-
-    @classmethod
-    def current(cls):
-        """The single row, created on first read.
-
-        `get_or_create` rather than a migration that inserts it: a fresh
-        clone and an existing database then behave the same, and the
-        default is the safe one either way.
-        """
-        mode, _ = cls.objects.get_or_create(pk=1)
-        return mode
 
 
 class Position(models.Model):
@@ -516,13 +457,6 @@ class CustomUser(AbstractUser):
     full_name = models.CharField(max_length=255, blank=True)
 
     is_approved = models.BooleanField(default=False)
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='members'
-    )
 
     def __str__(self):
         return self.username
@@ -530,17 +464,6 @@ class CustomUser(AbstractUser):
 
 class Manual(models.Model):
     title = models.CharField(max_length=255)
-    # PROTECT, not CASCADE. This used to destroy every manual in a
-    # department, their sections, and every revision proposed against
-    # them - controlled documents and their history - as a side effect of
-    # removing one organisation row. The API route that did it is
-    # disabled, but the Django admin and the shell reach the same code, so
-    # the guarantee belongs on the relationship rather than on one view.
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.PROTECT,
-        related_name='manuals'
-    )
     # `blank=True` to match `null=True`. Without it the database accepts a
     # manual with no uploader while `full_clean()` refuses one, so any code
     # that validates before saving fails on rows the ORM created happily -
@@ -600,7 +523,7 @@ class Manual(models.Model):
     )
 
     def __str__(self):
-        return f"{self.title} ({self.department.name})"
+        return self.title
 
     # ── Inheritance ──────────────────────────────────────────
     #
@@ -806,14 +729,12 @@ class SectionHistory(models.Model):
     it and on what authority, and the first two were the only ones here.
     """
 
-    # How this version came about. Deliberately not inferred from whether a
-    # revision happens to exist: a revision can be deleted, and the history
-    # has to stay true afterwards.
+    # How this version came about. Recorded rather than inferred from
+    # whether a request happens to exist, so the history stays true
+    # afterwards.
     SOURCE_CHOICES = [
-        ('revision', 'Approved revision'),
         ('proposal', 'Change request made effective'),
         ('direct', 'Direct edit by an admin'),
-        ('merge', 'Merged with another section'),
         ('extraction', 'Re-extracted from the master copy'),
         ('unknown', 'Recorded before edits were attributed'),
     ]
@@ -845,20 +766,10 @@ class SectionHistory(models.Model):
     change_reason = models.TextField(
         blank=True,
         help_text="Why this change was made. Carried over from the "
-                  "submitter's reason on an approved revision, typed by "
+                  "request's reason when it is made effective, typed by "
                   "the admin on a direct edit.",
     )
-    # Set when this version came from a revision, so the history can point
-    # back at the submission and its assessment. SET_NULL rather than
-    # CASCADE: deleting a revision must not delete the record that the
-    # document changed.
-    revision = models.ForeignKey(
-        'ManualRevision',
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='section_versions',
-    )
-    # The v4 equivalent: the change request this version came from.
+    # The change request this version came from.
     proposal = models.ForeignKey(
         'Proposal',
         on_delete=models.SET_NULL,
@@ -871,96 +782,6 @@ class SectionHistory(models.Model):
 
     def __str__(self):
         return f"{self.section.subtitle} — v{self.version}"
-
-
-class ManualRevision(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-    ]
-    section = models.ForeignKey(
-        ManualSection,
-        on_delete=models.CASCADE,
-        related_name='revisions'
-    )
-    submitted_by = models.ForeignKey(
-        CustomUser,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='revisions'
-    )
-    uploaded_file = models.FileField(upload_to='revisions/', blank=True, null=True)
-    proposed_content = models.TextField(blank=True)
-    merge_section_ids = models.JSONField(blank=True, null=True)  # List of section IDs to merge into this one
-    merge_type = models.CharField(max_length=20, blank=True)  # 'merge' for merge operations
-    diff_text = models.TextField(blank=True)
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='pending'
-    )
-    submitted_at = models.DateTimeField(auto_now_add=True)
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(
-        CustomUser,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='reviewed_revisions'
-    )
-    reviewer_notes = models.TextField(blank=True)
-
-    # Why the submitter is making this change. ISO 9001 clause 6.3 expects
-    # changes to be planned, so Layer 1 treats an empty reason as a hard fail.
-    change_reason = models.TextField(blank=True)
-
-    # Advisory output of the revision-assessment pipeline. Persisted so an
-    # admin's view of the assessment matches what the model actually said at
-    # submission time, rather than being recomputed on every page load.
-    ai_verdict = models.CharField(max_length=32, blank=True)
-    ai_issues = models.JSONField(default=list, blank=True)
-    ai_explanation = models.TextField(blank=True)
-    ai_trace = models.JSONField(default=dict, blank=True)
-
-    AI_SOURCE_CHOICES = [
-        # The submitter ran the check before submitting and this is what they
-        # read. The only way a new revision gets an assessment.
-        ('staff_precheck', 'Checked by the submitter before submitting'),
-        # Produced by a reviewer pressing an assess button, which is how it
-        # worked before the check moved to the staff side. Kept so old rows
-        # are not passed off as something the submitter saw.
-        ('admin_legacy', 'Assessed by the reviewer under the previous workflow'),
-        ('none', 'Not assessed'),
-    ]
-    ai_source = models.CharField(
-        max_length=20, choices=AI_SOURCE_CHOICES, default='none'
-    )
-
-    # The same findings addressed to the submitter. Stored rather than
-    # re-rendered so a reviewer can see what the submitter was actually told
-    # before choosing to submit anyway.
-    ai_explanation_staff = models.TextField(blank=True)
-    ai_confidence = models.FloatField(null=True, blank=True)
-    ai_change_type = models.CharField(max_length=40, blank=True)
-    ai_hard_fails = models.JSONField(default=list, blank=True)
-    ai_advisories = models.JSONField(default=list, blank=True)
-
-    # When the assessment was made, against which weights, and of exactly what.
-    # The reviewer needs all three: a long gap between check and submission is
-    # worth seeing, and the section may have moved since.
-    ai_assessed_at = models.DateTimeField(null=True, blank=True)
-    ai_model_fingerprint = models.CharField(max_length=64, blank=True)
-    ai_content_hash = models.CharField(max_length=64, blank=True)
-    ai_section_content_hash = models.CharField(max_length=64, blank=True)
-
-    # When the submitter last opened the reviewer's feedback. Drives the badge
-    # on My Revisions: feedback exists and is newer than the last time they
-    # looked. Null means they have never opened it.
-    feedback_seen_at = models.DateTimeField(null=True, blank=True)
-
-    def __str__(self):
-        return f"Revision by {self.submitted_by} on {self.section.subtitle}"
 
 
 class DemoRecord(models.Model):
@@ -1010,13 +831,8 @@ class DemoRecord(models.Model):
 # AI check, every concurring office agrees or sends it back, and full
 # agreement locks the content.
 #
-# `ManualRevision` above is the v3 shape: one section, one submitter, one
-# reviewer, one decision. It stays and keeps working while the access
-# switch is off. Nothing here migrates from it - the development data was
-# cleared, so there is nothing to carry across.
-#
-# **Until P4, a locked proposal does not change the manual.** Locking
-# freezes the text that was agreed; applying it is the custodian's act.
+# Locking freezes the text that was agreed; applying it to the document
+# is the custodian's act, when the change is made effective.
 
 
 class Proposal(models.Model):
@@ -1778,7 +1594,8 @@ class Announcement(models.Model):
     decision at the point of writing about which kind a message is - when
     the only real difference is whether it happens on a day.
 
-    A null department means everyone; otherwise only that department sees it.
+    A null office means everyone; otherwise only people holding a position
+    in that office see it.
     """
 
     title = models.CharField(max_length=200)
@@ -1787,24 +1604,10 @@ class Announcement(models.Model):
     # Undated items are the banner.
     date = models.DateField(null=True, blank=True)
     # PROTECT rather than SET_NULL, which would be actively wrong here:
-    # null does not mean "no department", it means **show this to
-    # everyone**. Clearing the field on a departmental notice would
-    # silently broadcast it to the whole university, which is worse than
-    # either keeping it or losing it.
-    department = models.ForeignKey(
-        Department, on_delete=models.PROTECT, null=True, blank=True,
-        related_name='announcements',
-        help_text="Leave empty to show this to every department.",
-    )
-
-    # v4. Read instead of `department` once access is scoped by position,
-    # so notices and access switch together rather than leaving the system
-    # scoping documents by office and announcements by department.
-    #
-    # Null means everyone, exactly as the department field does - and for
-    # the same reason it is PROTECT rather than SET_NULL, since clearing
-    # it would silently broadcast a targeted notice to the whole
-    # university.
+    # null does not mean "no office", it means **show this to everyone**.
+    # Clearing the field on a targeted notice would silently broadcast it
+    # to the whole university, which is worse than either keeping it or
+    # losing it.
     office = models.ForeignKey(
         'Office', on_delete=models.PROTECT, null=True, blank=True,
         related_name='announcements',
@@ -1879,17 +1682,17 @@ class RecentlyOpened(models.Model):
 
 
 class RevisionPreAssessment(models.Model):
-    """One assessment of content that has not been submitted yet.
+    """One AI check of a proposed section, made once and read thereafter.
 
-    The submitter presses "Check with AI", the result is written here, and the
-    submitter is handed only this row's id. At submit the server recomputes the
-    content hash and compares: matching means the reviewer will read exactly
-    what the submitter read, and that guarantee is the whole point of the
-    table. Nothing about the result is ever accepted from the client.
+    A proposal's section box runs the check; the result is written here and
+    the section change points at it (`SectionChange.assessment`). Everyone
+    who reads the proposal reads this stored result - it is never re-run
+    for display. Nothing about the result is ever accepted from the client.
 
-    Rows are working state, not a record - a submitter who checks and closes
-    the tab leaves one behind - so unconsumed rows are swept after
-    ``pre_assessment.RETENTION_DAYS``.
+    A row no section change points at any more - superseded by a later
+    check of edited text - is working state, and is swept after
+    ``pre_assessment.RETENTION_DAYS``. A row a change points at is part of
+    the request's record and is never swept.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -1930,11 +1733,6 @@ class RevisionPreAssessment(models.Model):
     # sections in hand, so nothing under `ml/` changes and Layer 2
     # receives exactly what it received before.
     retrieved_section_ids = models.JSONField(default=list, blank=True)
-
-    consumed_by = models.OneToOneField(
-        ManualRevision, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='pre_assessment',
-    )
 
     class Meta:
         indexes = [

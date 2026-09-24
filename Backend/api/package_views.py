@@ -34,7 +34,7 @@ from . import access, documents
 from .concurrence_views import _load, _record, can_see
 from .generation.common import position_title
 from .models import Attachment, AuditEvent, Position, Proposal, QmsDecision
-from .proposal_views import _held_position, _switch_off
+from .proposal_views import _held_position
 from .views import reauth_failure
 
 # Scans of a few signed pages come in well under this. Large enough for a
@@ -184,8 +184,6 @@ def package_payload(proposal, user):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def package(request, proposal_id):
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error
@@ -198,8 +196,6 @@ def package(request, proposal_id):
 @permission_classes([IsAuthenticated])
 def download(request, proposal_id, attachment_id):
     """One file, generated or scanned, current or superseded - the record."""
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error
@@ -339,8 +335,6 @@ def _complete_if_ready(proposal, version, user):
 @parser_classes([MultiPartParser, FormParser])
 def upload_scan(request, proposal_id):
     """The first signed copy of its kind. No password: see the module notes."""
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error
@@ -396,8 +390,6 @@ def upload_scan(request, proposal_id):
 @parser_classes([MultiPartParser, FormParser])
 def replace_scan(request, proposal_id, attachment_id):
     """A new file for a signed copy. The old one stays, superseded."""
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error

@@ -15,7 +15,7 @@ from pathlib import Path
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-from api.models import CustomUser, Department, Manual
+from api.models import CustomUser, Manual
 
 
 TEMP_MEDIA = tempfile.mkdtemp(prefix="docuroute-import-tests-")

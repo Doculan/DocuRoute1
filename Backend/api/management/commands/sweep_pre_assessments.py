@@ -1,15 +1,17 @@
-"""Delete pre-assessments nobody submitted.
+"""Delete AI checks no proposal section points at any more.
 
-The endpoint sweeps opportunistically whenever someone runs a check, which is
-enough while the system is in use and does nothing at all while it is idle.
-This command exists so the sweep can be run deliberately - from cron, or by
-hand before a backup - without waiting for a staff member to press a button.
+Editing a section box and checking again leaves the earlier check behind -
+working state, not a record. This command clears those after the retention
+window, from cron or by hand before a backup.
 
     py manage.py sweep_pre_assessments --dry-run
     py manage.py sweep_pre_assessments
 
-Consumed rows are never touched: those are attached to a revision and are part
-of its record.
+**A check a section change points at is never touched**: it is the stored
+result every reader of that proposal sees, and part of the request's record.
+This used to select by `consumed_by` - set only by the v3 single-section
+flow - so every proposal check looked unsubmitted, and a sweep would have
+deleted them all.
 """
 
 from django.core.management.base import BaseCommand
@@ -20,7 +22,7 @@ from api.models import RevisionPreAssessment
 
 
 class Command(BaseCommand):
-    help = "Delete unconsumed pre-assessments older than the retention window."
+    help = "Delete AI checks no proposal section points at, older than the retention window."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -35,22 +37,21 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         cutoff = timezone.now() - timezone.timedelta(days=options["days"])
         stale = RevisionPreAssessment.objects.filter(
-            consumed_by__isnull=True, assessed_at__lt=cutoff
+            section_change__isnull=True, assessed_at__lt=cutoff
         )
         count = stale.count()
         kept = RevisionPreAssessment.objects.filter(
-            consumed_by__isnull=False
+            section_change__isnull=False
         ).count()
 
         if options["dry_run"]:
             self.stdout.write(
-                f"would delete {count} unconsumed pre-assessment(s) older than "
-                f"{options['days']} days; {kept} consumed row(s) untouched"
+                f"would delete {count} superseded check(s) older than "
+                f"{options['days']} days; {kept} in use untouched"
             )
             return
 
         stale.delete()
         self.stdout.write(self.style.SUCCESS(
-            f"deleted {count} unconsumed pre-assessment(s); "
-            f"{kept} consumed row(s) untouched"
+            f"deleted {count} superseded check(s); {kept} in use untouched"
         ))

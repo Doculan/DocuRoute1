@@ -3,7 +3,6 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, B
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.conf import settings
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
@@ -12,18 +11,13 @@ from django.utils.dateparse import parse_date
 from django.db.models import Q
 from datetime import timedelta
 from .models import (
-    AccessMode, Announcement, AnnouncementDismissal, Concurrence, CustomUser,
-    Department, Manual, ManualSection, ManualRevision, Office, OfficeLink,
-    Position, PositionAssignment, Proposal, ProposalVersion, RecentlyOpened,
-    RevisionPreAssessment, SectionHistory,
+    Announcement, AnnouncementDismissal, Concurrence, CustomUser,
+    Manual, ManualSection, Office, OfficeLink,
+    Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
 )
 from ml.ocr_engine import extract_text
-from ml.revision_pipeline.change_reason import (
-    blocks_submission,
-    classify_reason,
-)
-from api import access, document_status, pre_assessment
-from ml.svm_model import predict, predict_section
+from api import access, document_status
+from ml.svm_model import predict_section
 import difflib
 import logging
 import re
@@ -39,69 +33,12 @@ class IsAdminRole(BasePermission):
         return request.user and request.user.is_authenticated and request.user.role == 'admin'
 
 
-# ─── WHO MAY REVIEW (transitional) ───────────────────────────
-#
-# TRANSITIONAL - REMOVE AT PHASE 1c.
-#
-# Spec section 5 moves the review screen from the admin to QMS staff.
-# Applied literally, that would have left nobody able to review anything:
-# QMS staff means holding a current IMR or Document Custodian position,
-# positions belong to offices, offices are entered by hand in 1b, and the
-# organisation ships empty. Every pending revision would have been
-# stranded, and the one account able to fix it is the system admin, who
-# by standing rule 7 should not also be deciding requests.
-#
-# So the system admin keeps review rights *until QMS positions can exist*.
-# `tests_transitional_review.py` fails when this is removed, so the
-# allowance cannot be forgotten - deleting it has to be a decision
-# somebody makes, not something that quietly survives into v4 proper.
-
-TRANSITIONAL_ADMIN_REVIEW = True
-
-
-def holds_current_qms_position(user):
-    """Does this person currently hold an IMR or Custodian position?
-
-    Current means started and not ended. Checked by date rather than by a
-    flag on the user, because the whole point of dated assignments is
-    that "who holds this now" is derived, never stored and left stale.
-    """
-    if not (user and user.is_authenticated):
-        return False
-
-    today = timezone.localdate()
-    return PositionAssignment.objects.filter(
-        user=user,
-        position__kind__in=Position.QMS_KINDS,
-        position__is_active=True,
-        starts_on__lte=today,
-    ).filter(
-        Q(ends_on__isnull=True) | Q(ends_on__gte=today)
-    ).exists()
-
-
-class IsQmsReviewer(BasePermission):
-    """May decide revisions: QMS staff, or - for now - the system admin.
-
-    The admin half is transitional; see the note above.
-    """
-
-    def has_permission(self, request, view):
-        user = request.user
-        if not (user and user.is_authenticated):
-            return False
-        if holds_current_qms_position(user):
-            return True
-        # TRANSITIONAL - REMOVE AT 1c, with TRANSITIONAL_ADMIN_REVIEW.
-        return TRANSITIONAL_ADMIN_REVIEW and getattr(user, 'role', None) == 'admin'
-
-
 # ─── RE-AUTHENTICATION ───────────────────────────────────────
 #
 # A JWT says who is holding the laptop, not who is sitting at it. For
-# actions that cannot be undone - deleting a department takes every manual
-# in it with it - that is the wrong question, so those endpoints ask for
-# the password again.
+# actions that cannot be undone - deleting a document, changing who must
+# agree - that is the wrong question, so those endpoints ask for the
+# password again.
 #
 # The password buys a short-lived signed token rather than travelling with
 # every delete: one confirmation can then cover a bulk operation without
@@ -590,26 +527,17 @@ def register(request):
     # v4. The process prints position titles and never names, but the
     # system admin approving a request has to know who is asking.
     full_name = (request.data.get('full_name') or '').strip()
-    department_id = request.data.get('department_id', None)
 
     if CustomUser.objects.filter(username=username).exists():
         return Response({'error': 'Username already taken'}, status=400)
 
-    user = CustomUser.objects.create_user(
+    CustomUser.objects.create_user(
         username=username,
         password=password,
         email=email,
         full_name=full_name,
         is_approved=False
     )
-
-    if department_id:
-        try:
-            dept = Department.objects.get(id=department_id)
-            user.department = dept
-            user.save()
-        except Department.DoesNotExist:
-            pass
 
     return Response({'message': 'Registration successful. Wait for admin approval.'}, status=201)
 
@@ -633,14 +561,9 @@ def login(request):
         'access': str(refresh.access_token),
         'refresh': str(refresh),
         'role': user.role,
-        # v4. Which portal, and which nav groups within it. The v3 `role`
-        # still drives every permission check until 1c; this is sent
-        # alongside so the organisation screens can be shown to the people
-        # who can actually use them.
+        # Which portal, and which nav groups within it.
         'system_role': user.system_role,
         'username': user.username,
-        'department': user.department.name if user.department else None,
-        'department_id': user.department.id if user.department else None,
     })
 
 
@@ -650,8 +573,10 @@ def login(request):
 @permission_classes([IsAdminRole])
 def pending_users(request):
     users = CustomUser.objects.filter(is_approved=False)
+    # The full name the person gave at sign-up: whoever approves has to know
+    # who is asking.
     data = [{'id': u.id, 'username': u.username, 'email': u.email,
-             'department': u.department.name if u.department else 'N/A'} for u in users]
+             'full_name': u.full_name} for u in users]
     return Response(data)
 
 
@@ -660,8 +585,7 @@ def pending_users(request):
 def approved_users(request):
     users = CustomUser.objects.filter(is_approved=True)
     data = [{'id': u.id, 'username': u.username, 'email': u.email,
-             'role': u.role,
-             'department': u.department.name if u.department else 'N/A'} for u in users]
+             'role': u.role, 'full_name': u.full_name} for u in users]
     return Response(data)
 
 
@@ -698,72 +622,12 @@ def reject_user(request, user_id):
     return Response({'message': 'User rejected and removed.'})
 
 
-# ─── DEPARTMENTS ─────────────────────────────────────────────
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_departments(request):
-    departments = Department.objects.all()
-    data = [{'id': d.id, 'name': d.name} for d in departments]
-    return Response(data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAdminRole])
-def create_department(request):
-    name = request.data.get('name')
-    if not name:
-        return Response({'error': 'Department name is required'}, status=400)
-    if Department.objects.filter(name=name).exists():
-        return Response({'error': 'Department already exists'}, status=400)
-    dept = Department.objects.create(name=name)
-    return Response({'id': dept.id, 'name': dept.name}, status=201)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsAdminRole])
-def delete_department(request, dept_id):
-    """Disabled in v4 phase 1a. Answers 409, deletes nothing.
-
-    `Manual.department` cascades, so this endpoint destroyed every manual
-    in the department, every section under those manuals and every
-    revision ever proposed against them - controlled documents and their
-    history, removed by one confirmed click.
-
-    That is against the standing rule that nothing in the organisation is
-    ever deleted, and `Office` deliberately does not repeat it: every
-    relationship into the new organisation is PROTECT, and offices are
-    deactivated or merged instead.
-
-    Kept as a 409 rather than deleted outright because the Departments
-    screen still calls it and will until Offices replaces that screen at
-    1c. A route that vanishes gives the browser a 404 and the admin no
-    idea why; this says what happened and what to do instead. **Remove
-    this function, its route and its test at 1c**, with the screen.
-    """
-    try:
-        dept = Department.objects.get(id=dept_id)
-    except Department.DoesNotExist:
-        return Response({'error': 'Department not found'}, status=404)
-
-    return Response({
-        'error': (
-            f'Departments can no longer be deleted. Deleting "{dept.name}" '
-            f'would also delete {dept.manuals.count()} manual(s), their '
-            f'sections and every revision proposed against them. '
-            f'Departments are being replaced by Offices, which are '
-            f'deactivated or merged instead of deleted.'
-        ),
-        'reason': 'deletion_disabled',
-    }, status=409)
-
-
 # ─── STAFF ENDPOINTS ─────────────────────────────────────────
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_list_manuals(request):
-    """Return manuals belonging to the logged-in staff member's department."""
+    """The documents linked to the offices where this person holds a position."""
     if not access.has_unit(request.user):
         return _no_unit_error()
     manuals = access.manuals_for(
@@ -772,11 +636,8 @@ def staff_list_manuals(request):
     data = [{
         'id': m.id,
         'title': m.title,
-        # v4: what this document *is* to the reader's offices, which is
-        # the question a list of manuals actually answers. The department
-        # is kept alongside until it is retired, so nothing that still
-        # reads it breaks mid-switchover.
-        'department': m.department.name if m.department else 'N/A',
+        # What this document *is* to the reader's offices, which is the
+        # question a list of manuals actually answers.
         'series': m.series.code if m.series_id else None,
         'series_title': m.series.title if m.series_id else None,
         'owner': str(m.effective_owner) if m.effective_owner else None,
@@ -790,101 +651,6 @@ def staff_list_manuals(request):
         'status': document_status.status_payload(m.current_status),
     } for m in manuals]
     return Response(data)
-
-
-def _has_unread_feedback(revision) -> bool:
-    """Feedback the submitter has not looked at since it was written."""
-    if not (revision.reviewed_at and (revision.reviewer_notes or '').strip()):
-        return False
-    return (revision.feedback_seen_at is None
-            or revision.feedback_seen_at < revision.reviewed_at)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def staff_my_revisions(request):
-    """Revisions this staff member submitted, or their whole office.
-
-    Scope and status are filters over one list rather than separate views, so
-    the columns stay comparable when the scope is widened - the point of
-    looking at the office is to compare it with your own.
-
-    Read-only, and the AI fields are the snapshot stored at submission. The
-    check is never re-run here: what the submitter read before submitting is
-    the record, and re-running it would produce a second, different verdict
-    for the same revision.
-    """
-    scope = (request.query_params.get('scope') or 'mine').strip().lower()
-    status_filter = (request.query_params.get('status') or 'all').strip().lower()
-
-    revisions = ManualRevision.objects.select_related(
-        'section', 'section__manual', 'submitted_by', 'reviewed_by'
-    )
-    if scope == 'office':
-        if not access.has_unit(request.user):
-            return _no_unit_error()
-        revisions = access.revisions_for(request.user, revisions)
-    else:
-        scope = 'mine'
-        revisions = revisions.filter(submitted_by=request.user)
-
-    # "Returned" is not a stored state - a revision sent back is rejected
-    # with notes, and that is what the submitter is asked to act on. Splitting
-    # it out here rather than adding a state keeps the review flow untouched.
-    if status_filter == 'returned':
-        revisions = revisions.filter(status='rejected').exclude(reviewer_notes='')
-    elif status_filter in ('pending', 'approved', 'rejected'):
-        revisions = revisions.filter(status=status_filter)
-
-    revisions = revisions.order_by('-submitted_at')
-
-    data = [{
-        'id': r.id,
-        'section_id': r.section.id if r.section else None,
-        'section': r.section.subtitle if r.section else 'N/A',
-        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
-        'manual_id': r.section.manual.id if r.section and r.section.manual else None,
-        'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
-        'is_mine': r.submitted_by_id == request.user.id,
-        'submitted_at': r.submitted_at,
-        'status': r.status,
-        'reviewer_notes': r.reviewer_notes,
-        'reviewed_by': r.reviewed_by.username if r.reviewed_by else None,
-        'reviewed_at': r.reviewed_at,
-        'has_unread_feedback': _has_unread_feedback(r),
-        'diff_preview': preview_diff(r.diff_text),
-        'diff_text': r.diff_text,
-        'change_reason': r.change_reason,
-        # The stored snapshot, exactly as the submitter saw it.
-        'ai_source': r.ai_source,
-        'ai_verdict': r.ai_verdict,
-        'ai_issues': r.ai_issues,
-        'ai_explanation_staff': r.ai_explanation_staff,
-        'ai_assessed_at': r.ai_assessed_at,
-    } for r in revisions]
-    return Response(data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def staff_mark_feedback_seen(request, revision_id):
-    """Record that the submitter has read this revision's feedback.
-
-    The one write this portal adds. Without it the badge on My Revisions
-    could only ever count, never clear, which would train people to ignore
-    it. Only the submitter can mark their own, and it sets a timestamp -
-    nothing about the revision or its assessment changes.
-    """
-    try:
-        revision = ManualRevision.objects.get(
-            id=revision_id, submitted_by=request.user
-        )
-    except ManualRevision.DoesNotExist:
-        return Response({'error': 'Revision not found'}, status=404)
-
-    revision.feedback_seen_at = timezone.now()
-    revision.save(update_fields=['feedback_seen_at'])
-    return Response({'feedback_seen_at': revision.feedback_seen_at})
 
 
 # How many places to remember. Long enough to cover a morning's work,
@@ -915,27 +681,6 @@ def _record_recently_opened(user, manual, section=None):
         RecentlyOpened.objects.filter(user=user).exclude(id__in=keep).delete()
     except Exception:
         logger.exception("could not record recently-opened for %s", user)
-
-
-def _superseded_by_proposals(what='This'):
-    """The v3 single-section flow, once proposals are the real one.
-
-    Refused rather than removed, like `delete_department`: a route that
-    vanishes gives an open browser tab a 404 and the person no idea why.
-    This says what replaced it and where to go.
-
-    Only while the access switch is on. With it off these are still the
-    only way to change a document, and they work exactly as they did.
-    """
-    return Response({
-        'error': (
-            f'{what} has been replaced by proposals. A change is now '
-            f'drafted for the whole document, with each changed section '
-            f'carrying its own check, and agreed by the offices that '
-            f'concur on it.'
-        ),
-        'reason': 'superseded_by_proposals',
-    }, status=409)
 
 
 def _refuse_if_held(sections, action='changed'):
@@ -980,59 +725,30 @@ def _text_would_change(request, section):
     )
 
 
-def _merging_is_deleting():
-    """Merging two sections deletes one of them.
-
-    Out of scope for P2, which changes existing sections only. It returns
-    with adding and deleting sections rather than being quietly dropped -
-    the operation is legitimate, it just has no home in a proposal yet.
-    """
-    return Response({
-        'error': (
-            'Merging sections is not available while a change is proposed '
-            'for a whole document. Merging deletes a section, and adding '
-            'or deleting sections is not part of a proposal yet.'
-        ),
-        'reason': 'merge_out_of_scope',
-    }, status=409)
-
-
 def _no_unit_error():
     """What someone sees when their account works and shows nothing.
 
-    Named after whichever unit the system is currently scoping by, because
-    telling a person they have no department when the system stopped
-    caring about departments sends them to ask the wrong question. It also
-    says who fixes it - the alternative is an error that reads like a
+    It says who fixes it - the alternative is an error that reads like a
     fault in the software.
     """
-    if access.by_position():
-        return Response({
-            'error': (
-                'Your account is approved but not yet assigned to an office. '
-                'The system administrator will assign you.'
-            ),
-            'reason': 'no_position',
-        }, status=403)
     return Response({
-        'error': 'You are not assigned to a department.',
-        'reason': 'no_department',
+        'error': (
+            'Your account is approved but not yet assigned to an office. '
+            'The system administrator will assign you.'
+        ),
+        'reason': 'no_position',
     }, status=403)
 
 
 def _relationship_for(user, manual):
     """What this document is to the person looking at it.
 
-    Owner, Concurring, Read only - or None before the switchover, when the
-    answer is simply "your department's", and saying anything else would
-    be inventing a relationship that does not exist yet.
+    Owner, Concurring, Read only - or None for someone whose offices have
+    no link to it (the system admin, QMS staff).
 
     An office can own a manual *and* concur on it, so more than one label
     can apply and both are shown.
     """
-    if not access.by_position():
-        return None
-
     mine = {office.pk for office in access.current_offices(user)}
     if not mine:
         return None
@@ -1051,37 +767,16 @@ def _relationship_for(user, manual):
 
 
 def _visible_announcements(user):
-    """Active announcements for everyone, plus the ones aimed at this
-    person's own unit.
-
-    Which unit that is follows the same switch as document access, so
-    notices and access change together. Leaving announcements on
-    departments after the switch would mean the system scoped documents by
-    office and notices by department - two answers to "where do you work"
-    living in one application.
-
-    An untargeted announcement is for everyone either way.
-    """
-    if access.by_position():
-        offices = access.current_offices(user) if (
-            user and user.is_authenticated
-        ) else []
-        return Announcement.objects.filter(active=True).filter(
-            # Untargeted means untargeted *in this mode*. A notice still
-            # carrying only a department has targeting the system can no
-            # longer express - and the safe reading of that is "nobody",
-            # not "everybody". Treating it as untargeted would take a
-            # notice meant for one department and broadcast it to the
-            # whole university, which is the worse of the two mistakes by
-            # a long way. The switchover screen lists these so they can be
-            # re-aimed at an office.
-            Q(office__isnull=True, department__isnull=True)
-            | Q(office__in=offices)
-        ).select_related('office', 'department')
-
+    """Active announcements for everyone, plus the ones aimed at an office
+    where this person holds a position - the same offices that decide which
+    documents they reach, so notices and access never disagree about where
+    someone works."""
+    offices = access.current_offices(user) if (
+        user and user.is_authenticated
+    ) else []
     return Announcement.objects.filter(active=True).filter(
-        Q(department__isnull=True) | Q(department=getattr(user, 'department', None))
-    ).select_related('department', 'office')
+        Q(office__isnull=True) | Q(office__in=offices)
+    ).select_related('office')
 
 
 def _announcement_payload(announcement):
@@ -1092,14 +787,11 @@ def _announcement_payload(announcement):
     and the staff dashboard can never disagree about which a row is.
     """
     audience = CustomUser.objects.filter(role='staff', is_approved=True)
-    if access.by_position():
-        if announcement.office_id:
-            audience = audience.filter(
-                position_assignments__position__office_id=announcement.office_id,
-                position_assignments__ends_on__isnull=True,
-            ).distinct()
-    elif announcement.department_id:
-        audience = audience.filter(department_id=announcement.department_id)
+    if announcement.office_id:
+        audience = audience.filter(
+            position_assignments__position__office_id=announcement.office_id,
+            position_assignments__ends_on__isnull=True,
+        ).distinct()
 
     return {
         'id': announcement.id,
@@ -1107,13 +799,8 @@ def _announcement_payload(announcement):
         'body': announcement.body,
         'date': announcement.date,
         'shows_as': 'upcoming' if announcement.date else 'banner',
-        'department_id': announcement.department_id,
-        'department': announcement.department.name if announcement.department else None,
         'office_id': announcement.office_id,
         'office': str(announcement.office) if announcement.office_id else None,
-        # Which of the two fields is actually being read right now, so the
-        # admin screen does not have to work it out from the flag.
-        'targets_by': 'office' if access.by_position() else 'department',
         'active': announcement.active,
         'created_by': announcement.created_by.username if announcement.created_by else None,
         'created_at': announcement.created_at,
@@ -1169,20 +856,6 @@ def _clean_announcement_fields(data, partial=False):
                     status=400,
                 )
 
-    if 'department_id' in data or not partial:
-        raw = data.get('department_id')
-        if raw in (None, '', 'null', 'all'):
-            fields['department'] = None
-        else:
-            try:
-                fields['department'] = Department.objects.get(id=raw)
-            except (Department.DoesNotExist, ValueError, TypeError):
-                return None, Response(
-                    {'error': 'That department does not exist.',
-                     'field': 'department_id'},
-                    status=400,
-                )
-
     if 'active' in data:
         value = data.get('active')
         fields['active'] = (value if isinstance(value, bool)
@@ -1201,7 +874,7 @@ def admin_announcements(request):
     """
     if request.method == 'GET':
         rows = Announcement.objects.select_related(
-            'department', 'created_by'
+            'office', 'created_by'
         ).order_by('-active', 'date', '-created_at')
         return Response([_announcement_payload(a) for a in rows])
 
@@ -1226,7 +899,7 @@ def admin_announcement_detail(request, announcement_id):
     """
     try:
         announcement = Announcement.objects.select_related(
-            'department', 'created_by'
+            'office', 'created_by'
         ).get(id=announcement_id)
     except Announcement.DoesNotExist:
         return Response({'error': 'Announcement not found'}, status=404)
@@ -1267,20 +940,10 @@ ACTIVITY_WINDOW_DAYS = 30
 def _activity_series(window_start, today):
     """Work per day, oldest first.
 
-    Decisions are counted on the day they were *made*, not the day the
-    submission arrived: the question this answers is how much reviewing
-    is happening, and a decision taken today about a month-old submission
-    is today's work.
-
-    **Reads both flows.** Before the switch the numbers are single-section
-    revisions; afterwards they are proposals. Reading only one would make
-    the chart go blank at the moment access changed, which would look
-    like the system stopped being used.
-
-    The two are counted into the same three series rather than shown
-    apart. A reader of this chart is asking how much work is moving, and
-    which internal shape a change had is not that question - `mode` says
-    which is being counted for anyone who needs it.
+    Counted on the day each thing happened: a proposal submitted (once per
+    version, so a redraft sent again counts again - it was), agreed (locked:
+    every concurring office concurred), or returned by an office. The
+    question this answers is how much work is moving, day by day.
     """
     submitted = {}
     approved, rejected = {}, {}
@@ -1289,30 +952,16 @@ def _activity_series(window_start, today):
         day = timezone.localtime(value).date()
         bucket[day] = bucket.get(day, 0) + 1
 
-    for value in ManualRevision.objects.filter(
-        submitted_at__date__gte=window_start
-    ).values_list('submitted_at', flat=True):
-        add(submitted, value)
-
-    for value, outcome in ManualRevision.objects.filter(
-        reviewed_at__isnull=False, reviewed_at__date__gte=window_start
-    ).values_list('reviewed_at', 'status'):
-        add(approved if outcome == 'approved' else rejected, value)
-
-    # A proposal is submitted once per version, so a redraft counts as
-    # another submission - which is true: it was drafted and sent again.
     for value in ProposalVersion.objects.filter(
         submitted_at__isnull=False, submitted_at__date__gte=window_start,
     ).values_list('submitted_at', flat=True):
         add(submitted, value)
 
-    # Locked is the proposal equivalent of approved: everyone agreed.
     for value in Proposal.objects.filter(
         locked_at__isnull=False, locked_at__date__gte=window_start,
     ).values_list('locked_at', flat=True):
         add(approved, value)
 
-    # A return is the equivalent of sending it back.
     for value in Concurrence.objects.filter(
         decision='return', recorded_at__date__gte=window_start,
     ).values_list('recorded_at', flat=True):
@@ -1341,68 +990,36 @@ def admin_dashboard(request):
 
     Same reasoning as the staff dashboard: the widgets all read the same
     handful of tables, and the landing page is the worst screen to make
-    slow. It also replaces the two separate count requests the shell was
-    firing on every tab change, so the nav badges and the dashboard can no
-    longer disagree with each other.
-
-    Reads stored assessment fields only. Nothing here re-runs an assessment
-    - a dashboard that quietly reassessed six revisions on every load would
-    be both slow and dishonest, since the figure shown would not be the one
-    the reviewer acted on.
+    slow. It also replaces the separate count requests the shell once fired
+    on every tab change, so the nav badges and the dashboard cannot
+    disagree with each other.
     """
     today = timezone.localdate()
     window_start = today - timedelta(days=ACTIVITY_WINDOW_DAYS - 1)
-
-    pending_revisions = ManualRevision.objects.filter(
-        status='pending'
-    ).select_related('section', 'section__manual', 'submitted_by')
 
     # -- 1. needs attention --------------------------------------
     # Only the rows that are not zero reach the screen, but the endpoint
     # reports all of them: "nothing is waiting" is a real answer and the
     # client should not have to infer it from a missing key.
-    oldest = pending_revisions.order_by('submitted_at').first()
-    stale = sum(1 for r in pending_revisions if _section_moved_since(r))
     attention = {
         'pending_users': CustomUser.objects.filter(
             is_approved=False, role='staff'
         ).count(),
-        'pending_revisions': pending_revisions.count(),
-        # A revision whose section was edited after the assessment was made:
-        # the advice on the review screen is about text that has moved, and
-        # the reviewer needs to know before acting on it.
-        'stale_assessments': stale,
-        'oldest_pending_days': (
-            (today - timezone.localtime(oldest.submitted_at).date()).days
-            if oldest else None
-        ),
         'untagged_sections': ManualSection.objects.filter(
             Q(tag='') | Q(tag='UNTAGGED')
         ).count(),
-    }
-
-    # Proposals, once they are the real flow. Reported alongside rather
-    # than instead of the revision counts: during the changeover both can
-    # be non-zero, and a dashboard that hid one would be wrong for
-    # exactly the period somebody was watching it most closely.
-    proposals_open = Proposal.objects.filter(
-        status__in=Proposal.OPEN_STATUSES
-    )
-    attention.update({
-        'proposals_drafting': proposals_open.filter(
+        'proposals_drafting': Proposal.objects.filter(
             status=Proposal.DRAFT
         ).count(),
-        'proposals_in_concurrence': proposals_open.filter(
+        'proposals_in_concurrence': Proposal.objects.filter(
             status=Proposal.CONCURRENCE
         ).count(),
-        # Agreed and waiting for the paperwork. Every frozen status, not
-        # just `LOCKED`: once 3b generates the documents a new lock rests
-        # at `AWAITING_SIGNATURE`, and a counter reading one status would
-        # quietly fall to zero while the proposals piled up.
+        # Agreed and on their way: every frozen status, not just `LOCKED`,
+        # or the counter would read zero while the paperwork piled up.
         'proposals_locked': Proposal.objects.filter(
             status__in=Proposal.FROZEN_STATUSES
         ).count(),
-    })
+    }
 
     # -- 2. activity over time -----------------------------------
     days, active_days = _activity_series(window_start, today)
@@ -1426,96 +1043,36 @@ def admin_dashboard(request):
         },
     }
 
-    # -- 3. revisions by department ------------------------------
-    # Grouped through the section's manual, which is where a revision's
-    # department actually comes from - the submitter's own department can
-    # differ after a transfer, and the document is the thing being changed.
-    by_department = {}
-    for name, outcome in ManualRevision.objects.values_list(
-        'section__manual__department__name', 'status'
-    ):
-        row = by_department.setdefault(
-            name or 'Unassigned',
-            {'department': name or 'Unassigned',
-             'pending': 0, 'approved': 0, 'rejected': 0, 'total': 0},
-        )
-        if outcome in row:
-            row[outcome] += 1
-        row['total'] += 1
-    departments = sorted(
-        by_department.values(),
-        key=lambda r: (-r['pending'], -r['total'], r['department']),
-    )
-
-    # -- 4. recent decisions -------------------------------------
-    decisions = [{
-        'revision_id': r.id,
-        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
-        'section': r.section.subtitle if r.section else 'N/A',
-        'status': r.status,
-        'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
-        'reviewed_by': r.reviewed_by.username if r.reviewed_by else None,
-        'at': r.reviewed_at,
-        # What the pipeline had said, so a pattern of overruling it is
-        # visible. Stored, never recomputed.
-        'ai_verdict': r.ai_verdict or None,
-        'agreed': (
-            None if not r.ai_verdict else
-            (r.status == 'approved') == (r.ai_verdict == 'approve')
-        ),
-    } for r in ManualRevision.objects.filter(reviewed_at__isnull=False)
-        .select_related('section', 'section__manual', 'submitted_by', 'reviewed_by')
-        .order_by('-reviewed_at')[:6]]
-
-    # -- 5. upcoming ---------------------------------------------
-    # The admin sees every department's notices, not only their own: this is
-    # the posting desk, and the point is to see what has been scheduled.
+    # -- 3. upcoming ---------------------------------------------
+    # The admin sees every office's notices, not only one: this is the
+    # posting desk, and the point is to see what has been scheduled.
     scheduled = Announcement.objects.filter(
         active=True, date__gte=today
-    ).select_related('department').order_by('date')
+    ).select_related('office').order_by('date')
     upcoming = [{
         'id': a.id,
         'title': a.title,
         'date': a.date,
         'is_today': a.date == today,
-        'department': a.department.name if a.department else None,
+        'office': a.office.name if a.office_id else None,
     } for a in scheduled[:5]]
 
-    # -- 6. system state -----------------------------------------
-    # How the assessments on file were produced. "none" is the legacy
-    # fallback and a count above zero means old revisions predate the
-    # pre-check, which explains why their review screens look different.
-    sources = {'staff_precheck': 0, 'admin_legacy': 0, 'none': 0}
-    for source in ManualRevision.objects.values_list('ai_source', flat=True):
-        key = source or 'none'
-        if key in sources:
-            sources[key] += 1
-
+    # -- 4. system state -----------------------------------------
     system = {
         'manuals': Manual.objects.count(),
         'sections': ManualSection.objects.count(),
-        'departments': Department.objects.count(),
+        'offices': Office.objects.filter(is_active=True).count(),
         'staff': CustomUser.objects.filter(role='staff', is_approved=True).count(),
         'admins': CustomUser.objects.filter(role='admin').count(),
-        'empty_departments': Department.objects.filter(manuals__isnull=True).count(),
-        'revisions_total': ManualRevision.objects.count(),
-        'assessment_sources': sources,
         'banners_live': Announcement.objects.filter(
             active=True, date__isnull=True
         ).count(),
+        'proposals_total': Proposal.objects.count(),
     }
-
-    # Which flow the figures above describe. The chart counts both, but
-    # a reader deserves to know which one the system is actually using.
-    activity['mode'] = 'proposals' if access.by_position() else 'revisions'
-
-    system['proposals_total'] = Proposal.objects.count()
 
     return Response({
         'attention': attention,
         'activity': activity,
-        'departments': departments,
-        'decisions': decisions,
         'proposals': _recent_proposals(),
         'upcoming': upcoming,
         'upcoming_total': scheduled.count(),
@@ -1524,11 +1081,7 @@ def admin_dashboard(request):
 
 
 def _recent_proposals():
-    """The last few proposals and where each has got to.
-
-    The revision list answers "what was decided"; this answers "what is
-    moving". Both are shown while both flows can carry work.
-    """
+    """The last few proposals and where each has got to."""
     rows = []
     for proposal in Proposal.objects.select_related(
         'manual', 'initiating_office'
@@ -1562,31 +1115,7 @@ def staff_dashboard(request):
     page the slowest screen in the portal for no benefit.
     """
     user = request.user
-    department = getattr(user, 'department', None)
     today = timezone.localdate()
-
-    mine = ManualRevision.objects.filter(submitted_by=user).select_related(
-        'section', 'section__manual', 'reviewed_by'
-    )
-
-    # -- needs your attention ------------------------------------
-    returned = [r for r in mine if r.status == 'rejected'
-                and (r.reviewer_notes or '').strip()]
-    attention = {
-        'awaiting_review': mine.filter(status='pending').count(),
-        'new_feedback': sum(1 for r in mine if _has_unread_feedback(r)),
-        'returned': len(returned),
-    }
-
-    # -- recent activity: what happened to your submissions ------
-    activity = [{
-        'revision_id': r.id,
-        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
-        'section': r.section.subtitle if r.section else 'N/A',
-        'status': r.status,
-        'returned': bool(r.status == 'rejected' and (r.reviewer_notes or '').strip()),
-        'at': r.reviewed_at,
-    } for r in mine.exclude(reviewed_at=None).order_by('-reviewed_at')[:5]]
 
     # -- recently opened -----------------------------------------
     recent = [{
@@ -1617,39 +1146,28 @@ def staff_dashboard(request):
         'is_today': a.date == today,
     } for a in visible.filter(date__gte=today).order_by('date')[:5]]
 
-    # Which flow this portal is running, so the shell can name the tab
-    # "My Revisions" or "My Proposals" without a second request - and how
-    # much is waiting on this person's offices, for the badge.
-    by_position = access.by_position()
+    # -- proposals: how much is waiting on this person's offices ---
+    from .concurrence_views import _offices_yet_to_decide
+    my_offices = access.current_offices(user)
+    my_office_ids = [o.pk for o in my_offices]
     awaiting = 0
-    if by_position:
-        from .concurrence_views import _offices_yet_to_decide
-        # Not `mine` - that name already holds this person's revisions a
-        # few lines above, and rebinding it made the dashboard count a
-        # list instead of a queryset.
-        my_office_ids = [o.pk for o in access.current_offices(user)]
-        if my_office_ids:
-            for proposal in Proposal.objects.filter(
-                status=Proposal.CONCURRENCE,
-                participants__office_id__in=my_office_ids,
-                participants__role='concurring',
-            ).distinct():
-                undecided = _offices_yet_to_decide(
-                    proposal, proposal.current_version()
-                )
-                if any(p.office_id in my_office_ids for p in undecided):
-                    awaiting += 1
+    if my_office_ids:
+        for proposal in Proposal.objects.filter(
+            status=Proposal.CONCURRENCE,
+            participants__office_id__in=my_office_ids,
+            participants__role='concurring',
+        ).distinct():
+            undecided = _offices_yet_to_decide(
+                proposal, proposal.current_version()
+            )
+            if any(p.office_id in my_office_ids for p in undecided):
+                awaiting += 1
 
     return Response({
-        'access_by_position': by_position,
         'proposals_awaiting': awaiting,
-        'proposals_mine': (
-            Proposal.objects.filter(
-                initiating_office__in=access.current_offices(user)
-            ).count() if by_position else 0
-        ),
-        'attention': attention,
-        'activity': activity,
+        'proposals_mine': Proposal.objects.filter(
+            initiating_office__in=my_offices
+        ).count(),
         'recently_opened': recent,
         'announcement': None if banner is None else {
             'id': banner.id, 'title': banner.title, 'body': banner.body,
@@ -1659,8 +1177,6 @@ def staff_dashboard(request):
         'stats': {
             'manuals_total': Manual.objects.count(),
             'manuals_mine': access.manuals_for(user, Manual.objects.all()).count(),
-            'revisions_mine': mine.count(),
-            'department': department.name if department else None,
         },
     })
 
@@ -1741,40 +1257,34 @@ def list_manuals(request):
 
     # Apply search filter with searchBy parameter
     search_query = request.query_params.get('search')
-    search_by = request.query_params.get('searchBy', 'all')  # 'all', 'title', 'department', 'author'
-    
+    search_by = request.query_params.get('searchBy', 'all')  # 'all', 'title', 'series', 'author'
+
     if search_query:
         if search_by == 'all':
             manuals = manuals.filter(
-                Q(title__icontains=search_query) | 
-                Q(department__name__icontains=search_query) |
+                Q(title__icontains=search_query) |
+                Q(series__code__icontains=search_query) |
+                Q(series__title__icontains=search_query) |
                 Q(uploaded_by__username__icontains=search_query)
             )
         elif search_by == 'title':
             manuals = manuals.filter(title__icontains=search_query)
-        elif search_by == 'department':
-            manuals = manuals.filter(department__name__icontains=search_query)
+        elif search_by == 'series':
+            manuals = manuals.filter(
+                Q(series__code__icontains=search_query) |
+                Q(series__title__icontains=search_query)
+            )
         elif search_by == 'author':
             manuals = manuals.filter(uploaded_by__username__icontains=search_query)
 
-    # Apply department filter
-    dept_filter = request.query_params.get('department')
-    if dept_filter:
-        manuals = manuals.filter(department_id=dept_filter)
+    series_filter = request.query_params.get('series')
+    if series_filter:
+        manuals = manuals.filter(series_id=series_filter)
 
     # Apply author filter
     author_filter = request.query_params.get('author')
     if author_filter:
         manuals = manuals.filter(uploaded_by__username__icontains=author_filter)
-
-    # Apply version filter
-    version_filter = request.query_params.get('version')
-    if version_filter:
-        try:
-            version = int(version_filter)
-            manuals = manuals.filter(version=version)
-        except ValueError:
-            pass
 
     # Apply section count filter (minimum sections)
     min_sections = request.query_params.get('minSections')
@@ -1796,16 +1306,13 @@ def list_manuals(request):
     data = [{
         'id': m.id,
         'title': m.title,
-        # v4: what this document *is* to the reader's offices, which is
-        # the question a list of manuals actually answers. The department
-        # is kept alongside until it is retired, so nothing that still
-        # reads it breaks mid-switchover.
-        'department': m.department.name if m.department else 'N/A',
+        # What this document *is* to the reader's offices, which is the
+        # question a list of manuals actually answers.
         'series': m.series.code if m.series_id else None,
         'series_title': m.series.title if m.series_id else None,
         'owner': str(m.effective_owner) if m.effective_owner else None,
         'relationship': _relationship_for(request.user, m),
-        'department_id': m.department.id if m.department else None,
+        'series_id': m.series_id,
         'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
         'uploaded_at': m.uploaded_at,
         'section_count': m.sections.count(),
@@ -1817,62 +1324,23 @@ def list_manuals(request):
     return Response(data)
 
 
-@api_view(['PATCH'])
-@permission_classes([IsAdminRole])
-def set_manual_version(request, manual_id):
-    try:
-        manual = Manual.objects.get(id=manual_id)
-    except Manual.DoesNotExist:
-        return Response({'error': 'Manual not found'}, status=404)
-
-    new_version = request.data.get('version')
-    if new_version is None:
-        return Response({'error': 'Version is required.'}, status=400)
-
-    try:
-        new_version_int = int(new_version)
-    except (TypeError, ValueError):
-        return Response({'error': 'Version must be an integer.'}, status=400)
-
-    if new_version_int <= 0:
-        return Response({'error': 'Version must be positive.'}, status=400)
-
-    if new_version_int == manual.version:
-        return Response({'message': 'Version unchanged.'}, status=200)
-
-    manual.version = new_version_int
-    manual.revision = 0
-    manual.save()
-
-    return Response({
-        'id': manual.id,
-        'version': manual.version,
-        'revision': manual.revision,
-        'display_status': f"v{manual.version} rev{manual.revision}",
-    }, status=200)
-
-
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 def upload_manual(request):
     title = request.data.get('title')
-    department_id = request.data.get('department_id')
     file = request.FILES.get('file')
 
-    if not all([title, department_id, file]):
-        return Response({'error': 'Title, department, and file are required'}, status=400)
-
-    try:
-        department = Department.objects.get(id=department_id)
-    except Department.DoesNotExist:
-        return Response({'error': 'Department not found'}, status=404)
+    # No office or series here: a new document starts unassigned, and the
+    # system admin links it to its series or offices on the organisation
+    # screens.
+    if not all([title, file]):
+        return Response({'error': 'Title and file are required'}, status=400)
 
     file_bytes = file.read()
     file.seek(0)
 
     manual = Manual.objects.create(
         title=title,
-        department=department,
         uploaded_by=request.user,
         file=file
     )
@@ -1917,7 +1385,6 @@ def upload_manual(request):
     return Response({
         'id': manual.id,
         'title': manual.title,
-        'department': department.name,
         'sections_created': len(sections_created),
         'message': f'Manual uploaded with {len(sections_created)} auto-detected sections.'
     }, status=201)
@@ -1928,23 +1395,19 @@ def upload_manual(request):
 def preview_manual_sections(request):
     """Upload a file and return computed sectioning without saving sections."""
     title = request.data.get('title')
-    department_id = request.data.get('department_id')
     file = request.FILES.get('file')
 
-    if not all([title, department_id, file]):
-        return Response({'error': 'Title, department, and file are required'}, status=400)
-
-    try:
-        department = Department.objects.get(id=department_id)
-    except Department.DoesNotExist:
-        return Response({'error': 'Department not found'}, status=404)
+    # No office or series here: a new document starts unassigned, and the
+    # system admin links it to its series or offices on the organisation
+    # screens.
+    if not all([title, file]):
+        return Response({'error': 'Title and file are required'}, status=400)
 
     file_bytes = file.read()
     file.seek(0)
 
     manual = Manual.objects.create(
         title=title,
-        department=department,
         uploaded_by=request.user,
         file=file
     )
@@ -2030,7 +1493,6 @@ def preview_manual_sections(request):
     return Response({
         'manual_id': manual.id,
         'title': manual.title,
-        'department': department.name,
         'file_url': file_url,
         'file_name': file_name,
         'sections_preview': preview,
@@ -2196,86 +1658,6 @@ def list_sections(request, manual_id):
     })
 
 
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def review_section(request, section_id):
-    """Review or edit a section before final approval.
-
-    No screen calls this today - the staff "Edit text" proposes a revision
-    instead - but it writes the same row as the admin's edit, so it asks
-    for the same password. A guarded route beside an unguarded one secures
-    nothing.
-    """
-    # A direct edit changes a controlled document with no request behind
-    # it - no concurrence, no IMR, no custodian - so it asks for the
-    # password again, before anything is read or written.
-    failure = reauth_failure(request)
-    if failure:
-        return failure
-
-    try:
-        section = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-
-    if not access.can_reach_section(request.user, section):
-        return Response({'error': 'Access denied'}, status=403)
-
-    if _text_would_change(request, section):
-        held = _refuse_if_held([section], 'edited')
-        if held:
-            return held
-
-    # Update content/metadata if provided
-    section.subtitle = request.data.get('subtitle', section.subtitle)
-    section.content = request.data.get('content', section.content)
-    section.tag = request.data.get('tag', section.tag)
-    section.page_number = request.data.get('page_number', section.page_number)
-    section.order = request.data.get('order', section.order)
-
-    # Handle parent_id: staff can override, otherwise auto-detect if subtitle changed
-    parent_id = request.data.get('parent_id')
-    if parent_id:
-        try:
-            section.parent = ManualSection.objects.get(id=parent_id, manual=section.manual)
-        except ManualSection.DoesNotExist:
-            return Response({'error': 'Parent section not found in this manual'}, status=400)
-    elif 'subtitle' in request.data:
-        section.parent = _find_parent_section_in_manual(section.manual, section.subtitle)
-
-    approve = request.data.get('approve', True)
-    if isinstance(approve, str):
-        approve = approve.lower() in ('1', 'true', 'yes')
-
-    if approve:
-        section.is_reviewed = True
-        section.reviewed_by = request.user
-        section.reviewed_at = timezone.now()
-    else:
-        section.is_reviewed = False
-        section.reviewed_by = None
-        section.reviewed_at = None
-
-    # Re-tag if content updated
-    if 'content' in request.data:
-        try:
-            section.tag = predict_section(section.content)
-        except Exception:
-            section.tag = 'UNTAGGED'
-
-    section.save()
-
-    return Response({
-        'id': section.id,
-        'subtitle': section.subtitle,
-        'tag': section.tag,
-        'is_reviewed': section.is_reviewed,
-        'reviewed_at': section.reviewed_at,
-        'reviewed_by': section.reviewed_by.username if section.reviewed_by else None,
-        'parent_id': section.parent.id if section.parent else None,
-    })
-
-
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 def create_section(request, manual_id):
@@ -2433,116 +1815,6 @@ def delete_section(request, section_id):
     return Response({'message': 'Section deleted.'})
 
 
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def review_delete_section(request, section_id):
-    """Delete a section during review (staff can delete within their department).
-
-    Guarded like the admin route, because it deletes the same row. The admin
-    Sections screen used to call this one *first* and fall back to
-    `delete_section`, so asking for a password on the admin route alone
-    would have secured a path nothing took - the deletion would simply have
-    gone through here. No staff screen calls this endpoint today; the
-    permission is left as it was rather than narrowed on a guess about who
-    it was for.
-    """
-    failure = reauth_failure(request)
-    if failure:
-        return failure
-
-    try:
-        section = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-
-    if not access.can_reach_section(request.user, section):
-        return Response({'error': 'Access denied'}, status=403)
-
-    held = _refuse_if_held([section], 'deleted')
-    if held:
-        return held
-
-    section.delete()
-    return Response({'message': 'Section deleted.'})
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def merge_sections(request, section_id):
-    """Merge one section into another. The source is section_id.
-
-    Payload:
-      {
-        "target_id": <other_section_id>
-      }
-
-    The source section is deleted after merging.
-    """
-    try:
-        source = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Source section not found'}, status=404)
-
-    target_id = request.data.get('target_id')
-    if not target_id:
-        return Response({'error': 'target_id is required'}, status=400)
-
-    try:
-        target = ManualSection.objects.get(id=target_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Target section not found'}, status=404)
-
-    # Only allow merge within same manual
-    if source.manual_id != target.manual_id:
-        return Response({'error': 'Sections must belong to the same manual'}, status=400)
-
-    # A hold can outlive the switch being turned back off.
-    held = _refuse_if_held([source, target], 'merged')
-    if held:
-        return held
-
-    if access.by_position():
-        return _merging_is_deleting()
-
-    if not access.can_reach_section(request.user, source):
-        return Response({'error': 'Access denied'}, status=403)
-
-    # Save history for target
-    SectionHistory.objects.create(
-        section=target,
-        version=target.version,
-        subtitle=target.subtitle,
-        content=target.content,
-        tag=target.tag,
-        edited_by=request.user,
-        source='merge',
-        change_reason=f'Merged with "{source.subtitle}".',
-    )
-
-    # Merge: append source subtitle + content to target (keep source title as part of merged section)
-    separator = "\n\n" if target.content and (source.subtitle or source.content) else ""
-    source_header = f"{source.subtitle}\n\n" if source.subtitle else ""
-    target.content = f"{target.content}{separator}{source_header}{source.content}"
-    try:
-        target.tag = predict_section(target.content)
-    except Exception:
-        target.tag = 'UNTAGGED'
-
-    target.version += 1
-    target.save()
-
-    # Delete source after merging
-    source.delete()
-
-    return Response({
-        'message': 'Sections merged successfully.',
-        'target_id': target.id,
-        'target_subtitle': target.subtitle,
-        'target_tag': target.tag,
-        'target_version': target.version,
-    })
-
-
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def section_history(request, section_id):
@@ -2562,7 +1834,6 @@ def section_history(request, section_id):
         'source': h.source,
         'source_label': h.get_source_display(),
         'change_reason': h.change_reason,
-        'revision_id': h.revision_id,
         'proposal_id': h.proposal_id,
         'dcr_number': h.proposal.dcr_number if h.proposal_id else None,
     } for h in history]
@@ -2580,7 +1851,6 @@ def section_history(request, section_id):
         'source': 'current',
         'source_label': 'Current version',
         'change_reason': '',
-        'revision_id': None,
         'proposal_id': None,
         'dcr_number': None,
     })
@@ -2589,826 +1859,6 @@ def section_history(request, section_id):
 
 
 # ─── REVISIONS ───────────────────────────────────────────────
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def upload_revision(request, section_id):
-    try:
-        section = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-
-    if access.by_position():
-        return _superseded_by_proposals('Uploading a revision for one section')
-
-    if not access.can_propose_to_section(request.user, section):
-        return Response({'error': 'Access denied'}, status=403)
-
-    if 'file' not in request.FILES:
-        return Response({'error': 'No file uploaded'}, status=400)
-
-    uploaded_file = request.FILES['file']
-    file_bytes = uploaded_file.read()
-    uploaded_file.seek(0)
-    text_new = extract_text(file_bytes, uploaded_file.name)
-
-    diff = build_diff(section.content, text_new)
-    change_reason, error = _validated_change_reason(request, section)
-    if error:
-        return error
-
-    # Hashed on the extracted text, not the file's bytes. Extraction is what
-    # the assessment saw and what the reviewer will read, so that is what has
-    # to match - and it means re-uploading a byte-identical file after a check
-    # is not treated as a change.
-    snapshot, error = _consume_pre_assessment(
-        request, section, text_new, change_reason
-    )
-    if error:
-        return error
-
-    revision = ManualRevision.objects.create(
-        section=section,
-        submitted_by=request.user,
-        uploaded_file=uploaded_file,
-        diff_text=diff,
-        change_reason=change_reason,
-        status='pending'
-    )
-    _attach_pre_assessment(revision, snapshot)
-
-    return Response({
-        'revision_id': revision.id,
-        'diff_preview': preview_diff(diff),
-        'status': revision.status,
-        'ai_verdict': revision.ai_verdict,
-    }, status=201)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def propose_text_revision(request, section_id):
-    try:
-        section = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-
-    if access.by_position():
-        return _superseded_by_proposals('Proposing a change to one section')
-
-    if not access.can_propose_to_section(request.user, section):
-        return Response({'error': 'Access denied'}, status=403)
-
-    proposed_content = request.data.get('proposed_content')
-    if not proposed_content:
-        return Response({'error': 'Proposed content is required'}, status=400)
-
-    diff = build_diff(section.content, proposed_content)
-    change_reason, error = _validated_change_reason(request, section)
-    if error:
-        return error
-
-    snapshot, error = _consume_pre_assessment(
-        request, section, proposed_content, change_reason
-    )
-    if error:
-        return error
-
-    revision = ManualRevision.objects.create(
-        section=section,
-        submitted_by=request.user,
-        proposed_content=proposed_content,
-        diff_text=diff,
-        change_reason=change_reason,
-        status='pending'
-    )
-    _attach_pre_assessment(revision, snapshot)
-
-    return Response({
-        'revision_id': revision.id,
-        'diff_preview': preview_diff(diff),
-        'status': revision.status,
-        'ai_verdict': revision.ai_verdict,
-    }, status=201)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def propose_merge(request):
-    source_section_id = request.data.get('source_section_id')
-    target_section_id = request.data.get('target_section_id')
-
-    if not source_section_id or not target_section_id:
-        return Response({'error': 'source_section_id and target_section_id are required.'}, status=400)
-
-    try:
-        source = ManualSection.objects.get(id=source_section_id)
-        target = ManualSection.objects.get(id=target_section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-
-    if access.by_position():
-        return _merging_is_deleting()
-
-    if not access.can_propose_to_section(request.user, target):
-        return Response({'error': 'Access denied'}, status=403)
-
-    if source.manual.id != target.manual.id:
-        return Response({'error': 'Cannot merge sections from different manuals.'}, status=400)
-
-    if source.id == target.id:
-        return Response({'error': 'Source and target must be different sections.'}, status=400)
-
-    sources = _merge_sources(target, [source.id])
-    merged_content = _merged_content(target, sources)
-    diff = build_diff(target.content, merged_content)
-    change_reason, error = _validated_change_reason(request, target)
-    if error:
-        return error
-
-    # The merged text is derived here exactly as the check derived it, so a
-    # merge that was checked still matches. If either the target or a source
-    # has moved since, the hash differs and the submitter is told it was not
-    # their doing.
-    snapshot, error = _consume_pre_assessment(
-        request, target, merged_content, change_reason, sources=sources
-    )
-    if error:
-        return error
-
-    revision = ManualRevision.objects.create(
-        section=target,
-        submitted_by=request.user,
-        merge_section_ids=[source.id],
-        merge_type='merge',
-        diff_text=diff,
-        change_reason=change_reason,
-        status='pending'
-    )
-    _attach_pre_assessment(revision, snapshot)
-
-    return Response({
-        'revision_id': revision.id,
-        'diff_preview': preview_diff(diff),
-        'status': revision.status
-    }, status=201)
-
-
-@api_view(['GET'])
-@permission_classes([IsQmsReviewer])
-def list_revisions(request):
-    status_filter = request.query_params.get('status', None)
-    revisions = ManualRevision.objects.all().order_by('-submitted_at')
-
-    if status_filter:
-        revisions = revisions.filter(status=status_filter)
-
-    data = [{
-        'id': r.id,
-        'manual_id': r.section.manual.id if r.section and r.section.manual else None,
-        'manual': r.section.manual.title if r.section and r.section.manual else 'N/A',
-        'department': r.section.manual.department.name if r.section and r.section.manual and r.section.manual.department else 'N/A',
-        'section_id': r.section.id if r.section else None,
-        'section': r.section.subtitle if r.section else 'N/A',
-        'section_content': r.section.content if r.section else '',
-        'proposed_content': r.proposed_content,
-        'uploaded_file': r.uploaded_file.url if r.uploaded_file else None,
-        'merge_section_ids': r.merge_section_ids,
-        'merge_type': r.merge_type,
-        'submitted_by': r.submitted_by.username if r.submitted_by else 'N/A',
-        'submitted_at': r.submitted_at,
-        'status': r.status,
-        'change_reason': r.change_reason,
-        'reviewed_by': r.reviewed_by.username if r.reviewed_by else None,
-        'reviewed_at': r.reviewed_at,
-        'ai_verdict': r.ai_verdict,
-        'ai_issues': r.ai_issues,
-        'ai_explanation': r.ai_explanation,
-        'ai_trace': r.ai_trace,
-        # Where the assessment came from, so a result a reviewer produced
-        # under the old workflow is never shown as one the submitter read.
-        'ai_source': r.ai_source,
-        'ai_explanation_staff': r.ai_explanation_staff,
-        'ai_confidence': r.ai_confidence,
-        'ai_change_type': r.ai_change_type,
-        'ai_hard_fails': r.ai_hard_fails,
-        'ai_advisories': r.ai_advisories,
-        'ai_assessed_at': r.ai_assessed_at,
-        'ai_model_fingerprint': r.ai_model_fingerprint,
-        # True when the section has moved since the check, so the advice is
-        # about a comparison that no longer holds.
-        'ai_section_changed': _section_moved_since(r),
-        'diff_preview': preview_diff(r.diff_text),
-        'diff_text': r.diff_text,
-    } for r in revisions]
-    return Response(data)
-
-
-def _validated_change_reason(request, section):
-    """The reason a submitter gave, or a 400 response explaining the problem.
-
-    Returns ``(reason, None)`` when the submission may proceed and
-    ``(None, response)`` when it may not. Clause 6.3 is only met if the reason
-    says something, so a blank or throwaway string is refused here rather than
-    stored and hard-failed later by Layer 1. A vague-but-real reason is
-    accepted: the pipeline flags it for the reviewer instead of blocking a
-    submission that may be perfectly sound.
-    """
-    reason = (request.data.get('change_reason') or '').strip()
-    tier, message = classify_reason(reason, getattr(section, 'subtitle', '') or '')
-    if blocks_submission(tier):
-        return None, Response(
-            {'error': message, 'field': 'change_reason', 'reason_tier': tier},
-            status=400,
-        )
-    return reason, None
-
-
-def _merge_sources(target, source_ids):
-    """The sections being folded into ``target``, in a stable order."""
-    return list(
-        ManualSection.objects.filter(
-            id__in=list(source_ids or []), manual=target.manual
-        ).order_by('id')
-    )
-
-
-def _merged_content(target, sources):
-    """Exactly what propose_merge stores, derived the same way in both places
-    so the hash of a checked merge matches the hash of a submitted one."""
-    merged = target.content or ''
-    for source in sources:
-        merged = f"{merged}\n\n{source.content}".strip()
-    return merged
-
-
-def _base_texts(section, sources=()):
-    """Every server-held text an assessment depends on.
-
-    A merge rests on the target and each source; anything else rests on the
-    section alone. Collected here because the hash, the mismatch message and
-    the reviewer's "section changed" flag must all ask the same question.
-    """
-    return [section.content or ''] + [s.content or '' for s in sources]
-
-
-def _retrieved_section_ids(section, proposed_content):
-    """Which sections retrieval pulls in for this check.
-
-    Recorded so the coordinated-change advisory can read stored output
-    rather than recomputing anything at display time. The pipeline's trace
-    keeps layer1, layer2, layer3, the version and the fingerprint - but
-    not what retrieval returned, and `related_texts` hands back raw text
-    with the ids already discarded.
-
-    So this asks the index directly, with the same arguments
-    `_assess_unsaved` uses. **Nothing under `ml/` changes**: `build_index`
-    and `top_k` are read-only and already public, and Layer 2 receives
-    exactly what it received before. The cost is one extra index lookup
-    per check, against an index that was just built and cached.
-    """
-    from ml.revision_pipeline.retrieval import build_index, sections_for_manual
-
-    try:
-        sections = sections_for_manual(section.manual)
-        index = build_index(section.manual.id, sections)
-        return [
-            s.section_id for s in index.top_k(
-                proposed_content or section.content or '',
-                exclude_section_id=section.id, k=3,
-                exclude_subtitle=section.subtitle or '',
-            )
-        ]
-    except Exception:
-        # An advisory is a nicety. Losing it must never cost the check
-        # itself, which is the thing the submitter is waiting for.
-        logger.exception("could not record retrieval context for %s", section.id)
-        return []
-
-
-def _assess_unsaved(section, proposed_content, change_reason, seed):
-    """Run the pipeline over text that has not been saved yet."""
-    from ml.revision_pipeline.pipeline import assess_texts
-    from ml.revision_pipeline.retrieval import (
-        format_context, related_texts, sections_for_manual,
-    )
-
-    number, _, title = (section.subtitle or '').partition(' ')
-    sections = sections_for_manual(section.manual)
-    related = related_texts(
-        section.manual.id, section.id, proposed_content or section.content,
-        sections, k=3, section_subtitle=section.subtitle or '',
-    )
-    return assess_texts(
-        section.content or '',
-        proposed_content or '',
-        section_number=number,
-        section_title=title.strip(),
-        change_reason=change_reason,
-        related=related,
-        context=format_context(
-            section.manual.title,
-            [s for s in sections if s.content in related],
-        ),
-        # Seeded by the content, so this text and the reviewer's copy of it
-        # are word-for-word the same, and re-checking identical content
-        # produces an identical result rather than a reworded one.
-        seed=seed,
-    )
-
-
-def _section_moved_since(revision):
-    """Has any text the assessment rested on changed since it was made?
-
-    For a merge that means the sources as well as the target: advice about a
-    merge is advice about the combination, and a source edited afterwards
-    makes it stale just as surely.
-    """
-    if not (revision.ai_section_content_hash and revision.section):
-        return False
-    sources = ()
-    if revision.merge_type == 'merge' and revision.merge_section_ids:
-        sources = _merge_sources(revision.section, revision.merge_section_ids)
-    current = pre_assessment.section_content_hash(
-        *_base_texts(revision.section, sources)
-    )
-    return revision.ai_section_content_hash != current
-
-
-def _rate_limited(user):
-    """A check costs a model run, and the button sits on every staff screen."""
-    window = timezone.now() - timedelta(hours=1)
-    recent = RevisionPreAssessment.objects.filter(
-        submitted_by=user, assessed_at__gte=window
-    ).count()
-    if recent >= pre_assessment.RATE_LIMIT_PER_HOUR:
-        return Response(
-            {'error': 'Too many AI checks in the past hour. Please wait a '
-                      'few minutes and try again.'},
-            status=429,
-        )
-    return None
-
-
-def _sweep_pre_assessments():
-    """Drop working state left by someone who checked and never submitted.
-
-    Opportunistic, because nothing in this deployment runs a scheduler. The
-    `sweep_pre_assessments` management command does the same thing on demand.
-    """
-    RevisionPreAssessment.objects.filter(
-        consumed_by__isnull=True,
-        assessed_at__lt=timezone.now() - pre_assessment.RETENTION,
-    ).delete()
-
-
-def _store_snapshot(user, section, content_hash, base_texts, proposed_content,
-                    change_reason, result):
-    return RevisionPreAssessment.objects.create(
-        section=section,
-        submitted_by=user,
-        content_hash=content_hash,
-        section_content_hash=pre_assessment.section_content_hash(*base_texts),
-        proposed_content=proposed_content,
-        change_reason=change_reason,
-        verdict=result.get('verdict') or '',
-        confidence=result.get('confidence'),
-        change_type=result.get('change_type') or '',
-        issues=result.get('issues') or [],
-        hard_fails=result.get('hard_fails') or [],
-        advisories=result.get('advisories') or [],
-        explanation_reviewer=result.get('explanation') or '',
-        explanation_staff=result.get('explanation_staff') or '',
-        trace=result.get('trace') or {},
-        model_fingerprint=(result.get('trace') or {}).get('fingerprint', ''),
-        pipeline_version=(result.get('trace') or {}).get('pipeline_version', ''),
-    )
-
-
-def _snapshot_payload(snapshot):
-    """What both sides render an assessment from."""
-    return {
-        'assessment_id': str(snapshot.id),
-        'pipeline': 'v2',
-        'assessed': bool(snapshot.verdict),
-        'verdict': snapshot.verdict,
-        'confidence': snapshot.confidence,
-        'change_type': snapshot.change_type,
-        'hard_fails': snapshot.hard_fails or [],
-        'advisories': snapshot.advisories or [],
-        'issues': snapshot.issues or [],
-        'explanation': snapshot.explanation_staff,
-        'assessed_at': snapshot.assessed_at,
-        'model_fingerprint': snapshot.model_fingerprint,
-        'trace': snapshot.trace or {},
-        'advisory_only': True,
-    }
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def pre_assess_text_revision(request, section_id):
-    """Assess proposed text before it is submitted.
-
-    The submitter must run this before submitting, and may submit whatever it
-    says - the verdict is advice, never a gate. What it returns is stored
-    server-side and handed back only as an id, so the reviewer reads the
-    assessment this endpoint made rather than anything the client reports.
-    """
-    try:
-        section = ManualSection.objects.get(id=section_id)
-    except ManualSection.DoesNotExist:
-        return Response({'error': 'Section not found'}, status=404)
-
-    if access.by_position():
-        return _superseded_by_proposals('Checking one section on its own')
-
-    if not access.can_propose_to_section(request.user, section):
-        return Response({'error': 'Access denied'}, status=403)
-
-    # An uploaded revision is assessed on the text the extractor pulls out of
-    # the file, which is not always what the submitter believes is in it. The
-    # extracted text goes back with the result so they can see what the system
-    # actually read before they commit to it - assessing text nobody has seen
-    # would be worse than not assessing at all.
-    extracted_text = None
-    uploaded = request.FILES.get('file')
-    if uploaded is not None:
-        try:
-            extracted_text = extract_text(uploaded.read(), uploaded.name)
-        except Exception as error:
-            return Response(
-                {'error': f'Could not read that file: {error}'}, status=400
-            )
-        uploaded.seek(0)
-        proposed_content = extracted_text
-    else:
-        proposed_content = request.data.get('proposed_content')
-
-    if not proposed_content or not str(proposed_content).strip():
-        return Response(
-            {'error': 'No readable content to check. Upload a file or enter '
-                      'the revised text.'},
-            status=400,
-        )
-
-    # The same clause 6.3 tier-1 check the submission endpoint applies, run
-    # here so the submitter is told about a throwaway reason now rather than
-    # after reading a verdict.
-    change_reason, error = _validated_change_reason(request, section)
-    if error:
-        return error
-
-    limited = _rate_limited(request.user)
-    if limited:
-        return limited
-    _sweep_pre_assessments()
-
-    content_hash = pre_assessment.content_hash(
-        section.id, section.content or '', proposed_content, change_reason
-    )
-
-    try:
-        result = _assess_unsaved(section, proposed_content, change_reason,
-                                 seed=content_hash)
-    except Exception as error:
-        return Response({'error': f'AI check failed: {error}'}, status=500)
-
-    snapshot = _store_snapshot(
-        request.user, section, content_hash, _base_texts(section),
-        proposed_content, change_reason, result,
-    )
-    payload = _snapshot_payload(snapshot)
-    if extracted_text is not None:
-        payload['extracted_text'] = extracted_text
-    return Response(payload, status=200)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def pre_assess_merge(request):
-    """Assess a proposed merge before it is submitted.
-
-    The merged text is derived on the server, exactly as propose_merge will
-    derive it, so what is checked is what would be stored. It goes back with
-    the result for the same reason an upload's extracted text does: the
-    submitter is agreeing to content they did not type.
-    """
-    try:
-        source = ManualSection.objects.get(id=request.data.get('source_section_id'))
-        target = ManualSection.objects.get(id=request.data.get('target_section_id'))
-    except (ManualSection.DoesNotExist, ValueError, TypeError):
-        return Response({'error': 'Section not found'}, status=404)
-
-    if access.by_position():
-        return _merging_is_deleting()
-
-    if not access.can_propose_to_section(request.user, target):
-        return Response({'error': 'Access denied'}, status=403)
-    if source.id == target.id:
-        return Response(
-            {'error': 'Source and target must be different sections.'},
-            status=400,
-        )
-
-    change_reason, error = _validated_change_reason(request, target)
-    if error:
-        return error
-
-    limited = _rate_limited(request.user)
-    if limited:
-        return limited
-    _sweep_pre_assessments()
-
-    sources = _merge_sources(target, [source.id])
-    merged = _merged_content(target, sources)
-    base_texts = _base_texts(target, sources)
-    content_hash = pre_assessment.content_hash(
-        target.id, target.content or '', merged, change_reason
-    )
-
-    try:
-        result = _assess_unsaved(target, merged, change_reason, seed=content_hash)
-    except Exception as error:
-        return Response({'error': f'AI check failed: {error}'}, status=500)
-
-    snapshot = _store_snapshot(
-        request.user, target, content_hash, base_texts, merged, change_reason,
-        result,
-    )
-    payload = _snapshot_payload(snapshot)
-    payload['merged_content'] = merged
-    return Response(payload, status=200)
-
-
-def _consume_pre_assessment(request, section, proposed_content, change_reason,
-                            sources=()):
-    """The snapshot for exactly this content, or a 400 explaining which way
-    it failed to match.
-
-    Returns ``(snapshot, None)`` or ``(None, response)``. Enforced here and
-    not only in the browser: a check the client can skip is not a check.
-    """
-    assessment_id = (request.data.get('assessment_id') or '').strip()
-    if not assessment_id:
-        return None, Response(
-            {'error': pre_assessment.NEVER_CHECKED, 'field': 'assessment_id',
-             'reason': 'missing'},
-            status=400,
-        )
-    try:
-        snapshot = RevisionPreAssessment.objects.get(
-            id=assessment_id, submitted_by=request.user, section=section,
-            consumed_by__isnull=True,
-        )
-    except (RevisionPreAssessment.DoesNotExist, ValidationError, ValueError):
-        return None, Response(
-            {'error': pre_assessment.NEVER_CHECKED, 'field': 'assessment_id',
-             'reason': 'unknown'},
-            status=400,
-        )
-
-    expected = pre_assessment.content_hash(
-        section.id, section.content or '', proposed_content, change_reason
-    )
-    if expected != snapshot.content_hash:
-        return None, Response(
-            {'error': pre_assessment.mismatch_reason(
-                snapshot, *_base_texts(section, sources)),
-             'field': 'assessment_id', 'reason': 'stale'},
-            status=400,
-        )
-    return snapshot, None
-
-
-def _attach_pre_assessment(revision, snapshot):
-    """Copy the snapshot onto the revision the reviewer will open."""
-    revision.ai_source = 'staff_precheck'
-    revision.ai_verdict = snapshot.verdict
-    revision.ai_confidence = snapshot.confidence
-    revision.ai_change_type = snapshot.change_type
-    revision.ai_issues = snapshot.issues
-    revision.ai_hard_fails = snapshot.hard_fails
-    revision.ai_advisories = snapshot.advisories
-    revision.ai_explanation = snapshot.explanation_reviewer
-    revision.ai_explanation_staff = snapshot.explanation_staff
-    revision.ai_trace = snapshot.trace
-    revision.ai_assessed_at = snapshot.assessed_at
-    revision.ai_model_fingerprint = snapshot.model_fingerprint
-    revision.ai_content_hash = snapshot.content_hash
-    revision.ai_section_content_hash = snapshot.section_content_hash
-    revision.save()
-    snapshot.consumed_by = revision
-    snapshot.save(update_fields=['consumed_by'])
-
-
-@api_view(['PATCH'])
-@permission_classes([IsQmsReviewer])
-def review_revision(request, revision_id):
-    try:
-        revision = ManualRevision.objects.get(id=revision_id)
-    except ManualRevision.DoesNotExist:
-        return Response({'error': 'Revision not found'}, status=404)
-
-    new_status = request.data.get('status')
-    if new_status not in ['approved', 'rejected']:
-        return Response({'error': 'Status must be approved or rejected'}, status=400)
-
-    if new_status == 'approved':
-        merged = list(ManualSection.objects.filter(id__in=revision.merge_section_ids or []))
-        held = _refuse_if_held([revision.section] + merged, 'changed')
-        if held:
-            return held
-
-    revision.status = new_status
-    revision.reviewer_notes = request.data.get('reviewer_notes', '')
-    revision.reviewed_at = timezone.now()
-    # Who made the call, not just when - an approval with no named approver is
-    # not an audit trail.
-    revision.reviewed_by = request.user
-    revision.save()
-
-    if new_status == 'approved':
-        section = revision.section
-
-        # The reason is the submitter's own, copied rather than referenced:
-        # a revision can be deleted later and the document's history has to
-        # survive that. The link is kept too, for as long as it resolves.
-        SectionHistory.objects.create(
-            section=section,
-            version=section.version,
-            subtitle=section.subtitle,
-            content=section.content,
-            tag=section.tag,
-            edited_by=revision.submitted_by,
-            source='revision',
-            change_reason=revision.change_reason or '',
-            revision=revision,
-        )
-
-        if revision.merge_type == 'merge' and revision.merge_section_ids:
-            # Merge source section(s) content into target section and remove source sections
-            source_sections = ManualSection.objects.filter(id__in=revision.merge_section_ids, manual=section.manual)
-            merged_content = section.content
-            for source_section in source_sections:
-                merged_content = f"{merged_content}\n\n{source_section.content}".strip()
-
-            section.content = merged_content
-            try:
-                section.tag = predict_section(merged_content)
-            except Exception:
-                section.tag = 'UNTAGGED'
-            section.version += 1
-            section.save()
-
-            # delete source sections
-            source_sections.delete()
-
-        else:
-            if revision.uploaded_file:
-                try:
-                    with revision.uploaded_file.open('rb') as f:
-                        file_bytes = f.read()
-                    new_text = extract_text(file_bytes, revision.uploaded_file.name)
-                except Exception:
-                    new_text = revision.proposed_content or section.content
-            else:
-                new_text = revision.proposed_content or section.content
-
-            section.content = new_text
-            try:
-                section.tag = predict_section(new_text)
-            except Exception:
-                section.tag = 'UNTAGGED'
-            section.version += 1
-            section.save()
-
-        manual = section.manual
-        manual.revision += 1
-        manual.save()
-
-    return Response({'message': f'Revision {new_status}.', 'status': revision.status})
-
-
-@api_view(['GET'])
-@permission_classes([IsAdminRole])
-def ai_assessment_view(request, revision_id):
-    """Assess one revision and keep the result on it.
-
-    A fallback, not the normal path. Assessment happens before submission now,
-    and the reviewer reads what the submitter read - running it again here
-    would produce a second verdict for the same revision, which is exactly
-    what moving the check was meant to stop.
-
-    It stays for revisions that predate the change and carry no assessment at
-    all, so a reviewer is not left with nothing. Anything already assessed,
-    by a submitter or by a reviewer under the old workflow, is refused.
-
-    Which pipeline runs is settings.REVISION_AI_PIPELINE. Either way the answer
-    is advice: the admin's decision is what counts, and nothing here changes a
-    revision's status.
-    """
-    try:
-        revision = ManualRevision.objects.select_related('section').get(
-            id=revision_id
-        )
-    except ManualRevision.DoesNotExist:
-        return Response({'detail': 'Revision not found.'}, status=404)
-
-    if revision.ai_source != 'none':
-        return Response(
-            {'detail': 'This revision already carries an assessment. '
-                       'Re-assessing would replace what the submitter read.',
-             'ai_source': revision.ai_source},
-            status=409,
-        )
-
-    change_type = request.query_params.get('change_type', 'Text Revision')
-    original_text = revision.section.content
-
-    if revision.proposed_content:
-        revised_text = revision.proposed_content
-    elif revision.uploaded_file:
-        try:
-            with revision.uploaded_file.open('rb') as uploaded_file:
-                revised_text = extract_text(
-                    uploaded_file.read(),
-                    revision.uploaded_file.name,
-                )
-        except Exception as error:
-            return Response(
-                {'detail': f'Unable to extract revision text: {error}'},
-                status=400,
-            )
-    elif revision.merge_type == 'merge' and revision.merge_section_ids:
-        source_sections = ManualSection.objects.filter(
-            id__in=revision.merge_section_ids,
-            manual=revision.section.manual,
-        )
-        revised_text = revision.section.content
-        for source_section in source_sections:
-            revised_text = f'{revised_text}\n\n{source_section.content}'.strip()
-    else:
-        return Response(
-            {'detail': 'Revision does not contain content to assess.'},
-            status=400,
-        )
-
-    pipeline_version = getattr(settings, 'REVISION_AI_PIPELINE', 'v2')
-
-    if pipeline_version == 'v2':
-        try:
-            from ml.revision_pipeline.pipeline import assess_revision as assess_v2
-
-            result = assess_v2(revision)
-        except Exception as error:
-            return Response(
-                {'detail': f'AI assessment failed: {error}'},
-                status=500,
-            )
-
-        # Kept on the revision so the review screen can show it again without
-        # re-running the model, and so a decision can be looked at afterwards
-        # beside the advice that was on screen at the time.
-        revision.ai_verdict = result.get('verdict') or ''
-        revision.ai_issues = result.get('issues') or []
-        revision.ai_explanation = result.get('explanation') or ''
-        revision.ai_trace = result.get('trace') or {}
-        revision.save(update_fields=[
-            'ai_verdict', 'ai_issues', 'ai_explanation', 'ai_trace',
-        ])
-
-        return Response({
-            'pipeline': 'v2',
-            'assessed': result.get('assessed', True),
-            'verdict': result.get('verdict'),
-            'confidence': result.get('confidence'),
-            'change_type': result.get('change_type'),
-            'hard_fails': result.get('hard_fails') or [],
-            'advisories': result.get('advisories') or [],
-            'explanation': result.get('explanation'),
-            'issues': result.get('issues') or [],
-            'trace': result.get('trace') or {},
-            # The admin decides. This is advice.
-            'advisory': True,
-        })
-
-    try:
-        from ml.distilbert_model import assess_revision
-
-        assessment = assess_revision(
-            change_type,
-            original_text,
-            revised_text,
-        )
-    except Exception as error:
-        return Response(
-            {'detail': f'AI assessment failed: {error}'},
-            status=500,
-        )
-
-    return Response({'pipeline': 'v1', 'advisory': True,
-                     'ai_assessment': assessment})
 
 
 # ─── SVM MODEL EVALUATION ─────────────────────────────────────

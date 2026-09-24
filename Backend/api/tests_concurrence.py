@@ -23,10 +23,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    AccessMode, AuditEvent, Concurrence, CustomUser, Department, Manual,
-    ManualSection, ManualSeries, ManualSeriesOffice, Office, OfficeLink,
-    Position, PositionAssignment, Proposal, ProposalParticipant,
-    ProposalVersion, RevisionPreAssessment, SectionChange,
+    AuditEvent, Concurrence, CustomUser, Manual, ManualSection, ManualSeries,
+    ManualSeriesOffice, Office, OfficeLink, Position, PositionAssignment,
+    Proposal, ProposalParticipant, ProposalVersion, RevisionPreAssessment,
+    SectionChange,
 )
 from api.views import issue_reauth_token
 
@@ -43,7 +43,6 @@ class ConcurrenceFixture(TestCase):
         # ahead of it - which made every assignment here start
         # tomorrow, and every test that needed one fail.
         self.today = timezone.localdate()
-        self.department = Department.objects.create(name="CAS")
 
         self.president = Office.objects.create(
             name="Office of the President", abbreviation="OP",
@@ -74,7 +73,7 @@ class ConcurrenceFixture(TestCase):
             )
 
         self.manual = Manual.objects.create(
-            title="FAM 6.02", department=self.department, series=self.series,
+            title="FAM 6.02", series=self.series,
         )
         self.s1 = ManualSection.objects.create(
             manual=self.manual, subtitle="3.0 POLICIES", order=0,
@@ -92,7 +91,6 @@ class ConcurrenceFixture(TestCase):
         self.bud_enc = self.person("bud_enc", self.budget, Position.ENCODER)
         self.cmo_head = self.person("cmo_head", self.cash, Position.HEAD)
 
-        AccessMode.objects.update_or_create(pk=1, defaults={'by_position': True})
 
         self.client = APIClient()
         self.client.force_authenticate(user=self.acc_enc)
@@ -665,21 +663,6 @@ class AuditAndOversightTests(ConcurrenceFixture):
             self.as_(outsider).get(f'/api/proposals/{proposal_id}/full/').status_code,
             403,
         )
-
-
-class SwitchOffTests(ConcurrenceFixture):
-
-    def test_everything_refuses_with_the_switch_off(self):
-        proposal_id = self.a_draft()
-        AccessMode.objects.filter(pk=1).update(by_position=False)
-
-        for path in ('submit', 'decide', 'withdraw', 'full'):
-            method = 'get' if path == 'full' else 'post'
-            response = getattr(self.as_(self.acc_head), method)(
-                f'/api/proposals/{proposal_id}/{path}/', {}, format='json',
-            )
-            self.assertEqual(response.status_code, 409, path)
-            self.assertEqual(response.data['reason'], 'switch_off', path)
 
 
 class WhoIsShownTests(ConcurrenceFixture):

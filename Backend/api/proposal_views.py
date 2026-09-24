@@ -14,6 +14,8 @@ is stored once and read thereafter. Nothing here re-runs an assessment for
 display.
 """
 
+import logging
+
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -32,21 +34,13 @@ from .models import (
 # whole-document draft is up to 17 checks in this corpus, and a redraft
 # costs one more per section revisited. 200 allows roughly ten full
 # documents an hour and still bounds the cost of a model run.
+logger = logging.getLogger(__name__)
+
 RATE_LIMIT_PER_HOUR = 200
 
 # Per proposal as well, so one runaway editor cannot spend the whole
 # user budget on a single document.
 RATE_LIMIT_PER_PROPOSAL = 80
-
-
-def _switch_off():
-    return Response({
-        'error': (
-            'Proposals are available once access is scoped by position. '
-            'Until then, changes are proposed one section at a time.'
-        ),
-        'reason': 'switch_off',
-    }, status=409)
 
 
 def _current_assignments(user, kinds=None):
@@ -223,8 +217,6 @@ def _change_payload(change, all_changes=None):
 @permission_classes([IsAuthenticated])
 def proposals(request):
     """List the proposals this person's offices initiated, or start one."""
-    if not access.by_position():
-        return _switch_off()
 
     offices = access.current_offices(request.user)
     if not offices:
@@ -329,8 +321,6 @@ def proposal_detail(request, proposal_id):
     manual - the drafter has to see what they are *not* changing to know
     whether the change is coherent.
     """
-    if not access.by_position():
-        return _switch_off()
 
     try:
         proposal = Proposal.objects.select_related(
@@ -407,8 +397,6 @@ def proposal_section(request, proposal_id, section_id):
     hash behind. That is the whole reason the check is per section: a
     twenty-section document would otherwise be unworkable.
     """
-    if not access.by_position():
-        return _switch_off()
 
     proposal, error = _editable_proposal(request, proposal_id)
     if error:
@@ -511,8 +499,6 @@ def check_section(request, proposal_id, section_id):
     coordinated changes is attached at display time from what was stored,
     not by running anything again.
     """
-    if not access.by_position():
-        return _switch_off()
 
     proposal, error = _editable_proposal(request, proposal_id)
     if error:
@@ -535,8 +521,6 @@ def check_section(request, proposal_id, section_id):
     limited = _rate_limited(request.user, proposal)
     if limited:
         return limited
-
-    from .views import _assess_unsaved, _retrieved_section_ids
 
     section = change.section
     reason = version.overall_reason or change.note or ''
@@ -609,3 +593,73 @@ def _rate_limited(user, proposal):
         }, status=429)
 
     return None
+
+
+# ─── The pipeline, over text not yet saved ──────────────────
+#
+# Moved verbatim from views.py when the v3 flow was removed (v4.1.0):
+# what Layer 2 receives is exactly what it received before.
+
+def _retrieved_section_ids(section, proposed_content):
+    """Which sections retrieval pulls in for this check.
+
+    Recorded so the coordinated-change advisory can read stored output
+    rather than recomputing anything at display time. The pipeline's trace
+    keeps layer1, layer2, layer3, the version and the fingerprint - but
+    not what retrieval returned, and `related_texts` hands back raw text
+    with the ids already discarded.
+
+    So this asks the index directly, with the same arguments
+    `_assess_unsaved` uses. **Nothing under `ml/` changes**: `build_index`
+    and `top_k` are read-only and already public, and Layer 2 receives
+    exactly what it received before. The cost is one extra index lookup
+    per check, against an index that was just built and cached.
+    """
+    from ml.revision_pipeline.retrieval import build_index, sections_for_manual
+
+    try:
+        sections = sections_for_manual(section.manual)
+        index = build_index(section.manual.id, sections)
+        return [
+            s.section_id for s in index.top_k(
+                proposed_content or section.content or '',
+                exclude_section_id=section.id, k=3,
+                exclude_subtitle=section.subtitle or '',
+            )
+        ]
+    except Exception:
+        # An advisory is a nicety. Losing it must never cost the check
+        # itself, which is the thing the submitter is waiting for.
+        logger.exception("could not record retrieval context for %s", section.id)
+        return []
+
+
+def _assess_unsaved(section, proposed_content, change_reason, seed):
+    """Run the pipeline over text that has not been saved yet."""
+    from ml.revision_pipeline.pipeline import assess_texts
+    from ml.revision_pipeline.retrieval import (
+        format_context, related_texts, sections_for_manual,
+    )
+
+    number, _, title = (section.subtitle or '').partition(' ')
+    sections = sections_for_manual(section.manual)
+    related = related_texts(
+        section.manual.id, section.id, proposed_content or section.content,
+        sections, k=3, section_subtitle=section.subtitle or '',
+    )
+    return assess_texts(
+        section.content or '',
+        proposed_content or '',
+        section_number=number,
+        section_title=title.strip(),
+        change_reason=change_reason,
+        related=related,
+        context=format_context(
+            section.manual.title,
+            [s for s in sections if s.content in related],
+        ),
+        # Seeded by the content, so this text and the reviewer's copy of it
+        # are word-for-word the same, and re-checking identical content
+        # produces an identical result rather than a reworded one.
+        seed=seed,
+    )

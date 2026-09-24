@@ -1,20 +1,20 @@
-"""API-level tests for the clause 6.3 change-reason rule.
+"""API-level tests for the clause 6.3 change-reason rule, on proposals.
 
 The tier logic itself is tested in
 ``ml/revision_pipeline/tests/test_change_reason.py``, which runs without
-Django. What matters here is the other half of the contract: that all three
-submission endpoints actually apply it, refuse tier 1 with a message the
-submitter can act on, and let tier 2 through so the pipeline can flag it
-rather than the API blocking a revision that may be perfectly sound.
+Django. What matters here is the other half of the contract: that
+submitting a proposal applies it - refusing tier 1 with a message the
+submitter can act on, and letting tier 2 through, so the pipeline can flag
+a vague reason rather than the API blocking a change that may be sound.
+
+Ported from the v3 single-section endpoints when those were removed
+(v4.1.0), so the rule keeps its coverage.
 """
 
-from django.test import TestCase
-from rest_framework.test import APIClient
-
-from api.models import CustomUser, Department, Manual, ManualRevision, ManualSection
+from api.models import Proposal
+from api.tests_concurrence import ConcurrenceFixture
 
 BLOCKED = [
-    "",                       # missing
     "update",                 # one word, under the length floor
     "typo fix",               # two words
     "...............",        # punctuation only
@@ -25,126 +25,50 @@ ACCEPTED_BUT_WEAK = "Updated for compliance purposes"
 ACCEPTED_CLEAN = "Bank details changed after the branch moved to LandBank."
 
 
-class ChangeReasonValidationTests(TestCase):
-    """Every submission path enforces the same two tiers."""
+class ChangeReasonValidationTests(ConcurrenceFixture):
+    """Submission enforces the two tiers on the proposal's one reason."""
 
-    def setUp(self):
-        self.department = Department.objects.create(name="Finance")
-        self.user = CustomUser.objects.create_user(
-            username="staffer", password="pw", role="staff",
-            is_approved=True, department=self.department,
-        )
-        self.manual = Manual.objects.create(
-            title="Financial Administrative Manual", department=self.department,
-        )
-        self.section = ManualSection.objects.create(
-            manual=self.manual, subtitle="3.0 POLICIES ON DISBURSEMENT",
-            content="The Accounting Staff-4 shall verify the request within five days.",
-        )
-        self.other = ManualSection.objects.create(
-            manual=self.manual, subtitle="4.0 PROCEDURES",
-            content="The Cashier releases the cheque.",
-        )
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
+    def with_reason(self, reason):
+        proposal_id = self.a_draft()
+        self.client.patch(f'/api/proposals/{proposal_id}/',
+                          {'overall_reason': reason}, format='json')
+        return proposal_id
 
-    # -- tier 1: refused with a usable message -----------------
-
-    def test_text_revision_rejects_every_tier_one_reason(self):
+    def test_every_tier_one_reason_is_refused_with_a_usable_message(self):
         for reason in BLOCKED:
             with self.subTest(reason=reason):
-                response = self.client.post(
-                    "/api/revisions/propose-text/{}/".format(self.section.id),
-                    {"proposed_content": "The Accounting Staff-4 shall verify it within ten days.",
-                     "change_reason": reason},
-                    format="json",
-                )
+                proposal_id = self.with_reason(reason)
+                response = self.submit(proposal_id)
                 self.assertEqual(response.status_code, 400)
-                self.assertIn("error", response.data)
-                self.assertEqual(response.data["field"], "change_reason")
-                self.assertIn(response.data["reason_tier"], ("missing", "invalid"))
-                # the message has to tell the submitter what to do
-                self.assertIn("please", response.data["error"].lower())
+                self.assertEqual(response.data['reason'], 'reason_rejected')
+                self.assertIn(response.data['tier'], ('missing', 'invalid'))
+                # The message has to tell the submitter what to do.
+                self.assertIn('please', response.data['error'].lower())
+                self.assertEqual(Proposal.objects.get(pk=proposal_id).status, Proposal.DRAFT)
+                Proposal.objects.filter(pk=proposal_id).update(status=Proposal.WITHDRAWN)
+                Proposal.objects.get(pk=proposal_id).refresh_open_changes()
 
-    def test_merge_rejects_a_tier_one_reason(self):
-        response = self.client.post(
-            "/api/revisions/propose-merge/",
-            {"source_section_id": self.other.id,
-             "target_section_id": self.section.id,
-             "change_reason": ""},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data["reason_tier"], "missing")
-
-    def test_a_reason_that_only_repeats_the_section_title_is_refused(self):
-        response = self.client.post(
-            "/api/revisions/propose-text/{}/".format(self.section.id),
-            {"proposed_content": "Something else entirely here.",
-             "change_reason": self.section.subtitle},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data["reason_tier"], "invalid")
-
-    def test_nothing_is_stored_when_the_reason_is_refused(self):
-        self.client.post(
-            "/api/revisions/propose-text/{}/".format(self.section.id),
-            {"proposed_content": "Something else entirely here.", "change_reason": "update"},
-            format="json",
-        )
-        self.assertEqual(ManualRevision.objects.count(), 0)
-
-    # -- tier 2: accepted, and left for the pipeline to flag ---
-    #
-    # Submitting now requires a pre-submission AI check for exactly the
-    # content being submitted, so these go through the same two steps a
-    # submitter does. What they are testing is unchanged: a vague-but-real
-    # reason is accepted rather than refused.
-
-    def submit_with_check(self, proposed, reason):
-        checked = self.client.post(
-            "/api/revisions/pre-assess/{}/".format(self.section.id),
-            {"proposed_content": proposed, "change_reason": reason},
-            format="json",
-        )
-        self.assertEqual(checked.status_code, 200, checked.data)
-        return self.client.post(
-            "/api/revisions/propose-text/{}/".format(self.section.id),
-            {"proposed_content": proposed, "change_reason": reason,
-             "assessment_id": checked.data["assessment_id"]},
-            format="json",
-        )
-
+    def test_a_missing_reason_blocks_submission(self):
+        proposal_id = self.with_reason('')
+        response = self.submit(proposal_id)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'not_ready')
+        self.assertIn('The reason for the change is required.', response.data['blockers'])
 
     def test_a_weak_reason_is_accepted(self):
-        response = self.submit_with_check(
-            "The Accounting Staff-4 shall verify it within ten days.",
-            ACCEPTED_BUT_WEAK,
-        )
-        self.assertEqual(response.status_code, 201)
-        revision = ManualRevision.objects.get(id=response.data["revision_id"])
-        self.assertEqual(revision.change_reason, ACCEPTED_BUT_WEAK)
+        proposal_id = self.with_reason(ACCEPTED_BUT_WEAK)
+        response = self.submit(proposal_id)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(Proposal.objects.get(pk=proposal_id).status, Proposal.CONCURRENCE)
 
-    def test_a_specific_reason_is_accepted_and_stored(self):
-        response = self.submit_with_check(
-            "The Accounting Staff-4 shall verify it within ten days.",
-            "  " + ACCEPTED_CLEAN + "  ",
-        )
-        self.assertEqual(response.status_code, 201)
-        revision = ManualRevision.objects.get(id=response.data["revision_id"])
-        self.assertEqual(revision.change_reason, ACCEPTED_CLEAN)
+    def test_a_specific_reason_is_accepted_and_stored_trimmed(self):
+        proposal_id = self.with_reason('  ' + ACCEPTED_CLEAN + '  ')
+        self.assertEqual(self.submit(proposal_id).status_code, 200)
+        version = Proposal.objects.get(pk=proposal_id).current_version()
+        self.assertEqual(version.overall_reason, ACCEPTED_CLEAN)
 
-    def test_the_reason_reaches_the_reviewer(self):
-        self.submit_with_check(
-            "The Accounting Staff-4 shall verify it within ten days.",
-            ACCEPTED_CLEAN,
-        )
-        admin = CustomUser.objects.create_user(
-            username="reviewer", password="pw", role="admin", is_approved=True,
-        )
-        reviewer = APIClient()
-        reviewer.force_authenticate(user=admin)
-        listing = reviewer.get("/api/admin/revisions/")
-        self.assertEqual(listing.status_code, 200)
-        self.assertEqual(listing.data[0]["change_reason"], ACCEPTED_CLEAN)
+    def test_the_reason_reaches_the_concurring_offices(self):
+        proposal_id = self.with_reason(ACCEPTED_CLEAN)
+        self.submit(proposal_id)
+        data = self.as_(self.bud_head).get(f'/api/proposals/{proposal_id}/full/').data
+        self.assertEqual(data['versions'][-1]['overall_reason'], ACCEPTED_CLEAN)

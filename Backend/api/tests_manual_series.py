@@ -17,10 +17,11 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    CustomUser, Department, Manual, ManualOffice, ManualSeries,
-    ManualSeriesOffice, Office, OfficeLink, Position, PositionAssignment,
+    CustomUser, Manual, ManualOffice, ManualSeries, ManualSeriesOffice,
+    Office, OfficeLink, Position, PositionAssignment,
 )
-from api.views import holds_current_qms_position, issue_reauth_token
+from api.qms_views import qms_position
+from api.views import issue_reauth_token
 
 PASSWORD = "correct-horse-battery"
 
@@ -30,7 +31,6 @@ class SeriesFixture(TestCase):
     working offices under that."""
 
     def setUp(self):
-        self.department = Department.objects.create(name="FAM")
 
         self.president = Office.objects.create(
             name="Office of the President", abbreviation="OP",
@@ -64,7 +64,7 @@ class SeriesFixture(TestCase):
         )
 
         self.document = Manual.objects.create(
-            title="FAM 6.02", department=self.department, series=self.series,
+            title="FAM 6.02", series=self.series,
         )
 
 
@@ -94,7 +94,7 @@ class InheritanceTests(SeriesFixture):
 
     def test_a_document_with_no_series_and_no_owner_is_unassigned(self):
         """Where all nineteen existing documents start."""
-        loose = Manual.objects.create(title="SDM 3.01", department=self.department)
+        loose = Manual.objects.create(title="SDM 3.01")
         self.assertTrue(loose.is_unassigned)
         self.assertIsNone(loose.effective_owner)
         self.assertEqual(loose.effective_office_links(), [])
@@ -140,7 +140,7 @@ class InheritanceTests(SeriesFixture):
             relationship=OfficeLink.READER,
         )
         inheriting = Manual.objects.create(
-            title="FAM 6.03", department=self.department, series=self.series,
+            title="FAM 6.03", series=self.series,
         )
         self.assertIn(self.budget, inheriting.reader_offices())
         self.assertNotIn(self.budget, self.document.reader_offices())
@@ -585,7 +585,7 @@ class OfficeApiTests(TestCase):
         )
         held.refresh_from_db()
         self.assertEqual(held.ends_on, today)
-        self.assertFalse(holds_current_qms_position(carol))
+        self.assertIsNone(qms_position(carol, Position.IMR))
 
     def test_a_custodian_conflict_ends_the_same_way(self):
         today = timezone.localdate()

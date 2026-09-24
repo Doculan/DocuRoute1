@@ -10,8 +10,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from api.models import (
-    CustomUser, Department, Manual, ManualOffice, ManualSeries,
-    ManualSeriesOffice, Office, OfficeLink,
+    CustomUser, Manual, ManualOffice, ManualSeries, ManualSeriesOffice,
+    Office, OfficeLink,
 )
 from api.views import issue_reauth_token
 
@@ -21,7 +21,6 @@ PASSWORD = "correct-horse-battery"
 class SeriesApiTests(TestCase):
 
     def setUp(self):
-        self.department = Department.objects.create(name="FAM")
         self.admin = CustomUser.objects.create_user(
             username="sysadmin", password=PASSWORD, role="admin",
             system_role=CustomUser.SYSTEM_ADMIN, is_approved=True,
@@ -61,7 +60,7 @@ class SeriesApiTests(TestCase):
 
     def a_document(self, title="FAM 6.02", series=None):
         return Manual.objects.create(
-            title=title, department=self.department, series=series,
+            title=title, series=series,
         )
 
     # -- access ----------------------------------------------------

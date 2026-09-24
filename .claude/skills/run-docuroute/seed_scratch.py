@@ -25,7 +25,7 @@ assert 'scratch' in settings.SETTINGS_MODULE, 'run with --settings=scratch_setti
 
 from api.concurrence_views import _lock
 from api.models import (
-    AccessMode, Concurrence, CustomUser, Department, Manual, ManualSection,
+    Concurrence, CustomUser, Manual, ManualSection,
     Office, Position, PositionAssignment, Proposal, ProposalParticipant,
     ProposalVersion, SectionChange,
 )
@@ -53,12 +53,10 @@ if Manual.objects.filter(title='VRF 1.01').exists():
     raise SystemExit('Already seeded. Start again from a fresh copy of the database.')
 
 with transaction.atomic():
-    AccessMode.objects.update_or_create(pk=1, defaults={'by_position': True})
     top = Office.objects.create(name='Verify VP Office', is_approving_level=True)
     acc = Office.objects.create(name='Verify Accounting Office', parent=top)
     bud = Office.objects.create(name='Verify Budget Office', parent=top)
-    manual = Manual.objects.create(
-        title='VRF 1.01', department=Department.objects.create(name='verify-scratch'))
+    manual = Manual.objects.create(title='VRF 1.01')
     section = ManualSection.objects.create(
         manual=manual, subtitle='3.0 POLICIES', order=0, tag='POLICY',
         content='The Cashier shall release the cheque within five days.')

@@ -24,8 +24,8 @@ from rest_framework.test import APIClient
 
 from api import access
 from api.models import (
-    CustomUser, Department, Manual, ManualOffice, ManualSection, Office,
-    Position, PositionAssignment,
+    CustomUser, Manual, ManualOffice, ManualSection, ManualSeries,
+    ManualSeriesOffice, Office, OfficeLink, Position, PositionAssignment,
 )
 
 
@@ -305,13 +305,12 @@ class PositionTests(TestCase):
 class ManualOfficeTests(TestCase):
 
     def setUp(self):
-        self.department = Department.objects.create(name="FAM")
         self.vp = Office.objects.create(
             name="Vice President for Administration", is_approving_level=True,
         )
         self.accounting = Office.objects.create(name="Accounting Services Office")
         self.manual = Manual.objects.create(
-            title="FAM 6.02", department=self.department,
+            title="FAM 6.02",
         )
 
     def test_an_existing_manual_starts_unassigned(self):
@@ -344,68 +343,39 @@ class ManualOfficeTests(TestCase):
         self.assertFalse(self.manual.approval_stops_at_owner)
 
 
-class NothingCascadesFromTheOrganisationTests(TestCase):
-    """Deleting an organisation row must never destroy a controlled
-    document. This was a live route until 1a."""
-
-    def setUp(self):
-        self.department = Department.objects.create(name="FAM")
-        self.manual = Manual.objects.create(
-            title="FAM 6.02", department=self.department,
-        )
-        ManualSection.objects.create(
-            manual=self.manual, subtitle="3.0", content="Text.", tag="POLICY",
-        )
-
-    def test_a_department_holding_manuals_cannot_be_deleted_at_all(self):
-        from django.db.models import ProtectedError
-        with self.assertRaises(ProtectedError):
-            self.department.delete()
-        self.assertTrue(Manual.objects.filter(pk=self.manual.pk).exists())
-
-    def test_the_delete_endpoint_refuses_and_says_why(self):
-        admin = CustomUser.objects.create_user(
-            username="dept-admin", password="pw", role="admin", is_approved=True,
-        )
-        client = APIClient()
-        client.force_authenticate(user=admin)
-
-        response = client.delete(f"/api/departments/{self.department.id}/delete/")
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data["reason"], "deletion_disabled")
-        self.assertIn("1 manual", response.data["error"])
-        self.assertTrue(Department.objects.filter(pk=self.department.pk).exists())
-
-
 class AccessHelperTests(TestCase):
-    """The refactor preserved behaviour. These assert the v3 answer; the
-    bodies they test change at 1c and these tests change with them."""
+    """Reading and proposing, by position."""
 
     def setUp(self):
-        self.finance = Department.objects.create(name="FAM")
-        self.hr = Department.objects.create(name="HRM")
+        today = timezone.localdate()
+        vp = Office.objects.create(name="VP Office", abbreviation="VP", is_approving_level=True)
+        self.finance = Office.objects.create(name="Finance Office", abbreviation="FIN", parent=vp)
+        series = ManualSeries.objects.create(code="FAM", title="Finance", owning_office=vp)
+        ManualSeriesOffice.objects.create(
+            series=series, office=self.finance, relationship=OfficeLink.CONCURRING,
+        )
 
         self.admin = CustomUser.objects.create_user(
             username="acc-admin", password="pw", role="admin", is_approved=True,
         )
         self.staff = CustomUser.objects.create_user(
             username="acc-staff", password="pw", role="staff",
-            is_approved=True, department=self.finance,
+            is_approved=True,
         )
+        position, _ = Position.objects.get_or_create(office=self.finance, kind=Position.ENCODER)
+        PositionAssignment.objects.create(user=self.staff, position=position, starts_on=today)
         self.homeless = CustomUser.objects.create_user(
             username="acc-nobody", password="pw", role="staff", is_approved=True,
         )
 
-        self.ours = Manual.objects.create(title="FAM 6.02", department=self.finance)
-        self.theirs = Manual.objects.create(title="HRM 4.01", department=self.hr)
+        self.ours = Manual.objects.create(title="FAM 6.02", series=series)
+        self.theirs = Manual.objects.create(title="HRM 4.01")
 
-    def test_offices_for_returns_a_list_even_with_one_department(self):
-        """The shape 1c needs, returned now, so no caller has to change
-        when the answer becomes several offices."""
+    def test_offices_for_returns_the_current_offices(self):
         self.assertEqual(access.offices_for(self.staff), [self.finance])
         self.assertEqual(access.offices_for(self.homeless), [])
 
-    def test_reaching_is_scoped_to_the_department(self):
+    def test_reaching_is_scoped_to_my_offices(self):
         self.assertTrue(access.can_reach(self.staff, self.ours))
         self.assertFalse(access.can_reach(self.staff, self.theirs))
 
@@ -413,11 +383,9 @@ class AccessHelperTests(TestCase):
         self.assertTrue(access.can_reach(self.admin, self.ours))
         self.assertTrue(access.can_reach(self.admin, self.theirs))
 
-    def test_an_admin_may_not_propose_outside_their_department(self):
-        """Reading and proposing were never the same rule: the five
-        submission endpoints refused an admin exactly as they refused
-        anyone else. Collapsing them into one helper would have handed
-        admins the right to change any manual in the university."""
+    def test_an_admin_may_not_propose(self):
+        """Reading and proposing are not the same rule. Proposing is an
+        office's act, and an admin is not an office."""
         self.assertFalse(access.can_propose(self.admin, self.ours))
         self.assertFalse(access.can_propose(self.admin, self.theirs))
 
@@ -430,7 +398,7 @@ class AccessHelperTests(TestCase):
         self.assertFalse(access.can_reach(self.staff, self.theirs))
         self.assertFalse(access.can_propose(self.staff, self.theirs))
 
-    def test_someone_with_no_department_reaches_nothing(self):
+    def test_someone_with_no_office_reaches_nothing(self):
         self.assertFalse(access.can_reach(self.homeless, self.ours))
         self.assertEqual(
             access.manuals_for(self.homeless, Manual.objects.all()).count(), 0,
@@ -439,7 +407,7 @@ class AccessHelperTests(TestCase):
     def test_a_null_manual_or_section_is_refused_rather_than_raising(self):
         self.assertFalse(access.can_reach(self.staff, None))
         self.assertFalse(access.can_reach_section(self.staff, None))
-        self.assertFalse(access.can_propose_to_section(self.staff, None))
+        self.assertFalse(access.can_propose(self.staff, None))
 
     def test_queryset_narrowing_matches_the_single_object_answer(self):
         """If the list and the gate ever disagree, a screen shows a manual

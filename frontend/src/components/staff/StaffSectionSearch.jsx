@@ -90,7 +90,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
         <div>
           <h1 className="page-title">Sections</h1>
           <p className="page-subtitle">
-            Search across every manual in your department — by section title,
+            Search across every manual your offices work with — by section title,
             number, or the words inside it.
           </p>
         </div>
@@ -148,7 +148,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
           <p className="empty-text">
             {filtering
               ? "Try fewer words, or widen the manual and type filters."
-              : "No manuals have been assigned to your department yet. Your administrator sets this up."}
+              : "No manuals are linked to your offices yet. Your administrator sets this up."}
           </p>
         </div>
       ) : (

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
+import { formatDate, formatRevision } from "../documentStatus";
 
 // Empty on purpose: every request goes out as a relative path, so the
 // browser sends it to whatever host served the page and Vite's proxy
@@ -11,8 +12,8 @@ const BACKEND_BASE_URL = "";
 
 export default function Manuals({ initialSearch = "", onOpenSections }) {
   const [manuals, setManuals] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [form, setForm] = useState({ title: "", department_id: "", file: null });
+  const [seriesList, setSeriesList] = useState([]);
+  const [form, setForm] = useState({ title: "", file: null });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -24,9 +25,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   const [previewFileName, setPreviewFileName] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [mergeSourceIndex, setMergeSourceIndex] = useState(null);
-
-  // QMS version editing (admin only)
-  const [manualVersionEdits, setManualVersionEdits] = useState({});
 
   // Pagination & Filters
   const [currentPage, setCurrentPage] = useState(1);
@@ -40,9 +38,8 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   // folded away so it costs nothing on the visits where you are not uploading.
   const [showUpload, setShowUpload] = useState(false);
   const [filters, setFilters] = useState({
-    department: "",
+    series: "",
     author: "",
-    version: "",
     minSections: "",
     dateFrom: "",
     dateTo: "",
@@ -63,56 +60,29 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
         params.append('search', searchQuery.trim());
         params.append('searchBy', searchBy);
       }
-      if (filters.department) params.append('department', filters.department);
+      if (filters.series) params.append('series', filters.series);
       if (filters.author.trim()) params.append('author', filters.author.trim());
-      if (filters.version) params.append('version', filters.version);
       if (filters.minSections) params.append('minSections', filters.minSections);
       if (filters.sortBy) params.append('sortBy', filters.sortBy);
 
-      const [manualsRes, deptsRes] = await Promise.all([
+      const [manualsRes, seriesRes] = await Promise.all([
         axios.get(`/api/manuals/?${params.toString()}`, authHeaders),
-        axios.get(`/api/departments/`, authHeaders),
+        axios.get(`/api/org/series/`, authHeaders),
       ]);
       setManuals(manualsRes.data);
-      setDepartments(deptsRes.data);
+      setSeriesList(seriesRes.data.series || []);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, searchBy, filters.department, filters.author, filters.version, filters.minSections, filters.sortBy]);
+  }, [searchQuery, searchBy, filters.series, filters.author, filters.minSections, filters.sortBy]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const showMessage = (msg) => {
     setMessage(msg);
     setTimeout(() => setMessage(""), 4000);
-  };
-
-  const handleManualVersionChange = (manualId, value) => {
-    setManualVersionEdits((prev) => ({ ...prev, [manualId]: parseInt(value, 10) }));
-  };
-
-  const updateManualVersion = async (manualId, currentValue) => {
-    const newVersion = manualVersionEdits[manualId] || currentValue;
-    if (newVersion === currentValue) {
-      showMessage("🔎 Version unchanged.");
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem("access_token");
-      await axios.patch(
-        `/api/manuals/${manualId}/set-version/`,
-        { version: newVersion },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      showMessage(`✅ Manual version set to v${newVersion}.`);
-      setManualVersionEdits((prev) => ({ ...prev, [manualId]: newVersion }));
-      fetchData();
-    } catch (err) {
-      showMessage(err.response?.data?.error || "❌ Failed to set manual version.");
-    }
   };
 
   const reindexParentIndices = (sections, removedIndex, removedParentIndex) => {
@@ -182,7 +152,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!form.title || !form.department_id || !form.file) return;
+    if (!form.title || !form.file) return;
     const token = localStorage.getItem("access_token");
     if (!token) {
       showMessage("❌ Please log in first.");
@@ -192,7 +162,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
 
     const formData = new FormData();
     formData.append("title", form.title);
-    formData.append("department_id", form.department_id);
     formData.append("file", form.file);
 
     try {
@@ -220,7 +189,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
         }))
       );
       showMessage(`✅ Preview ready — review before confirming.`);
-      setForm({ title: "", department_id: "", file: null });
+      setForm({ title: "", file: null });
     } catch (err) {
       console.error("Upload preview error", err);
       showMessage(err.response?.data?.error || err.message || "❌ Upload preview failed.");
@@ -367,13 +336,9 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   // Filter and sort manuals
   const getFilteredAndSortedManuals = () => {
     let filtered = manuals.filter((m) => {
-      // Department filter
-      if (filters.department) {
-        const selectedDeptId = parseInt(filters.department, 10);
-        const manualDeptId = m.department_id ? parseInt(m.department_id, 10) : null;
-        if (manualDeptId !== selectedDeptId) {
-          return false;
-        }
+      // Series filter
+      if (filters.series && String(m.series_id) !== String(filters.series)) {
+        return false;
       }
       // Date range filter
       const uploadDate = new Date(m.uploaded_at);
@@ -411,15 +376,15 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   const paginatedManuals = filteredManuals.slice(startIndex, startIndex + itemsPerPage);
 
   const hasActiveFilters =
-    searchQuery || filters.department || filters.author ||
-    filters.version || filters.dateFrom || filters.dateTo;
+    searchQuery || filters.series || filters.author ||
+    filters.dateFrom || filters.dateTo;
 
   return (
     <div>
       <header className="page-head">
         <div>
           <h1 className="page-title">Manuals</h1>
-          <p className="page-subtitle">Upload master copies, review extracted sections and manage versions.</p>
+          <p className="page-subtitle">Upload master copies and review their extracted sections. New documents start unassigned; link them on Manual series.</p>
         </div>
         <button
           className={`btn ${showUpload ? "btn-ghost" : "btn-primary"}`}
@@ -444,20 +409,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 required
               />
-            </div>
-            <div className="field">
-              <label className="label">Department</label>
-              <select
-                className="select"
-                value={form.department_id}
-                onChange={(e) => setForm({ ...form, department_id: e.target.value })}
-                required
-              >
-                <option value="">Select department</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
             </div>
           </div>
 
@@ -617,7 +568,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
               >
                 <option value="all">All fields</option>
                 <option value="title">Title</option>
-                <option value="department">Department</option>
+                <option value="series">Series</option>
                 <option value="author">Author</option>
               </select>
 
@@ -626,9 +577,9 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                 style={{ width: "260px" }}
                 type="search"
                 placeholder={
-                  searchBy === "all" ? "Filter by title, department or author…"
+                  searchBy === "all" ? "Filter by title, series or author…"
                     : searchBy === "title" ? "Filter by title…"
-                    : searchBy === "department" ? "Filter by department…"
+                    : searchBy === "series" ? "Filter by series…"
                     : "Filter by author…"
                 }
                 value={searchQuery}
@@ -638,12 +589,12 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
               <select
                 className="select"
                 style={{ width: "auto" }}
-                value={filters.department}
-                onChange={(e) => { setFilters({ ...filters, department: e.target.value }); setCurrentPage(1); }}
+                value={filters.series}
+                onChange={(e) => { setFilters({ ...filters, series: e.target.value }); setCurrentPage(1); }}
               >
-                <option value="">All departments</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                <option value="">All series</option>
+                {seriesList.map((sr) => (
+                  <option key={sr.id} value={sr.id}>{sr.code}</option>
                 ))}
               </select>
 
@@ -673,7 +624,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                     setSearchQuery("");
                     setSearchBy("all");
                     setShowAdvanced(false);
-                    setFilters({ department: "", author: "", version: "", minSections: "", dateFrom: "", dateTo: "", sortBy: "newest" });
+                    setFilters({ series: "", author: "", minSections: "", dateFrom: "", dateTo: "", sortBy: "newest" });
                     setCurrentPage(1);
                   }}
                 >
@@ -692,16 +643,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                     placeholder="Uploader…"
                     value={filters.author}
                     onChange={(e) => { setFilters({ ...filters, author: e.target.value }); setCurrentPage(1); }}
-                  />
-                </div>
-                <div className="field">
-                  <label className="label">Version</label>
-                  <input
-                    className="input"
-                    type="number"
-                    placeholder="e.g. 1"
-                    value={filters.version}
-                    onChange={(e) => { setFilters({ ...filters, version: e.target.value }); setCurrentPage(1); }}
                   />
                 </div>
                 <div className="field">
@@ -797,7 +738,8 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                         </div>
                       </div>
 
-                      <span className="badge">{m.department}</span>
+                      {m.series ? <span className="badge">{m.series}</span>
+                        : <span className="badge badge-warning">unassigned</span>}
                       {/* The section count is the obvious way into a
                           manual's sections, so it is the thing you click.
                           stopPropagation because the row itself expands. */}
@@ -813,30 +755,17 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                       ) : (
                         <span className="badge badge-neutral">{m.section_count} sections</span>
                       )}
-                      <span className="badge badge-id">v{m.version} · rev {m.revision || 0}</span>
+                      {m.status && <span className="badge badge-id">{formatRevision(m.status.revision)}</span>}
                     </div>
 
                     {expandedRows.has(m.id) && (
                       <div className="list-row-body">
                         <dl className="detail-grid">
-                          <dt>QMS status</dt>
-                          <dd><span className="badge badge-id">v{m.version} rev {m.revision || 0}</span></dd>
-
-                          <dt>Change version</dt>
-                          <dd className="row" style={{ gap: "0.5rem" }}>
-                            <select
-                              className="select"
-                              style={{ width: "110px", padding: "0.35rem 2rem 0.35rem 0.6rem" }}
-                              value={manualVersionEdits[m.id] ?? m.version}
-                              onChange={(e) => handleManualVersionChange(m.id, e.target.value)}
-                            >
-                              {[...Array(10)].map((_, idx) => (
-                                <option key={idx + 1} value={idx + 1}>v{idx + 1}</option>
-                              ))}
-                            </select>
-                            <button className="btn btn-primary btn-sm" onClick={() => updateManualVersion(m.id, m.version)}>
-                              Save
-                            </button>
+                          <dt>Document status</dt>
+                          <dd>
+                            {m.status
+                              ? `${m.status.document_number} · version ${m.status.version} · ${formatRevision(m.status.revision)} · effective ${formatDate(m.status.effective_on)}`
+                              : "Not recorded yet"}
                           </dd>
 
                           <dt>Uploaded by</dt>

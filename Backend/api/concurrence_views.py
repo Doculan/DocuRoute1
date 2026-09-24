@@ -35,7 +35,6 @@ from .models import (
 )
 from .proposal_views import (
     _change_payload, _held_position, _proposal_payload, _submission_blockers,
-    _switch_off,
 )
 from .views import reauth_failure
 from ml.revision_pipeline.change_reason import blocks_submission, classify_reason
@@ -186,8 +185,6 @@ def submit(request, proposal_id):
     concur, there is nobody to ask and it locks immediately - the process
     has reached agreement by having only one party to it.
     """
-    if not access.by_position():
-        return _switch_off()
 
     proposal, error = _load(request, proposal_id)
     if error:
@@ -364,8 +361,6 @@ def _lock(proposal, version, user, office, detail=''):
 @permission_classes([IsAuthenticated])
 def decide(request, proposal_id):
     """One office concurs, or returns it with feedback."""
-    if not access.by_position():
-        return _switch_off()
 
     proposal, error = _load(request, proposal_id)
     if error:
@@ -536,8 +531,6 @@ def _return_to_draft(proposal, version, user, office, feedback):
 @permission_classes([IsAuthenticated])
 def withdraw(request, proposal_id):
     """The initiating office takes it back. The record stays."""
-    if not access.by_position():
-        return _switch_off()
 
     proposal, error = _load(request, proposal_id)
     if error:
@@ -595,8 +588,6 @@ def proposal_full(request, proposal_id):
     Visible to the initiating office, every participating office, and -
     read only - to the system admin and QMS staff.
     """
-    if not access.by_position():
-        return _switch_off()
 
     proposal, error = _load(request, proposal_id)
     if error:
@@ -646,8 +637,6 @@ def awaiting_my_office(request):
     when it is not zero: a badge showing nothing is a badge people learn
     to stop reading.
     """
-    if not access.by_position():
-        return _switch_off()
 
     mine = [o.pk for o in access.current_offices(request.user)]
     if not mine:
@@ -685,8 +674,6 @@ def involving_my_office(request):
     my office" only its own. An IMR's denial - whose reason every office
     involved is meant to read - had no way to reach them on screen.
     """
-    if not access.by_position():
-        return _switch_off()
 
     mine = [o.pk for o in access.current_offices(request.user)]
     if not mine:

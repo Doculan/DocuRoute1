@@ -117,8 +117,8 @@ export default function UserManagement() {
                 <thead>
                   <tr>
                     <th>Username</th>
+                    <th>Full name</th>
                     <th>Email</th>
-                    <th>Department</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -126,8 +126,8 @@ export default function UserManagement() {
                   {pendingUsers.map((user) => (
                     <tr key={user.id}>
                       <td className="table-strong">{user.username}</td>
+                      <td>{user.full_name}</td>
                       <td>{user.email}</td>
-                      <td>{user.department}</td>
                       <td>
                         <div className="table-actions">
                           <button className="btn btn-success btn-sm" onClick={() => handleApprove(user.id, user.username)}>
@@ -158,8 +158,8 @@ export default function UserManagement() {
               <thead>
                 <tr>
                   <th>Username</th>
+                  <th>Full name</th>
                   <th>Email</th>
-                  <th>Department</th>
                   <th>Role</th>
                 </tr>
               </thead>
@@ -167,8 +167,8 @@ export default function UserManagement() {
                 {approvedUsers.map((user) => (
                   <tr key={user.id}>
                     <td className="table-strong">{user.username}</td>
+                    <td>{user.full_name}</td>
                     <td>{user.email}</td>
-                    <td>{user.department}</td>
                     <td><span className="badge">{user.role}</span></td>
                   </tr>
                 ))}

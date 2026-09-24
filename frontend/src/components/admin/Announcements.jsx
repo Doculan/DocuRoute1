@@ -10,7 +10,7 @@ const getAuth = () => ({
 });
 
 const EMPTY = {
-  title: "", body: "", date: "", department_id: "", active: true,
+  title: "", body: "", date: "", office_id: "", active: true,
 };
 
 function formatDate(value) {
@@ -31,7 +31,7 @@ function formatDate(value) {
  */
 export default function Announcements() {
   const [rows, setRows] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [offices, setOffices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -44,12 +44,12 @@ export default function Announcements() {
     setLoading(true);
     setError("");
     try {
-      const [list, depts] = await Promise.all([
+      const [list, org] = await Promise.all([
         axios.get(`${BASE_URL}/api/admin/announcements/`, getAuth()),
-        axios.get(`${BASE_URL}/api/departments/`, getAuth()),
+        axios.get(`${BASE_URL}/api/org/offices/`, getAuth()),
       ]);
       setRows(list.data);
-      setDepartments(depts.data);
+      setOffices(org.data.offices || []);
     } catch (err) {
       setError(err.response?.data?.error || "Could not load announcements.");
     } finally {
@@ -65,7 +65,7 @@ export default function Announcements() {
       title: row.title,
       body: row.body || "",
       date: row.date || "",
-      department_id: row.department_id || "",
+      office_id: row.office_id || "",
       active: row.active,
     });
     setMessage("");
@@ -145,8 +145,8 @@ export default function Announcements() {
         tone: "badge-warning",
       };
 
-  const audience = form.department_id
-    ? departments.find((d) => String(d.id) === String(form.department_id))?.name
+  const audience = form.office_id
+    ? offices.find((o) => String(o.id) === String(form.office_id))?.name
     : null;
 
   return (
@@ -210,16 +210,16 @@ export default function Announcements() {
           </div>
 
           <div className="field" style={{ flex: "1 1 200px" }}>
-            <label className="label" htmlFor="ann-dept">Who sees it</label>
+            <label className="label" htmlFor="ann-office">Who sees it</label>
             <select
-              id="ann-dept"
+              id="ann-office"
               className="select"
-              value={form.department_id || ""}
-              onChange={(e) => setForm({ ...form, department_id: e.target.value })}
+              value={form.office_id || ""}
+              onChange={(e) => setForm({ ...form, office_id: e.target.value })}
             >
               <option value="">Everyone</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} only</option>
+              {offices.map((o) => (
+                <option key={o.id} value={o.id}>{o.name} only</option>
               ))}
             </select>
           </div>
@@ -235,7 +235,7 @@ export default function Announcements() {
             </span>
           </div>
           <p className="text-xs" style={{ margin: "0.4rem 0 0", color: "var(--n-700)" }}>
-            {audience ? `Visible to staff in ${audience}.` : "Visible to every department."}
+            {audience ? `Visible to people holding a position in ${audience}.` : "Visible to everyone."}
           </p>
         </div>
 
@@ -292,7 +292,7 @@ export default function Announcements() {
                       <span className="subtle text-xs">{formatDate(row.date)}</span>
                     )}
                     <span className="badge badge-neutral">
-                      {row.department || "Everyone"}
+                      {row.office || "Everyone"}
                     </span>
                     {!row.active && <span className="badge badge-neutral">inactive</span>}
                   </div>
@@ -302,7 +302,7 @@ export default function Announcements() {
 
                   <p className="subtle text-xs" style={{ marginTop: "0.4rem" }}>
                     Visible to {row.reach} staff
-                    {row.department ? ` in ${row.department}` : ""}
+                    {row.office ? ` in ${row.office}` : ""}
                     {row.shows_as === "banner" && row.dismissals > 0
                       ? ` · ${row.dismissals} dismissed it`
                       : ""}

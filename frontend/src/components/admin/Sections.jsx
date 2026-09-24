@@ -3,6 +3,7 @@ import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 import DocTable from "../DocTable";
 import { parseTableRow, isTableSeparator } from "../../docTable";
+import { revisionLine } from "../documentStatus";
 
 const formatOCRContent = (content = "") => {
   return content
@@ -244,8 +245,7 @@ export default function Sections({ openManualId = null }) {
   const [manuals, setManuals] = useState([]);
   const [selectedManual, setSelectedManual] = useState(null);
   const [sections, setSections] = useState([]);
-  const [manualVersion, setManualVersion] = useState(1);
-  const [manualRevision, setManualRevision] = useState(0);
+  const [docStatus, setDocStatus] = useState(null);
   const [manualFileUrl, setManualFileUrl] = useState(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
@@ -258,8 +258,6 @@ export default function Sections({ openManualId = null }) {
   // last reason typed - which would get saved unread.
   const [editReason, setEditReason] = useState("");
   const [editForm, setEditForm] = useState({ subtitle: "", content: "", page_number: "", order: "", tag: "" });
-  const [mergeSource, setMergeSource] = useState(null);
-  const [mergeTarget, setMergeTarget] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -324,11 +322,8 @@ export default function Sections({ openManualId = null }) {
         getAuth()
       );
       const sectionList = res.data.sections;
-      const docVersion = res.data.manual_version;
-      const docRevision = res.data.manual_revision || 0;
       setSections(sectionList);
-      setManualVersion(docVersion);
-      setManualRevision(docRevision);
+      setDocStatus(res.data.status || null);
       setManualFileUrl(res.data.file_url ? `${BACKEND_BASE_URL}${res.data.file_url}` : null);
       if (sectionList.length > 0) setIsFullDoc(true);
     } catch (err) {
@@ -361,7 +356,7 @@ export default function Sections({ openManualId = null }) {
   const clearManual = () => {
     setSelectedManual(null);
     setSections([]);
-    setManualVersion(1);
+    setDocStatus(null);
     setManualFileUrl(null);
     setActiveSection(null);
     setIsFullDoc(false);
@@ -376,8 +371,6 @@ export default function Sections({ openManualId = null }) {
     fetchSections(manual.id);
     setShowForm(false);
     setEditingSection(null);
-    setMergeSource(null);
-    setMergeTarget(null);
   };
 
   const handleManualChange = (e) => {
@@ -392,8 +385,6 @@ export default function Sections({ openManualId = null }) {
     setEditingSection(null);
     setShowDiff(false);
     setDiffLines([]);
-    setMergeSource(null);
-    setMergeTarget(null);
     fetchHistory(s.id);
   };
 
@@ -488,7 +479,7 @@ export default function Sections({ openManualId = null }) {
         },
         { headers: { ...auth.headers, ...reauthHeader(reauthToken) } }
       );
-      showMsg(`✅ Section updated — Section v${res.data.version} · Document v${res.data.manual_version} — Tag: ${res.data.tag}`);
+      showMsg(`✅ Section updated — Tag: ${res.data.tag}`);
       setEditingSection(null);
       setEditReason("");
       await fetchSections(selectedManual.id);
@@ -515,34 +506,6 @@ export default function Sections({ openManualId = null }) {
       await fetchSections(selectedManual.id);
     } catch (err) {
       showMsg(err.response?.data?.error || "❌ Failed to delete.");
-    }
-  };
-
-  const handleStartMerge = (sourceSection) => {
-    setMergeSource(sourceSection);
-    setMergeTarget(null);
-  };
-
-  const handleMergeConfirm = async () => {
-    if (!mergeSource || !mergeTarget) {
-      showMsg("❌ Select both source and target sections to merge.");
-      return;
-    }
-
-    if (!confirm(`Merge "${mergeSource.subtitle}" into "${mergeTarget.subtitle}"?`)) return;
-
-    try {
-      const res = await axios.post(
-        `/api/sections/${mergeSource.id}/merge/`,
-        { target_id: mergeTarget.id },
-        getAuth()
-      );
-      showMsg(`✅ Merged: ${res.data.message}`);
-      setMergeSource(null);
-      setMergeTarget(null);
-      await fetchSections(selectedManual.id);
-    } catch (err) {
-      showMsg(err.response?.data?.error || "❌ Merge failed.");
     }
   };
 
@@ -593,13 +556,6 @@ export default function Sections({ openManualId = null }) {
           >
             🗑️
           </button>
-          <button
-            className="icon-btn"
-            title="Merge"
-            onClick={(e) => { e.stopPropagation(); handleStartMerge(section); }}
-          >
-            🔀
-          </button>
         </div>
       </div>
     );
@@ -610,13 +566,13 @@ export default function Sections({ openManualId = null }) {
       <div className="page-head" style={{ marginBottom: "1.15rem" }}>
         <div>
           <h1 className="page-title">Sections</h1>
-          <p className="page-subtitle">Read, edit, merge and version the sections of a manual.</p>
+          <p className="page-subtitle">Read and edit the sections of a manual.</p>
         </div>
         <div className="row-wrap" style={{ gap: "0.6rem" }}>
           <select className="select" style={{ width: "auto", minWidth: "260px" }} onChange={handleManualChange} defaultValue="">
             <option value="">— Select a manual —</option>
             {manuals.map((m) => (
-              <option key={m.id} value={m.id}>{m.title} ({m.department})</option>
+              <option key={m.id} value={m.id}>{m.title}{m.series ? ` (${m.series})` : ""}</option>
             ))}
           </select>
           {selectedManual && (
@@ -698,8 +654,12 @@ export default function Sections({ openManualId = null }) {
           <aside className="reader-toc">
             <div className="toc-head">
               <div className="toc-head-title">{selectedManual.title}</div>
-              <div className="toc-head-meta">🏢 {selectedManual.department}</div>
-              <div className="toc-head-meta">Document v{manualVersion} · Rev {manualRevision}</div>
+              <div className="toc-head-meta">{selectedManual.series || "Unassigned"}</div>
+              {docStatus && (
+                <div className="toc-head-meta">
+                  {docStatus.document_number} · {revisionLine(docStatus)}
+                </div>
+              )}
             </div>
 
             <div className="toc-list">
@@ -715,39 +675,8 @@ export default function Sections({ openManualId = null }) {
                   }}
                 >
                   <span className="toc-item-title">📄 Full document</span>
-                  <span className="toc-item-meta">{sections.length} sections · v{manualVersion}</span>
+                  <span className="toc-item-meta">{sections.length} sections</span>
                 </button>
-              )}
-
-              {mergeSource && (
-                <div className="card card-pad anim-scale-in" style={{ background: "var(--info-soft)", borderColor: "var(--azure-300)" }}>
-                  <p className="label" style={{ marginBottom: "0.5rem" }}>
-                    🔀 Merge “{mergeSource.subtitle}” into:
-                  </p>
-                  <select
-                    className="select"
-                    style={{ marginBottom: "0.6rem" }}
-                    value={mergeTarget?.id || ""}
-                    onChange={(e) => {
-                      const target = sections.find((s) => s.id === parseInt(e.target.value));
-                      setMergeTarget(target || null);
-                    }}
-                  >
-                    <option value="">Select target section</option>
-                    {sections
-                      .filter((s) => s.id !== mergeSource.id)
-                      .map((s) => <option key={s.id} value={s.id}>{s.subtitle}</option>)}
-                  </select>
-                  <div className="row" style={{ gap: "0.4rem" }}>
-                    <button className="btn btn-success btn-sm" onClick={handleMergeConfirm}>Confirm merge</button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => { setMergeSource(null); setMergeTarget(null); }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
               )}
 
               {loading ? (
@@ -792,7 +721,6 @@ export default function Sections({ openManualId = null }) {
                     <p className="page-subtitle">Full document · {sections.length} sections</p>
                   </div>
                   <div className="row-wrap" style={{ gap: "0.5rem" }}>
-                    <span className="badge badge-warning">Document v{manualVersion}</span>
                     <span className="badge badge-neutral">Read only</span>
                     {manualFileUrl && (
                       <button
@@ -916,9 +844,9 @@ export default function Sections({ openManualId = null }) {
                       placeholder="e.g. Corrected the office named in the approval step"
                     />
                     <p className="subtle text-xs" style={{ margin: 0 }}>
-                      Recorded in the section&apos;s history. A staff revision
-                      carries the submitter&apos;s reason; this is the only
-                      place an edit made here can be given one.
+                      Recorded in the section&apos;s history. A change request
+                      carries its own reason; this is the only place an edit
+                      made here can be given one.
                     </p>
                   </div>
                   <p className="subtle text-xs">
@@ -1055,7 +983,7 @@ export default function Sections({ openManualId = null }) {
       {pendingDelete && (
         <ConfirmDestructive
           title="Delete this section?"
-          body={`"${pendingDelete.subtitle}" and its version history are deleted. Revisions submitted against it go too, including any still waiting for review.`}
+          body={`"${pendingDelete.subtitle}" and its version history are deleted.`}
           confirmLabel="Delete section"
           onConfirm={handleDeleteSection}
           onCancel={() => setPendingDelete(null)}

@@ -22,10 +22,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import access
-from api.models import (
-    CustomUser, Office, Position, PositionAssignment,
-)
-from api.views import holds_current_qms_position, issue_reauth_token
+from api.models import CustomUser, Office, Position, PositionAssignment
+from api.qms_views import qms_position
+from api.views import issue_reauth_token
 
 PASSWORD = "correct-horse-battery"
 
@@ -260,7 +259,8 @@ class QmsPositionHomeTests(PeopleFixture):
         but the assignments."""
         self.assign(self.alice, self.qms, Position.IMR)
         self.assign(self.alice, self.qms, Position.DOCUMENT_CUSTODIAN)
-        self.assertTrue(holds_current_qms_position(self.alice))
+        self.assertIsNotNone(qms_position(self.alice, Position.IMR))
+        self.assertIsNotNone(qms_position(self.alice, Position.DOCUMENT_CUSTODIAN))
         self.assertEqual(
             len(self.client.get("/api/org/positions/").data["qms"]), 2
         )

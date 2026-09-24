@@ -27,12 +27,6 @@ export default function Login({ onLoginSuccess }) {
       // replaces this at 1c.
       localStorage.setItem("system_role", response.data.system_role || "user");
       localStorage.setItem("username", response.data.username);
-      // The sidebar names the department a user belongs to, not just "Staff".
-      if (response.data.department) {
-        localStorage.setItem("department", response.data.department);
-      } else {
-        localStorage.removeItem("department");
-      }
 
       onLoginSuccess(response.data.role);
     } catch (err) {

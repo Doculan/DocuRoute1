@@ -1,38 +1,26 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import (
-    Announcement, CustomUser, Department, Manual, ManualSection, ManualRevision,
-)
-
-
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'created_at')
+from .models import Announcement, CustomUser, Manual, ManualSection
 
 
 @admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
-    list_display = ('username', 'email', 'department', 'role', 'is_approved', 'is_staff')
-    list_filter = ('is_approved', 'role', 'department')
+    list_display = ('username', 'email', 'system_role', 'is_approved', 'is_staff')
+    list_filter = ('is_approved', 'system_role')
     list_editable = ('is_approved',)
     fieldsets = UserAdmin.fieldsets + (
-        ('DocuRoute Fields', {'fields': ('role', 'is_approved', 'department')}),
+        ('DocuRoute Fields', {'fields': ('role', 'system_role', 'full_name', 'is_approved')}),
     )
 
 
 @admin.register(Manual)
 class ManualAdmin(admin.ModelAdmin):
-    list_display = ('title', 'department', 'uploaded_by', 'uploaded_at')
+    list_display = ('title', 'series', 'uploaded_by', 'uploaded_at')
 
 
 @admin.register(ManualSection)
 class ManualSectionAdmin(admin.ModelAdmin):
     list_display = ('subtitle', 'manual', 'tag', 'page_number', 'order')
-
-
-@admin.register(ManualRevision)
-class ManualRevisionAdmin(admin.ModelAdmin):
-    list_display = ('section', 'submitted_by', 'status', 'submitted_at')
 
 
 @admin.register(Announcement)
@@ -44,8 +32,8 @@ class AnnouncementAdmin(admin.ModelAdmin):
     says which, so nobody has to remember the rule.
     """
 
-    list_display = ('title', 'shows_as', 'date', 'department', 'active', 'created_at')
-    list_filter = ('active', 'department')
+    list_display = ('title', 'shows_as', 'date', 'office', 'active', 'created_at')
+    list_filter = ('active', 'office')
     search_fields = ('title', 'body')
     fieldsets = (
         (None, {
@@ -53,7 +41,7 @@ class AnnouncementAdmin(admin.ModelAdmin):
             'description': 'Leave the date empty for a banner; set one to '
                            'put it under Upcoming.',
         }),
-        ('Where and when', {'fields': ('date', 'department')}),
+        ('Where and when', {'fields': ('date', 'office')}),
     )
 
     @admin.display(description='Shows as')

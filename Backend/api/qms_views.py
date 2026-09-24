@@ -31,7 +31,7 @@ from .models import (
     Attachment, AuditEvent, CustomUser, DocumentStatus, Manual, ManualSection,
     Position, Proposal, QmsDecision, SectionHistory,
 )
-from .proposal_views import _current_assignments, _switch_off
+from .proposal_views import _current_assignments
 from .views import predict_section, reauth_failure
 
 
@@ -105,8 +105,6 @@ def queue(request):
     """What is waiting on this person's QMS positions. Empty lists, not
     an error, for someone who holds neither - the screen then shows
     nothing rather than a queue that can never fill."""
-    if not access.by_position():
-        return _switch_off()
     user = request.user
     waiting = {'imr': [], 'custodian': []}
     base = Proposal.objects.select_related('manual', 'initiating_office')
@@ -141,8 +139,6 @@ def imr_decide(request, proposal_id):
     different change is a new request, not an edit of this one - and the
     reason is shown to every office involved.
     """
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error
@@ -238,8 +234,6 @@ def custodian_return(request, proposal_id):
     No password: a return commits no office and changes no document. It is
     not in the table of actions that ask for one.
     """
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error
@@ -351,8 +345,6 @@ def make_effective(request, proposal_id):
     An effectivity date in the future is refused: readers would see text
     that is not yet in force. The custodian makes it effective on the day.
     """
-    if not access.by_position():
-        return _switch_off()
     proposal, error = _load(request, proposal_id)
     if error:
         return error
@@ -473,8 +465,7 @@ def make_effective(request, proposal_id):
 
 def can_record_baseline(user, manual):
     return bool(
-        access.by_position()
-        and not manual.statuses.exists()
+        not manual.statuses.exists()
         and qms_position(user, Position.DOCUMENT_CUSTODIAN) is not None
     )
 
@@ -490,8 +481,6 @@ def record_baseline(request, manual_id):
     that, its status changes through requests. The password again -
     readers take this as the document's official standing.
     """
-    if not access.by_position():
-        return _switch_off()
     try:
         manual = Manual.objects.get(pk=manual_id)
     except Manual.DoesNotExist:
@@ -550,8 +539,7 @@ def _correctable_baseline(manual):
 
 def can_correct_baseline(user, manual):
     return bool(
-        access.by_position()
-        and _correctable_baseline(manual) is not None
+        _correctable_baseline(manual) is not None
         and qms_position(user, Position.DOCUMENT_CUSTODIAN) is not None
     )
 
@@ -565,8 +553,6 @@ def correct_baseline(request, manual_id):
     overwritten. A reason, and the password: readers take the status as
     the document's official standing.
     """
-    if not access.by_position():
-        return _switch_off()
     try:
         manual = Manual.objects.get(pk=manual_id)
     except Manual.DoesNotExist:

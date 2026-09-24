@@ -16,16 +16,6 @@ function formatDay(value) {
   });
 }
 
-function timeAgo(value) {
-  if (!value) return "";
-  const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days} days ago`;
-  const months = Math.round(days / 30);
-  return `${months} month${months === 1 ? "" : "s"} ago`;
-}
-
 /**
  * The landing page: what needs doing, and a way back to what you were reading.
  *
@@ -33,7 +23,7 @@ function timeAgo(value) {
  * not need six round trips, and the landing page is the worst place to be
  * slow.
  */
-export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenRevision }) {
+export default function StaffHome({ onGo, onOpenSection, onOpenManual }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -78,7 +68,8 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenRev
     );
   }
 
-  const { attention, activity, recently_opened: recent, announcement,
+  const { proposals_awaiting: awaiting, proposals_mine: proposalsMine,
+          recently_opened: recent, announcement,
           upcoming, upcoming_total: upcomingTotal, stats } = data;
 
   return (
@@ -87,7 +78,7 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenRev
         <div>
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">
-            What needs your attention, and a way back to what you were reading.
+            A way back to what you were reading, and anything waiting for you.
           </p>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
@@ -115,111 +106,47 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenRev
 
       <div className="dash-grid">
         <div className="col" style={{ gap: "1.5rem", minWidth: 0 }}>
-          <Attention counts={attention} onGo={onGo} />
-          <Activity rows={activity} onOpenRevision={onOpenRevision} />
-        </div>
-
-        <div className="col" style={{ gap: "1.5rem", minWidth: 0 }}>
-          <Upcoming rows={upcoming} total={upcomingTotal} />
+          <Attention awaiting={awaiting} onGo={onGo} />
           <RecentlyOpened
             rows={recent}
             onOpenSection={onOpenSection}
             onOpenManual={onOpenManual}
           />
-          <AtAGlance stats={stats} />
+        </div>
+
+        <div className="col" style={{ gap: "1.5rem", minWidth: 0 }}>
+          <Upcoming rows={upcoming} total={upcomingTotal} />
+          <AtAGlance stats={stats} proposalsMine={proposalsMine} />
         </div>
       </div>
     </div>
   );
 }
 
-/** The one widget that is about doing something, so it leads and only ever
- *  shows rows that are not zero. A wall of zeroes is noise. */
-function Attention({ counts, onGo }) {
-  const rows = [
-    counts.awaiting_review > 0 && {
-      key: "awaiting",
-      text: `${counts.awaiting_review} revision${counts.awaiting_review === 1 ? "" : "s"} awaiting review`,
-      tone: "badge-warning",
-    },
-    counts.new_feedback > 0 && {
-      key: "feedback",
-      text: `${counts.new_feedback} with feedback you have not read`,
-      tone: "badge-info",
-    },
-    counts.returned > 0 && {
-      key: "returned",
-      text: `${counts.returned} returned for changes`,
-      tone: "badge-danger",
-    },
-  ].filter(Boolean);
-
+/** The one widget that is about doing something: proposals waiting for
+ *  your office to decide. Not shown at all when nothing is. */
+function Attention({ awaiting, onGo }) {
+  if (!awaiting) return null;
   return (
     <section>
       <h2 className="section-title">Needs your attention</h2>
-      {rows.length === 0 ? (
-        <p className="subtle text-sm" style={{ margin: 0 }}>
-          Nothing needs your attention right now.
-        </p>
-      ) : (
-        <div className="col" style={{ gap: "0.5rem" }}>
-          {rows.map((row) => (
-            <button
-              key={row.key}
-              className="card card-pad card-interactive row"
-              style={{ gap: "0.75rem", alignItems: "center", textAlign: "left", width: "100%" }}
-              onClick={() => onGo("revisions")}
-            >
-              <span className={`badge ${row.tone}`}>•</span>
-              <span className="text-sm">{row.text}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <button
+        className="card card-pad card-interactive row"
+        style={{ gap: "0.75rem", alignItems: "center", textAlign: "left", width: "100%" }}
+        onClick={() => onGo("proposals")}
+      >
+        <span className="badge badge-warning">•</span>
+        <span className="text-sm">
+          {awaiting} proposal{awaiting === 1 ? "" : "s"} waiting for your office to decide
+        </span>
+      </button>
     </section>
   );
 }
 
-/** News about your submissions — distinct from Recently opened, which is
- *  navigation. */
-function Activity({ rows, onOpenRevision }) {
-  return (
-    <section>
-      <h2 className="section-title">Recent activity</h2>
-      {rows.length === 0 ? (
-        <p className="subtle text-sm" style={{ margin: 0 }}>
-          Nothing has happened to your submissions yet. Decisions will show up here.
-        </p>
-      ) : (
-        <div className="col" style={{ gap: "0.4rem" }}>
-          {rows.map((row) => (
-            <button
-              key={row.revision_id}
-              className="row-wrap"
-              style={{
-                gap: "0.4rem", alignItems: "baseline", textAlign: "left",
-                background: "none", border: "none", padding: "0.35rem 0", width: "100%",
-              }}
-              onClick={() => onOpenRevision(row.revision_id)}
-            >
-              <span className="text-sm">
-                Your revision to <span className="doc-ref">{row.manual}</span>{" "}
-                <span className="doc-ref">{row.section}</span> was{" "}
-                {row.returned ? "returned for changes" : row.status}
-              </span>
-              <span className="subtle text-xs">— {timeAgo(row.at)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** A list, not a month grid. There is no automatic date source - effectivity
- *  dates are not stored as dates and approving a revision does not set one -
- *  so a grid would be mostly empty boxes. A list works with zero items and
- *  becomes a calendar later without changing the data. */
+/** A list, not a month grid: most weeks hold nothing, and a grid would be
+ *  mostly empty boxes. A list works with zero items and becomes a calendar
+ *  later without changing the data. */
 function Upcoming({ rows, total }) {
   return (
     <section>
@@ -286,22 +213,22 @@ function RecentlyOpened({ rows, onOpenSection, onOpenManual }) {
 /** Plain figures. A chart of 19 documents is decoration; one would only earn
  *  its place for something changing over time, and there is not enough
  *  history yet. */
-function AtAGlance({ stats }) {
+function AtAGlance({ stats, proposalsMine }) {
   return (
     <section>
       <h2 className="section-title">At a glance</h2>
       <p className="text-sm" style={{ margin: 0, color: "var(--n-700)" }}>
         <strong style={{ fontVariantNumeric: "tabular-nums" }}>{stats.manuals_total}</strong> manuals
-        {stats.department && (
+        {" · "}
+        <strong style={{ fontVariantNumeric: "tabular-nums" }}>{stats.manuals_mine}</strong>
+        {" linked to your offices"}
+        {proposalsMine > 0 && (
           <>
             {" · "}
-            <strong style={{ fontVariantNumeric: "tabular-nums" }}>{stats.manuals_mine}</strong>
-            {" in "}{stats.department}
+            <strong style={{ fontVariantNumeric: "tabular-nums" }}>{proposalsMine}</strong>
+            {" proposal"}{proposalsMine === 1 ? "" : "s"} from your offices
           </>
         )}
-        {" · "}
-        <strong style={{ fontVariantNumeric: "tabular-nums" }}>{stats.revisions_mine}</strong>
-        {" revision"}{stats.revisions_mine === 1 ? "" : "s"} submitted by you
       </p>
     </section>
   );

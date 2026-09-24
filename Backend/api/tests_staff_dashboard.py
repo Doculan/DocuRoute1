@@ -1,4 +1,4 @@
-"""The dashboard: one request, six widgets, and the announcement split.
+"""The staff dashboard: one request, and the announcement split.
 
 The split is the part worth testing hardest. One model serves two widgets -
 dated items are Upcoming, undated ones are the banner - so a bug there shows
@@ -12,112 +12,66 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    Announcement, AnnouncementDismissal, CustomUser, Department, Manual,
-    ManualRevision, ManualSection, RecentlyOpened,
+    Announcement, AnnouncementDismissal, CustomUser, Manual, ManualSection,
+    ManualSeries, ManualSeriesOffice, Office, OfficeLink, Position,
+    PositionAssignment, RecentlyOpened,
 )
 
 
 class StaffDashboardTests(TestCase):
 
     def setUp(self):
-        self.finance = Department.objects.create(name="Finance")
-        self.registry = Department.objects.create(name="Registry")
+        self.today = timezone.localdate()
+        vp = Office.objects.create(name="VP Office", abbreviation="VP", is_approving_level=True)
+        self.finance = Office.objects.create(name="Finance Office", abbreviation="FIN", parent=vp)
+        self.registry = Office.objects.create(name="Registry", abbreviation="REG", parent=vp)
+        self.series = ManualSeries.objects.create(code="FAM", title="Finance", owning_office=vp)
+        ManualSeriesOffice.objects.create(
+            series=self.series, office=self.finance, relationship=OfficeLink.CONCURRING,
+        )
         self.user = CustomUser.objects.create_user(
             username="staffer", password="pw", role="staff",
-            is_approved=True, department=self.finance,
+            is_approved=True,
         )
+        position, _ = Position.objects.get_or_create(office=self.finance, kind=Position.ENCODER)
+        PositionAssignment.objects.create(user=self.user, position=position, starts_on=self.today)
         self.reviewer = CustomUser.objects.create_user(
             username="reviewer", password="pw", role="admin", is_approved=True,
         )
-        self.manual = Manual.objects.create(title="FAM", department=self.finance)
+        self.manual = Manual.objects.create(title="FAM", series=self.series)
         self.section = ManualSection.objects.create(
             manual=self.manual, subtitle="3.0 POLICIES", order=1,
             content="The Cashier shall release the cheque.",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.today = timezone.localdate()
 
     def dashboard(self):
         response = self.client.get("/api/staff/dashboard/")
         self.assertEqual(response.status_code, 200)
         return response.data
 
-    def a_revision(self, *, status="pending", notes="", reviewed=False):
-        revision = ManualRevision.objects.create(
-            section=self.section, submitted_by=self.user, status=status,
-            reviewer_notes=notes, change_reason="Updated after the review.",
-        )
-        if reviewed:
-            revision.reviewed_at = timezone.now()
-            revision.reviewed_by = self.reviewer
-            revision.save(update_fields=["reviewed_at", "reviewed_by"])
-        return revision
-
-    def an_announcement(self, title, *, date=None, department=None, active=True):
+    def an_announcement(self, title, *, date=None, active=True, office=None):
         return Announcement.objects.create(
-            title=title, body="Body text.", date=date,
-            department=department, active=active, created_by=self.reviewer,
+            title=title, body="Body text.", date=date, active=active,
+            office=office, created_by=self.reviewer,
         )
 
     # -- one request --------------------------------------------
 
     def test_every_widget_is_answered_by_the_one_call(self):
         data = self.dashboard()
-        for key in ("attention", "activity", "recently_opened",
+        for key in ("proposals_awaiting", "proposals_mine", "recently_opened",
                     "announcement", "upcoming", "stats"):
             self.assertIn(key, data)
 
     def test_a_brand_new_account_gets_empty_everything_not_an_error(self):
         data = self.dashboard()
-        self.assertEqual(data["attention"],
-                         {"awaiting_review": 0, "new_feedback": 0, "returned": 0})
-        self.assertEqual(data["activity"], [])
+        self.assertEqual(data["proposals_awaiting"], 0)
+        self.assertEqual(data["proposals_mine"], 0)
         self.assertEqual(data["recently_opened"], [])
         self.assertIsNone(data["announcement"])
         self.assertEqual(data["upcoming"], [])
-
-    # -- needs your attention -----------------------------------
-
-    def test_attention_counts_the_three_things_worth_acting_on(self):
-        self.a_revision(status="pending")
-        self.a_revision(status="rejected", notes="Please cite the clause.",
-                        reviewed=True)
-        counts = self.dashboard()["attention"]
-        self.assertEqual(counts["awaiting_review"], 1)
-        self.assertEqual(counts["returned"], 1)
-        self.assertEqual(counts["new_feedback"], 1)
-
-    def test_feedback_stops_counting_once_it_is_read(self):
-        revision = self.a_revision(status="rejected", notes="Cite the clause.",
-                                   reviewed=True)
-        self.client.post(f"/api/staff/revisions/{revision.id}/seen/")
-        self.assertEqual(self.dashboard()["attention"]["new_feedback"], 0)
-
-    def test_a_colleagues_revision_is_not_your_attention(self):
-        colleague = CustomUser.objects.create_user(
-            username="colleague", password="pw", role="staff",
-            is_approved=True, department=self.finance,
-        )
-        ManualRevision.objects.create(
-            section=self.section, submitted_by=colleague, status="pending",
-        )
-        self.assertEqual(self.dashboard()["attention"]["awaiting_review"], 0)
-
-    # -- recent activity ----------------------------------------
-
-    def test_activity_is_decisions_not_submissions(self):
-        """Pending work is already under attention; activity is news."""
-        self.a_revision(status="pending")
-        self.a_revision(status="approved", reviewed=True)
-        activity = self.dashboard()["activity"]
-        self.assertEqual(len(activity), 1)
-        self.assertEqual(activity[0]["status"], "approved")
-
-    def test_a_returned_revision_reads_as_returned_not_rejected(self):
-        self.a_revision(status="rejected", notes="Please cite the clause.",
-                        reviewed=True)
-        self.assertTrue(self.dashboard()["activity"][0]["returned"])
 
     # -- recently opened ----------------------------------------
 
@@ -136,7 +90,7 @@ class StaffDashboardTests(TestCase):
         from api.views import RECENTLY_OPENED_LIMIT
         for index in range(RECENTLY_OPENED_LIMIT + 3):
             manual = Manual.objects.create(
-                title=f"Manual {index}", department=self.finance
+                title=f"Manual {index}", series=self.series,
             )
             self.client.get(f"/api/manuals/{manual.id}/sections/")
         self.assertEqual(
@@ -171,12 +125,16 @@ class StaffDashboardTests(TestCase):
                              date=self.today - datetime.timedelta(days=30))
         self.assertEqual(self.dashboard()["upcoming"], [])
 
-    def test_another_departments_announcement_is_not_shown(self):
-        self.an_announcement("Registry only", department=self.registry)
+    def test_another_offices_announcement_is_not_shown(self):
+        self.an_announcement("Registry only", office=self.registry)
         self.assertIsNone(self.dashboard()["announcement"])
 
+    def test_my_offices_announcement_is_shown(self):
+        self.an_announcement("Finance only", office=self.finance)
+        self.assertEqual(self.dashboard()["announcement"]["title"], "Finance only")
+
     def test_an_announcement_for_everyone_is_shown(self):
-        self.an_announcement("Everyone", department=None)
+        self.an_announcement("Everyone")
         self.assertEqual(self.dashboard()["announcement"]["title"], "Everyone")
 
     def test_an_inactive_announcement_is_hidden_without_deleting_it(self):
@@ -191,7 +149,7 @@ class StaffDashboardTests(TestCase):
 
         colleague = CustomUser.objects.create_user(
             username="colleague2", password="pw", role="staff",
-            is_approved=True, department=self.finance,
+            is_approved=True,
         )
         other = APIClient()
         other.force_authenticate(user=colleague)
@@ -214,10 +172,7 @@ class StaffDashboardTests(TestCase):
     # -- at a glance --------------------------------------------
 
     def test_the_stats_describe_this_user(self):
-        Manual.objects.create(title="Registry Manual", department=self.registry)
-        self.a_revision()
+        Manual.objects.create(title="Registry Manual")
         stats = self.dashboard()["stats"]
         self.assertEqual(stats["manuals_total"], 2)
         self.assertEqual(stats["manuals_mine"], 1)
-        self.assertEqual(stats["revisions_mine"], 1)
-        self.assertEqual(stats["department"], "Finance")

@@ -88,13 +88,10 @@ export default function StaffManuals({ onSelectManual }) {
               <h3 className="doc-name">{manual.title}</h3>
 
               <dl className="col" style={{ gap: "0.35rem", margin: 0 }}>
-                {/* What this document is to you, once access follows
-                    positions. Before that the server sends nothing here,
-                    because "your department's" is the only true answer
-                    and the list already says it. */}
-                {manual.relationship
-                  ? <MetaRow label="Your office" value={manual.relationship} />
-                  : <MetaRow label="Department" value={manual.department} />}
+                {/* What this document is to your offices. */}
+                {manual.relationship && (
+                  <MetaRow label="Your office" value={manual.relationship} />
+                )}
                 {manual.series && (
                   <MetaRow label="Series" value={`${manual.series} — ${manual.series_title}`} />
                 )}

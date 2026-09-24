@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import axios from "axios";
 import logo from '../assets/QMS.png';
 
@@ -23,23 +23,10 @@ export default function Signup({ onBackToLogin }) {
     email: "",
     password: "",
     confirmPassword: "",
-    department_id: "",
   });
-  const [departments, setDepartments] = useState([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setDepartmentsLoading(true);
-    axios.get("/api/departments/")
-      .then((res) => {
-        setDepartments(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch(() => setDepartments([]))
-      .finally(() => setDepartmentsLoading(false));
-  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -63,7 +50,6 @@ export default function Signup({ onBackToLogin }) {
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        department_id: formData.department_id || null,
       });
       setSuccess(true);
     } catch (err) {
@@ -163,27 +149,6 @@ export default function Signup({ onBackToLogin }) {
                 autoComplete="email"
                 required
               />
-            </div>
-
-            <div className="field">
-              <label className="label" htmlFor="su-dept">Office</label>
-              <select
-                id="su-dept"
-                className="select"
-                name="department_id"
-                value={formData.department_id}
-                onChange={handleChange}
-                disabled={departmentsLoading}
-              >
-                <option value="">
-                  {departmentsLoading ? "Loading departments…" : "Select your department"}
-                </option>
-                {departments.length > 0
-                  ? departments.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))
-                  : !departmentsLoading && <option disabled>No departments available</option>}
-              </select>
             </div>
 
             <div className="field">

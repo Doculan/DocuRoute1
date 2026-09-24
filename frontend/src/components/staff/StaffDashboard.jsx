@@ -4,7 +4,6 @@ import StaffManuals from "./StaffManuals";
 import StaffSections from "./StaffSections";
 import StaffSectionSearch from "./StaffSectionSearch";
 import StaffHome from "./StaffHome";
-import StaffRevisions from "./StaffRevision";
 import StaffHelp from "./StaffHelp";
 import StaffProposals from "./StaffProposals";
 import Topbar from "../Topbar";
@@ -34,7 +33,7 @@ const NAV_GROUPS = [
   {
     label: "Your work",
     items: [
-      { key: "revisions", icon: sectionsIcon, label: "My Revisions" },
+      { key: "proposals", icon: sectionsIcon, label: "Proposals" },
       { key: "help", icon: manualsIcon, label: "Help" },
     ],
   },
@@ -44,7 +43,6 @@ const CRUMBS = {
   dashboard: "Dashboard",
   manuals: "My Manuals",
   sections: "Sections",
-  revisions: "My Revisions",
   proposals: "Proposals",
   help: "Help",
 };
@@ -56,53 +54,26 @@ export default function StaffDashboard({ onLogout }) {
   // manual. Both routes land on the same view - that is the point of keeping
   // the two tabs - so this just tells StaffSections where to open.
   const [focusSectionId, setFocusSectionId] = useState(null);
-  // Which revision to open in My Revisions, when something links across to it.
-  const [focusRevisionId, setFocusRevisionId] = useState(null);
-  const [unreadFeedback, setUnreadFeedback] = useState(0);
-  // Which flow this portal is running. Proposals replace single-section
-  // revisions once access is scoped by position, so the tab is one or the
-  // other rather than both - two ways to change a document, with nothing
-  // deciding between them, is the thing this phase exists to avoid.
-  const [byPosition, setByPosition] = useState(null);
   const [awaiting, setAwaiting] = useState(0);
   // Set when a proposal is started from a section rather than from the tab.
   const [proposeForManual, setProposeForManual] = useState(null);
 
   const username = localStorage.getItem("username") || "Staff";
-  // Which department you belong to is the useful fact here — "Staff" only
-  // repeats what the portal heading already says. Stored at login.
-  const department = localStorage.getItem("department");
 
   // The badge is the only reason this lives up here: it has to be right on
-  // the nav whichever page you are looking at.
-  const refreshFeedbackCount = useCallback(async () => {
-    try {
-      const res = await axios.get("/api/staff/revisions/?scope=mine", getAuth());
-      setUnreadFeedback(res.data.filter((r) => r.has_unread_feedback).length);
-    } catch {
-      // A badge that cannot load is not worth an error message.
-      setUnreadFeedback(0);
-    }
-  }, []);
-
-  // The dashboard already knows which flow is live and how much is waiting,
-  // so the shell reads it from there rather than asking separately.
-  const refreshFlow = useCallback(async () => {
+  // the nav whichever page you are looking at. The dashboard already knows
+  // how much is waiting, so the shell reads it from there.
+  const refreshAwaiting = useCallback(async () => {
     try {
       const res = await axios.get("/api/staff/dashboard/", getAuth());
-      setByPosition(Boolean(res.data.access_by_position));
       setAwaiting(res.data.proposals_awaiting || 0);
     } catch {
-      setByPosition(false);
+      // A badge that cannot load is not worth an error message.
+      setAwaiting(0);
     }
   }, []);
 
-  useEffect(() => {
-    refreshFlow();
-    // Only the old flow has a feedback badge; asking for it under the new
-    // one would be a request whose answer is always zero.
-    if (byPosition === false) refreshFeedbackCount();
-  }, [refreshFlow, refreshFeedbackCount, byPosition]);
+  useEffect(() => { refreshAwaiting(); }, [refreshAwaiting]);
 
   const openManual = (manualId) => {
     setSelectedManualId(manualId);
@@ -114,11 +85,6 @@ export default function StaffDashboard({ onLogout }) {
     setSelectedManualId(section.manual_id);
     setFocusSectionId(section.id);
     setActivePage("sections");
-  };
-
-  const openRevision = (revisionId) => {
-    setFocusRevisionId(revisionId);
-    setActivePage("revisions");
   };
 
   const backToManuals = () => {
@@ -135,23 +101,8 @@ export default function StaffDashboard({ onLogout }) {
       setSelectedManualId(null);
       setFocusSectionId(null);
     }
-    if (key === "revisions") setFocusRevisionId(null);
     setActivePage(key);
   };
-
-  // One tab or the other, never both. Until the flow is known the nav
-  // shows the old one, which is what the account had a moment ago.
-  const navGroups = NAV_GROUPS.map((group) =>
-    group.label !== "Your work" ? group : {
-      ...group,
-      items: group.items.map((item) =>
-        item.key !== "revisions" ? item
-          : byPosition
-            ? { ...item, key: "proposals", label: "Proposals" }
-            : item
-      ),
-    }
-  );
 
   const renderPage = () => {
     switch (activePage) {
@@ -162,7 +113,6 @@ export default function StaffDashboard({ onLogout }) {
             onOpenManual={openManual}
             onOpenSection={(manualId, sectionId) =>
               openSection({ manual_id: manualId, id: sectionId })}
-            onOpenRevision={openRevision}
           />
         );
       case "manuals":
@@ -173,8 +123,6 @@ export default function StaffDashboard({ onLogout }) {
             manualId={selectedManualId}
             focusSectionId={focusSectionId}
             onBack={() => handleNav("sections")}
-            onOpenRevision={openRevision}
-            byPosition={Boolean(byPosition)}
             onPropose={(id) => {
               setProposeForManual(id);
               setActivePage("proposals");
@@ -183,20 +131,11 @@ export default function StaffDashboard({ onLogout }) {
         ) : (
           <StaffSectionSearch onOpenSection={openSection} />
         );
-      case "revisions":
-        return (
-          <StaffRevisions
-            focusRevisionId={focusRevisionId}
-            onFeedbackRead={refreshFeedbackCount}
-            onOpenSection={(manualId, sectionId) =>
-              openSection({ manual_id: manualId, id: sectionId })}
-          />
-        );
       case "proposals":
         return (
           <StaffProposals
             startManualId={proposeForManual}
-            onDone={() => { setProposeForManual(null); refreshFlow(); }}
+            onDone={() => { setProposeForManual(null); refreshAwaiting(); }}
           />
         );
       case "help":
@@ -216,7 +155,7 @@ export default function StaffDashboard({ onLogout }) {
         <div className="sidebar-eyebrow">Staff Portal</div>
 
         <nav className="sidebar-nav">
-          {navGroups.map((group) => (
+          {NAV_GROUPS.map((group) => (
             <div key={group.label}>
               <div className="nav-group">{group.label}</div>
               {group.items.map((item) => (
@@ -227,11 +166,6 @@ export default function StaffDashboard({ onLogout }) {
                 >
                   <img className="nav-icon" src={item.icon} alt="" />
                   <span>{item.label}</span>
-                  {item.key === "revisions" && unreadFeedback > 0 && (
-                    <span className="nav-count" title="Reviewer feedback you have not opened">
-                      {unreadFeedback}
-                    </span>
-                  )}
                   {item.key === "proposals" && awaiting > 0 && (
                     <span className="nav-count" title="Waiting for your office to decide">
                       {awaiting}
@@ -248,7 +182,7 @@ export default function StaffDashboard({ onLogout }) {
             <div className="sidebar-avatar">{username.slice(0, 2)}</div>
             <div style={{ minWidth: 0 }}>
               <div className="sidebar-username">{username}</div>
-              <div className="sidebar-role">{department || "Staff"}</div>
+              <div className="sidebar-role">Staff</div>
             </div>
           </div>
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
@@ -261,7 +195,7 @@ export default function StaffDashboard({ onLogout }) {
         <main className="app-content">
           <div
             className="tab-panel"
-            key={`${activePage}-${selectedManualId ?? ""}-${focusRevisionId ?? ""}`}
+            key={`${activePage}-${selectedManualId ?? ""}`}
           >
             {renderPage()}
           </div>

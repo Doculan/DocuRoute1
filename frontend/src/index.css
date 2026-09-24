@@ -2934,50 +2934,6 @@ a:hover { color: var(--brand-500); }
 .chart-key.is-approved::before  { border-color: var(--success); border-top-style: dashed; }
 .chart-key.is-rejected::before  { border-color: var(--danger); border-top-style: dotted; border-top-width: 3px; }
 
-/* ---- Revisions by department ---- */
-
-.dept-row {
-  display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.3rem 0.2rem;
-  background: none;
-  border: 0;
-  border-radius: var(--r-sm);
-  text-align: left;
-  transition: background-color var(--t) var(--ease-quart);
-}
-.dept-row:hover { background: var(--paper-3); }
-
-.dept-name {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
-  color: var(--text);
-}
-
-.dept-bar {
-  display: flex;
-  height: 9px;
-  border-radius: 2px;
-  background: var(--paper-2);
-  overflow: hidden;
-}
-
-.dept-seg { display: block; height: 100%; }
-.dept-seg.is-pending  { background: var(--gold-400); }
-.dept-seg.is-approved { background: var(--success); }
-.dept-seg.is-rejected { background: var(--danger); }
-
-.dept-count {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ---- Recent decisions ---- */
 
 .decision-row {

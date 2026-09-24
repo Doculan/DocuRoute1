@@ -6,9 +6,10 @@ repeated page-header bands — which is why the same manual looks different
 depending on when it was uploaded.
 
 This rewrites section content in place rather than re-extracting, because
-SectionHistory.section and ManualRevision.section both cascade on delete:
-recreating sections would wipe the revision history and every pending
-revision along with it.
+recreating sections would lose them: SectionHistory.section cascades on
+delete, taking the section's history with it, and a section a change
+request has touched cannot be deleted at all (SectionChange.section is
+PROTECT).
 
 Dry run by default; pass --apply to write.
 """

@@ -32,7 +32,7 @@ PYTHONPATH="$SK" ../venv/Scripts/python.exe manage.py shell --settings=scratch_s
   -c "exec(open(r'$SK/seed_scratch.py', encoding='utf-8').read())"
 ```
 
-The seed turns the switch on and leaves one proposal on `VRF 1.01`,
+The seed leaves one proposal on `VRF 1.01`,
 locked and awaiting signature, with its documents generated. Accounts,
 all with password `Verify-scratch-pass!`: `verify_enc` (Encoder),
 `verify_head` (Head), `verify_bud_head` (the concurring Head),
@@ -167,7 +167,7 @@ PYTHONPATH="$SK" ../venv/Scripts/python.exe manage.py shell --settings=scratch_s
   -c "exec(open(r'$SK/drives/demo/verify_paths.py', encoding='utf-8').read())"
 ```
 
-`prep_demo.py` turns access by position on in the copy and refuses one
+`prep_demo.py` checks the demo accounts sign in and refuses a copy
 where any of the five documents has already been through a request - a
 fresh copy for every run. `paths.sh` prints each step's `TEXT`, `VALUE`,
 `FAIL` and console `ERRORS`, and stops a path at its first failure.

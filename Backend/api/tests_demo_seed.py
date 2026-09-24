@@ -16,24 +16,23 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from api.models import (
-    CustomUser, DemoRecord, Manual, ManualSeries, ManualSeriesOffice,
-    Office, Position, PositionAssignment, Department,
+    CustomUser, DemoRecord, Manual, ManualSeries, ManualSeriesOffice, Office,
+    Position, PositionAssignment,
 )
 
 
 class DemoSeedTests(TestCase):
 
     def setUp(self):
-        self.department = Department.objects.create(name="CAS")
         # Documents the seeder will place into series, and must release.
         self.fam = Manual.objects.create(
-            title="FAM 6.02", department=self.department,
+            title="FAM 6.02",
         )
         self.sdm = Manual.objects.create(
-            title="SDM 3.01", department=self.department,
+            title="SDM 3.01",
         )
         self.stranger = Manual.objects.create(
-            title="XYZ 1.01", department=self.department,
+            title="XYZ 1.01",
         )
 
     def seed(self, *args):
@@ -91,13 +90,6 @@ class DemoSeedTests(TestCase):
         self.assertTrue(person.is_approved)
         self.assertEqual(person.full_name, "Maria Santos")
         self.assertTrue(person.check_password("Office123!"))
-
-    def test_it_does_not_touch_the_access_switch(self):
-        """Seeding prepares the data; flipping is a decision somebody
-        makes on the screen, having looked at the preview."""
-        from api.models import AccessMode
-        self.seed()
-        self.assertFalse(AccessMode.current().by_position)
 
     # -- refusing beside a real organisation -----------------------
 
