@@ -76,7 +76,6 @@ which take precedence.
 | `DJANGO_ALLOWED_HOSTS` | `*` | the real hostnames |
 | `DATABASE_URL` | unset → SQLite | the server's database |
 | `DJANGO_CONN_MAX_AGE` | `60` | tune to the database |
-| `REVISION_AI_PIPELINE` | `v2` | `v2` |
 
 ### DEBUG
 
@@ -162,9 +161,9 @@ CREATE DATABASE docuroute CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 **Index length:** utf8mb4 uses 4 bytes per character against MySQL's
-3072-byte index limit, capping a unique `VARCHAR` at 768 characters.
-`Department.name` is `max_length=255` and unique, which fits. Any future
-unique field longer than 768 would not.
+3072-byte index limit, capping a unique `VARCHAR` at 768 characters. Every
+unique text field today is 255 or shorter, which fits. Any future unique
+field longer than 768 would not.
 
 ### Moving the data
 

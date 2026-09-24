@@ -88,9 +88,99 @@ pooled 0.844 is used only for per-label tables.
 
 ---
 
-## [v4] — in progress
+## [v4.0.0] — 2026-09-24
 
-The rebuild: a dynamic organisation the system admin enters through
-screens, three system roles, positions with dated assignments,
-whole-manual proposals, concurrence, and the generated DCR. See `CLAUDE.md`
-for the standing direction and `PROGRESS.md` for what has been decided.
+The rebuild around the official Document Change Request (F-QMS-001). A
+change is proposed by an office for a whole document, agreed by the other
+offices that work with it, signed on paper, decided by the IMR and made
+effective by the Document Custodian. Phases were tagged on the way:
+`v4.0.0-p1` (organisation), `v4.0.0-p2` (proposals and concurrence),
+`v4.0.0-p3` (generated documents and signed copies).
+
+**The AI pipeline is unchanged:** 0.978 verdict accuracy and 0.854 issue
+micro-F1, fingerprint `6a6a5c667a3c4d11`. Each changed section is checked
+through the same `assess_texts()` call as before.
+
+### The organisation, entered as data
+
+- Offices in a hierarchy, with approving levels, deactivation and merging —
+  never deletion — and their past names kept, so history reads correctly.
+- Positions (Encoder, Head, IMR, Document Custodian) held by people through
+  dated assignments, acting / OIC included; exactly one current Head per
+  office. People sign up with a purpose statement and are approved.
+- Three system roles choose the portal: system admin, QMS staff, users.
+- Manual series and their documents, owned by an approving-level office,
+  with concurring and reader offices inherited by each document unless it
+  overrides them.
+- Nothing about the university is in code: the tables start empty and the
+  system admin fills them through screens.
+
+### Proposals and concurrence
+
+- One proposal per document, each changed section with its own mandatory
+  AI check; editing a section clears only that section's check.
+- Submitting freezes who must agree. Every concurring office concurs or
+  returns with feedback all offices read; a return makes a new version and
+  every concurrence starts again. One decision per office per version,
+  refused a second time.
+- One open proposal per office per document, held by a database constraint.
+- The password is asked again before submitting, concurring, returning,
+  withdrawing, deciding and making effective — not on drafting or checking.
+
+### Locking, documents and signed copies
+
+- The last concurrence locks the text, numbers the request and generates the
+  pre-filled DCR, the draft copy and the concurrence annex inside the same
+  transaction; a generator that fails takes the lock with it.
+- Generated documents print position titles, never names, and are checked
+  for repeated parts and personal properties before they are stored.
+- Signed scans are uploaded, and a replaced one is kept as superseded, never
+  overwritten. The system records who uploaded what; it does not verify
+  signatures, and the screen says so.
+
+### The QMS portal
+
+- The IMR accepts or denies; a denial's reason is read by every office.
+- The approving authority's signed DCR is uploaded after acceptance.
+- The Document Custodian records section 5 and makes the change effective —
+  the text changes, the history names the DCR, readers see the new revision
+  and effectivity date — or returns the package for a defect in a signed
+  copy. A starting status can be corrected, with a reason, until a change
+  has been made effective; the corrected record is kept.
+- Versions and revisions only move forward: a lower version is refused, and
+  within a version a lower revision.
+
+### Kept for the transition
+
+The v3 single-section revision flow and department-based access stayed
+behind a switch, so the live data could move over when ready. Removed in
+v4.1.0.
+
+---
+
+## [v4.1.0] — 2026-09-25
+
+The transition finished: v4 alone, no switch and no v3 flow.
+
+- **Access is by position, permanently.** The switch between department and
+  position access is removed, with its screen and readiness gate.
+- **Departments are retired**: the model, its screen, the department field in
+  sign-up and user management, and department-targeted announcements
+  (announcements now target offices). A new document starts unassigned.
+- **The v3 single-section revision flow is removed** — its endpoints, the
+  admin's Revisions review screen and the staff's revision screens. Reviewing
+  belongs to the IMR and the Document Custodian. The admin's section merge
+  went with it; it returns with adding and deleting sections through
+  proposals.
+- **v1 is removed**: the `REVISION_AI_PIPELINE` setting, the v1 model code,
+  its training scripts, datasets and metrics. v1 remains in the `v3.0.0`
+  tag. The four-layer pipeline and the SVM section classifier are unchanged;
+  fingerprint `6a6a5c667a3c4d11`.
+- **Dashboards read proposals**: what waits on a person's offices, recent
+  proposals and activity.
+- **Fixed:** the pre-assessment sweep would have deleted every proposal's
+  stored AI check after a week; it now keeps any check a section change
+  points at.
+- Migrations `0031` (refuses to run while a v3 revision exists) and `0032`.
+  Test accounts with no references may be deleted before go-live; nothing
+  else in the organisation is.

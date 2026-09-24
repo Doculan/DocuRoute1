@@ -2060,6 +2060,165 @@ removed rather than left untested.
 
 ---
 
+## v4.1.0 — the transition finished (approved 2026-09-25)
+
+Decided after v4.0.0: start fresh on v4, no safety net. In one piece of
+work: delete the old test accounts, make access by position permanent and
+remove the switch, retire `Department`, remove the v3 single-section flow
+and the transitional admin review (4d), and drop the v1 AI models entirely.
+Kept: the four-layer pipeline, everything under `ml/revision_pipeline/`,
+the SVM section classifier, and the demo organisation and accounts.
+
+### The live database
+
+Backed up first (`db.sqlite3.bak-20260924-pre-v4.1`, integrity ok, 20
+accounts, 19 documents). Rehearsed on copies before anything ran live:
+
+- **The five test accounts** (Eug, STAFF1, eugene_l, try, STAFF2) were
+  checked for every reference - uploads, history, positions, dismissals,
+  anything pointing at them - found to have none, and deleted. **CLAUDE.md
+  principle 3 now carries the one exception**: unreferenced test accounts may
+  be deleted before go-live.
+- The old gate's other checks, run once more: no document nobody could
+  propose against, no owner that would approve its own proposal.
+- **Migration 0031** removes the v3 revision flow (`ManualRevision`, the
+  history and pre-assessment links to it, the 'revision' and 'merge' history
+  sources). **It refuses to run while any v3 revision exists** - rehearsed on a
+  copy with one planted, where it stopped and named what it found.
+- **Migration 0032** removes `Department` (on documents, people and
+  announcements) and `AccessMode`, the switch.
+
+Live afterwards: 15 accounts, the demo accounts intact, 14 offices, 19
+documents, 198 sections, integrity ok.
+
+### What was removed
+
+- **The switch**: `AccessMode`, `by_position()`, the 20 "switched off" guards
+  in the proposal, concurrence, package and QMS views, the department branch
+  in `offices_for` and in every access helper, the switchover preview and
+  screen and their tests.
+- **Departments**: the model and its foreign keys, the Departments screen and
+  endpoints, the department field in sign-up, sign-in and user management,
+  department targeting on announcements (offices only now - the screen had
+  only ever offered departments), the department column and filter on the
+  admin's manual list (series instead), the Django admin registrations,
+  `make_admin --department`, and `seed_test_users`. A document uploaded now
+  starts unassigned, as CLAUDE.md always said.
+- **The v3 flow**: 13 endpoints (upload, pre-assess, propose-text, the merge
+  check and proposal, the admin revision list and review, the reviewer's AI
+  fallback, "my revisions", feedback-seen, the staff section edit and delete,
+  and the v3 version setter), the Revisions review screen, the staff
+  StaffRevision and UploadRevision screens, and in the staff reader: Submit
+  revision, Edit text, the merge bar and the "My revisions" tab. Also the
+  `seed_activity` command, which only made fake revisions.
+- **The admin's section merge**: it had refused every request since access
+  went by position. **Recorded in the roadmap** (plan §6, item 10) as
+  returning with adding and deleting sections through proposals.
+- **4d**: `TRANSITIONAL_ADMIN_REVIEW` and `IsQmsReviewer`. Reviewing is the
+  IMR's and the Document Custodian's, through Requests.
+- **v1**: `REVISION_AI_PIPELINE` and its mentions in settings, README,
+  DEPLOYMENT and `.env.example`; `ml/distilbert_model.py`, the two v1 training
+  scripts, the data-preparation script and v1's helper modules; the v1
+  datasets (`train.csv`, `test.csv`, `validation.csv`, `revision_data.csv`,
+  the augmented and mapping files); v1's metrics under `ml/evaluation/`; and,
+  on this machine, the two v1 weight folders and `ml/training_checkpoints/`
+  (6.8 GB, written only by the v1 training scripts). v1 remains in the
+  `v3.0.0` tag. README keeps the old two-model system as history.
+
+### What moved, what was rewritten
+
+- The two helpers the proposal check borrowed from the v3 code
+  (`_assess_unsaved`, `_retrieved_section_ids`) **moved verbatim** into
+  `proposal_views.py`: what Layer 2 receives is unchanged. `check_setup.py`
+  Ready, fingerprint `6a6a5c667a3c4d11` unchanged, before and after.
+- **Dashboards** read proposals only: the admin's attention counts, activity
+  chart and a recent-proposals list; the staff dashboard's count of what
+  waits on the person's offices. The admin's v3 panels (pending revisions,
+  stale assessments, revisions by department, reviewer decisions, assessment
+  sources) are gone.
+- **Tests that exercised shared code through v3 endpoints were ported, not
+  deleted**: the clause 6.3 reason rules now run through proposal submission
+  (`tests.py`); the check's binding to its text, its rate limits and the sweep
+  through the proposal check (`tests_pre_assessment.py`); the dashboard tests
+  onto proposals; the staff portal, announcement and access-helper tests onto
+  offices. The hand-over tests that still applied became
+  `tests_dashboards.py`.
+
+### Found on the way
+
+- **The pre-assessment sweep would have deleted every proposal's AI check.**
+  It kept only rows "consumed" by a v3 revision, which proposals never set;
+  run from cron, it would have cleared every stored check older than a week
+  and left each section with none. It now keeps anything a section change
+  points at. Tested, and shown to fail without the fix.
+- **The live backend I had started for you was serving half-changed code**
+  once `runserver` reloaded during this work. Its log shows only three
+  sign-ins before the code stopped loading; nothing was written. I stopped
+  it; start it again once this is approved.
+- The admin dashboard's recent-proposal list printed "Denied by the IMR" over
+  the document name; it now uses the shared short labels.
+- **`ml/revision_pipeline/scripts/_corpus.py` read `manual.department`**, so
+  the data-rebuild script failed once departments were gone. The field was
+  read by nothing downstream and is not in the dataset. **Approved and
+  removed.** Proven inert: the builder as of the dataset's own commit
+  (`01f4528`), run twice against the same database, once with the line and
+  once without, gives byte-identical output in all six files. Fingerprint
+  `6a6a5c667a3c4d11` unchanged.
+- **Found while checking it: the committed `context_v2` dataset cannot be
+  rebuilt byte-for-byte.** Its own commit's code, against the database
+  committed a minute before it (`c4442bb`, the likeliest input) or the
+  backups either side, gives 2,633 examples against the committed 2,762;
+  today's code gives 2,634, 2,581 of them identical to committed rows. The
+  builder is deterministic (two runs, identical output) and the section text
+  has not changed since 2026-09-23, so the difference predates v4 -
+  probably code or libraries that were not committed as they ran. The
+  dataset card's "Rebuilding from the same database reproduces this file" is
+  therefore not true of this file. Nothing was changed: the committed
+  dataset is what the published figures were measured on.
+- `MODEL_EXPLAINED.md`, listed in CLAUDE.md, is not in the repository or its
+  history; CLAUDE.md now says so.
+
+### The word "department", everywhere it remains
+
+- The DCR's label **"Department/Unit Head"** - the official form's wording,
+  in generation, the Head position's hint and one generation test.
+- **History notes** explaining what replaced departments (access helpers,
+  models, two organisation tests) and the migrations that removed them.
+- **Ordinary English**: "a department, a college and the Office of..." in the
+  Office model's description.
+- Under `ml/` (untouched): entity patterns that recognise "Department" in
+  manual text, Layer 1's note on why it has no department check, and the
+  corpus script above.
+
+Nothing on any screen asks for, shows or filters by a department.
+
+### Seen working
+
+The `run-docuroute` skill on a copy of the live database migrated exactly as
+the live one then was: all five paths through the screens - draft to
+effective with a corrected starting status, returned and resubmitted on
+version 2, withdrawn, denied with the reason read by every office, returned
+by the custodian and fixed - no console errors, no server errors, and
+`verify_paths.py` confirming each in the database. A tour of the changed
+screens (admin dashboard, Manuals, Announcements, Users, sign-up, staff
+dashboard) showed no Departments, Revisions or Switchover anywhere. The
+skill's seed and demo preparation no longer create a department or a switch.
+
+### Test state
+
+**529 tests, all passing** (from 660: the switch, transitional-review and v3
+revision tests removed; the rest ported). No `IntegrityError`.
+
+**Shown to fail without what they test: 9 of 10** - the sweep's protection of
+a check a section points at, both rate limits, whitespace normalisation,
+identical checks for identical content, a notice for one's own office and not
+another's, the reason rule at submission, QMS staff reading everything. The
+tenth - "no office reaches nothing" - was a redundant early return (filtering
+by an empty office list already finds nothing), so it was removed rather than
+kept untestable.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

@@ -14,7 +14,7 @@ Reference documents in the repo:
 - `MULTI_OFFICE_WORKFLOW_PLAN.md` — the full design and its open decisions
 - `PHASE1_ORGANISATION_SPEC.md` — the current build spec (later phases get their own)
 - `PROGRESS.md` — what has been done and decided
-- `EVALUATION.md`, `MODEL_EXPLAINED.md` — the AI pipeline and its published figures
+- `Backend/ml/reports/EVALUATION.md` — the AI pipeline and its published figures (`MODEL_EXPLAINED.md` was listed here but is not in the repository or its history)
 - **The official DCR form** — `Backend/media/templates/F-QMS-001-Document-Change-Request-Rev.1-01-05-26.doc` (F-QMS-001, Rev. 1, 01-05-26) — the template the system pre-fills. Note the filename reads `Rev.1`, with a dot. The legacy `.doc` is kept beside a **`.docx` converted by hand** (Sept 2026) — nothing in this environment can convert one, and that `.docx` is what generation fills.
   - **The IMR's printed name is gone from section 3**, replaced by the position title *Integrated Management Representative*. The five spaces before it were removed so it fits on one line — in Word's own render its centre is within 0.1pt of the signature line's, where the name sat, at the same 10pt.
   - **The signature labels live in floating text boxes**, not in the table, so `python-docx`'s ordinary API walks straight past `Requested by` and `Department/Unit Head`. Each also exists **twice**, as DrawingML and as a VML fallback; write both. Current Word shows the DrawingML copy (confirmed by rendering), older readers the VML one.
@@ -70,7 +70,7 @@ Layer 4 wording changes are templates only — no model change, figures unaffect
 
 1. **Database first.** Design and migrate the schema before building screens. Every phase starts with a report on the current data model and a proposed migration, **tested on a copy** of the database, before anything runs for real. Back up `db.sqlite3` first.
 2. **Structure in code, content in data.** No office names, manual codes, hierarchy or people in code. Organisation tables start **empty** — no import from the old departments — and are filled by the system admin through screens.
-3. **Nothing in the organisation is ever deleted.** Offices are deactivated or merged; people are deactivated; position assignments are ended with a date. History must always read correctly, including past office names.
+3. **Nothing in the organisation is ever deleted.** Offices are deactivated or merged; people are deactivated; position assignments are ended with a date. History must always read correctly, including past office names. *One narrow exception, decided at v4.1.0:* **test accounts with no references may be deleted before go-live** — nothing refers to them, so no history can read wrongly without them.
 4. **Flexible participants, fixed stages.** *Who* takes part is data (which offices concur, who approves, who holds which position). *What happens* — the stages — is code, because it mirrors the official form. Do not build a configurable workflow engine.
 5. **Requests freeze their participants when submitted.** A reorganisation mid-request must never change who has to agree to it.
 6. **Manuals are owned by an approving-level office in name; offices do the work.** The owner (e.g. the VP) signs on paper and neither proposes nor concurs. Other offices relate to a manual as **concurring** (can propose; must concur on others' proposals) or **reader** (read only, never blocks). An office can relate to many manuals. The approval route is the owner plus any approving levels above it (e.g. VP → President).
@@ -166,7 +166,7 @@ The target entities, at a high level — detailed fields come in each phase spec
 | `Notification` | Per-user inbox entries |
 | `AuditEvent` | Every stage transition: who, which position, which office, when, which version |
 
-Existing single-section revisions migrate into one-section proposals. Existing manuals and sections stay; until linked to an office they appear as **unassigned**.
+Existing single-section revisions were to migrate into one-section proposals; there were none, and the v3 single-section flow was removed at v4.1.0. Existing manuals and sections stay; until linked to an office they appear as **unassigned**. **Done at v4.1.0:** access is by position permanently (the switch is gone), `Department` is retired, and the transitional admin review is removed — reviewing belongs only to the IMR and Document Custodian.
 
 ---
 
@@ -183,7 +183,7 @@ Existing single-section revisions migrate into one-section proposals. Existing m
 
 ## Personal data
 
-Names are personal data under the Data Privacy Act (RA 10173), which the university's own manuals cite. Collect only name, office, position and credentials; show a purpose statement at sign-up; limit the full people list to the system admin; deactivate rather than delete.
+Names are personal data under the Data Privacy Act (RA 10173), which the university's own manuals cite. Collect only name, office, position and credentials; show a purpose statement at sign-up; limit the full people list to the system admin; deactivate rather than delete (the one exception is principle 3's: unreferenced test accounts before go-live).
 
 ---
 
@@ -191,7 +191,7 @@ Names are personal data under the Data Privacy Act (RA 10173), which the univers
 
 | Phase | Scope |
 |---|---|
-| **P1** | Dynamic organisation, the three system roles, people and positions, manual links, re-auth on organisation changes and direct manual edits. **No workflow change** — the existing review screen moves from "admin" to QMS staff. |
+| **P1** | Dynamic organisation, the three system roles, people and positions, manual links, re-auth on organisation changes and direct manual edits. **No workflow change** — the existing review screen moves from "admin" to QMS staff. *(Superseded: the v3 review was removed at v4.1.0; the IMR and custodian decide through Requests.)* |
 | **P2** | Whole-manual proposals, per-section checks, versions, concurrence, re-auth on proposal actions |
 | **P3** | Locking, generated DCR and manual pages, scan uploads |
 | **P4** | IMR decisions, custodian and effective changes |

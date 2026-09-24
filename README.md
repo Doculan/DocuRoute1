@@ -1,8 +1,10 @@
 # DocuRoute — QMS Controlled Document Management System
 
 Django REST backend + React (Vite) frontend for managing controlled quality
-manuals: uploading master copies, splitting them into sections, and routing
-staff revision proposals through admin review.
+manuals across the university's offices: uploading master copies, splitting
+them into sections, and routing changes through the official Document Change
+Request process - drafting, concurrence, signing, the IMR's decision and the
+Document Custodian making them effective.
 
 ---
 
@@ -69,9 +71,9 @@ py manage.py reextract_manuals --apply
 
 The first reads every PDF in `Backend/media/mastercopies/`, creates a manual
 for each, splits it into sections and tags them - the same extraction the
-upload screen runs, so your checkout matches everyone else's. It derives the
-department from the filename prefix (`FAM_6.02.pdf` → FAM) and creates the
-departments as it goes. Expect **19 manuals and roughly 210 sections**, and
+upload screen runs, so your checkout matches everyone else's. The manuals
+arrive unassigned; which series and offices they belong to is entered on the
+organisation screens. Expect **19 manuals and roughly 210 sections**, and
 about a minute of work.
 
 The second cleans extraction artefacts out of the stored text. It is a dry run
@@ -80,18 +82,20 @@ without `--apply`.
 `import_mastercopies --dry-run` lists what it would do; `--replace`
 re-imports a manual that is already there.
 
-### Create test staff accounts
+### A demonstration organisation (optional)
 
 ```bash
-py manage.py seed_test_users
+py manage.py seed_demo_org
+py manage.py seed_demo_org --clear
 ```
 
-One approved staff account per department - `staff.fam`, `staff.hrm` and so
-on - all with the password it prints. Registering through the signup page
-leaves an account unapproved, so without this the first thing anyone does on
-a new machine is approve themselves before they can test anything.
+A fictional organisation - offices, manual series, and approved accounts
+holding positions in them (Encoders, Heads, the IMR and the Document
+Custodian), password `Office123!` - so the whole process can be shown without
+entering a real organisation by hand. Everything it creates is recorded and
+`--clear` removes exactly that. It refuses to run beside a real organisation.
 
-**Test credentials only.** Do not run this on a server.
+**Fictional data only.** Do not run this on a server holding real data.
 
 ### Check it worked
 
@@ -100,8 +104,8 @@ py ml/revision_pipeline/scripts/check_setup.py
 ```
 
 Then start both servers (section 6) and sign in. If the staff side shows no
-manuals, the account is in a department that has none - see the note at the
-end of section 3.
+manuals, the account holds no position in an office linked to any - see
+section 3.
 
 > **The model weights are separate.** `Backend/ml/saved_models/` is also
 > gitignored, and unlike the database it cannot be rebuilt from anything in
@@ -110,20 +114,20 @@ end of section 3.
 
 ---
 
-## 3. Accounts and departments
+## 3. Accounts and positions
 
-Staff accounts registered through the signup page start unapproved - an admin
-approves them from **User Management**.
+Staff accounts registered through the signup page start unapproved - the
+system admin approves them, and assigns positions, from **People**.
 
-Every staff account must belong to a department. Staff only ever see manuals in
-their own department (`staff_list_manuals` filters on it, and revision uploads
-return 403 across departments), so an account with no department, or one in an
-empty department, will see nothing.
+What a person can read and do follows the positions they hold. Staff see the
+documents linked to their offices (as owner, concurring or reader), and only
+a concurring office may propose a change; an approved account holding no
+position sees nothing until it is given one.
 
-To promote someone later, or to attach them to a department:
+To make an existing account the system admin:
 
 ```bash
-py manage.py make_admin someone --department FAM
+py manage.py make_admin someone
 ```
 
 ---
@@ -262,8 +266,8 @@ blocks inbound connections whatever the rule says.
 
 **Pre-warm the model before anyone connects.** The first assessment in a fresh
 server process spends about 14 seconds loading the encoder from disk; every
-one after that takes around 0.3 s. Once the backend is up, open the review
-screen yourself and assess one revision. That pays the cost before the
+one after that takes around 0.3 s. Once the backend is up, run the AI check
+on one section of a draft proposal yourself. That pays the cost before the
 audience is watching. Restarting the backend resets it, so warm it again.
 
 The model is loaded once per process and shared, so concurrent assessments do
@@ -316,21 +320,20 @@ nothing.
 
 ---
 
-## 8. Switching assessment pipelines
+## 8. The assessment pipeline and its figures
 
-`Backend/backend/settings.py`:
+Every proposed section is checked by the four-layer pipeline in
+`ml/revision_pipeline`. The check is advisory: it is stored with the section
+change and shown to everyone who reads the proposal, and it never decides
+anything. Without the Layer 2 weights the pipeline runs rules-only and says
+so (`check_setup.py` reports it).
 
-```python
-REVISION_AI_PIPELINE = "v2"   # the four-layer revision pipeline (default)
-REVISION_AI_PIPELINE = "v1"   # the two older DistilBERT models
-```
+*The previous system used two older DistilBERT models (an assessment model and
+an issue model) behind a `v1`/`v2` setting. Nothing used them once proposals
+replaced single-section revisions, and they were removed in v4.1.0; they
+remain in the `v3.0.0` tag.*
 
-Both are kept so the two can be compared. The review screen renders whichever
-came back — the response says which pipeline produced it. Either way the
-assessment is advisory: it is stored on the revision and shown to the admin,
-and it never changes a revision's status.
-
-v2 on the five cross-validation folds: **97.8% verdict accuracy** against 79.1%
+The pipeline on the five cross-validation folds: **97.8% verdict accuracy** against 79.1%
 for the rule layer alone, and **0.854 issue micro-F1** — each the mean of the
 five per-fold scores.
 

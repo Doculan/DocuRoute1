@@ -158,45 +158,51 @@ are relative and Vite forwards them.
 
 - [ ] Each device loads the app and can sign in.
 - [ ] Staff device: open a manual, open a section, see the content.
-- [ ] From the staff device: edit a section, write a reason, press
-      **Check with AI** — under a second once warm.
-- [ ] Confirm and submit.
-- [ ] It appears on the admin device after a refresh, with the assessment
-      already attached.
-- [ ] Delete or ignore the test revision so it is not in the way.
+- [ ] From the staff device, as an Encoder (demo: `ACC_Juan`), open a section,
+      choose **Propose changes**, change the text, give the reason and press
+      **Run the check** — under a second once warm.
+- [ ] Withdraw the test proposal as the Head (`ACC_Maria`) so it is not in
+      the way - or use a document you will not show.
+
+Demo accounts (from `seed_demo_org`), password `Office123!`: Accounting
+Encoder `ACC_Juan` and Head `ACC_Maria`; concurring Heads `BUD_Jose` and
+`CMO_Carlo`; a reader `BUD_Rosa`; the IMR `QMS_Ana`; the Document Custodian
+`QMS_Pedro`.
 
 ---
 
 ## During the demo — a workable order
 
-The assessment now happens **before** submission, on the staff side. Staff must
-run it and may submit whatever it says; the reviewer reads the same result.
-There is only ever one verdict for a revision.
+A change is proposed for a whole document; each changed section carries its
+own AI check, made once and read by everyone after. Signatures stay on paper;
+the system routes, records, generates the documents to sign, and stores the
+signed scans.
 
-1. Staff signs in, opens a manual, edits a section, and writes a proper reason.
-2. Staff presses **✨ Check with AI** — verdict, the issues with clause and
-   evidence, and an explanation addressed to them.
-3. Point out that **Confirm is disabled until the check has run**, and that the
-   verdict does not block: staff can submit a `reject` if they disagree.
-4. Edit one word. The result clears and Confirm greys out again — what the
-   reviewer sees is always what the staff member actually read.
-5. Re-check, then **Confirm and submit**. Submission is instant; the model work
-   already happened.
-6. Admin refreshes the review queue and opens the revision: the same assessment
-   is already there, labelled **checked by the submitter before submitting**,
-   with how long they waited before submitting.
-7. Expand **What the submitter was told** to show the staff-facing wording
-   beside the reviewer's.
-8. Admin approves or rejects. The assessment never changes a status by itself.
+1. **Draft** (`ACC_Juan`): open a document, choose **Propose changes**, edit a
+   section, write the reason, **Run the check** - the concerns with clause and
+   evidence, and an explanation of why they matter. Edit one word and the check
+   clears: what everyone reads is always about the text submitted.
+2. **Submit** (`ACC_Maria`, the Head): **Submit for concurrence**, with the
+   password.
+3. **Concurrence** (`BUD_Jose`, `CMO_Carlo`): each reads the change on
+   **Awaiting my office** and concurs - or returns it with feedback, which
+   sends it back as a new version that every office must agree to again.
+4. **Locked**: the last concurrence freezes the text, numbers the request
+   (`DCR-YYYY-NNN`) and generates the DCR, the draft copy and the annex.
+5. **Signed copies** (`ACC_Juan`): upload the signed DCR and draft copy.
+6. **IMR** (`QMS_Ana`): accept, or deny with a reason every office reads.
+7. **Approving authority** (`ACC_Juan`): upload the DCR the approving
+   authority signed.
+8. **Custodian** (`QMS_Pedro`): record section 5 and **Make effective** - the
+   text changes, the history names the DCR, and readers see the new revision
+   and effectivity date. Or return the package for a defect in a signed copy.
 
 Worth having ready to show deliberately:
 
 - A **weakened obligation** ("shall" → "may") — rules and model agree, and the
   panel says so.
-- A **throwaway reason** ("update") — refused at the check, before any verdict,
-  which shows clause 6.3 being enforced rather than merely recorded.
-- An **upload**: the check shows the text the extractor actually read from the
-  file, which is worth seeing on a scanned PDF.
+- A **throwaway reason** ("update") — refused at submission, which shows
+  clause 6.3 being enforced rather than merely recorded.
 
 ---
 
