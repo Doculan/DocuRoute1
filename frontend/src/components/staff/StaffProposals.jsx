@@ -207,8 +207,12 @@ function Proposal({ proposalId, onBack, onSay }) {
     return <div className="loading-row"><span className="spinner" /> Loading…</div>;
   }
 
-  const act = async (token) => {
-    const { url, body, success } = pending;
+  // The action comes as an argument where it is chosen in the same click:
+  // `pending` set a moment earlier is not visible to this call yet, and
+  // reading it there sent nothing - no concurrence, return or withdrawal
+  // ever reached the server from this screen.
+  const act = async (token, action = pending) => {
+    const { url, body, success } = action;
     setPending(null);
     try {
       await axios.post(`${BASE_URL}${url}`, body || {}, confirmed(token));
@@ -342,13 +346,12 @@ function Proposal({ proposalId, onBack, onSay }) {
           body="Your office agrees to this text. If every other office agrees too, the content locks and can no longer be amended."
           confirmLabel="Concur"
           onConfirm={(token) => {
-            setPending({
+            setDecision(null);
+            return act(token, {
               url: `/api/proposals/${proposalId}/decide/`,
               body: { decision: "concur" },
               success: "Recorded.",
             });
-            setDecision(null);
-            return act(token);
           }}
           onCancel={() => setDecision(null)}
         />
@@ -363,7 +366,8 @@ function Proposal({ proposalId, onBack, onSay }) {
           onSection={setFeedbackSection}
           onCancel={() => { setDecision(null); setFeedback(""); }}
           onSend={(token) => {
-            setPending({
+            setDecision(null);
+            return act(token, {
               url: `/api/proposals/${proposalId}/decide/`,
               body: {
                 decision: "return", feedback,
@@ -371,8 +375,6 @@ function Proposal({ proposalId, onBack, onSay }) {
               },
               success: "Returned with your feedback.",
             });
-            setDecision(null);
-            return act(token);
           }}
         />
       )}
@@ -381,13 +383,12 @@ function Proposal({ proposalId, onBack, onSay }) {
         <WithdrawForm
           onCancel={() => setDecision(null)}
           onSend={(reason, token) => {
-            setPending({
+            setDecision(null);
+            return act(token, {
               url: `/api/proposals/${proposalId}/withdraw/`,
               body: { reason },
               success: "Withdrawn. The record stays.",
             });
-            setDecision(null);
-            return act(token);
           }}
         />
       )}

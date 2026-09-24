@@ -724,3 +724,36 @@ class WhoIsShownTests(ConcurrenceFixture):
         cash = next(p for p in data['participants'] if p['office'] == 'Cash Management Office')
         self.assertEqual(cash['recorded_by'],
                          {'position': 'Cash Management Office \u2014 Head', 'name': None})
+
+
+class ConcurringOfficesReadTests(ConcurrenceFixture):
+    """An office asked to agree reads what it is agreeing to - and only reads."""
+
+    def setUp(self):
+        super().setUp()
+        self.proposal_id = self.a_draft()
+        self.submit(self.proposal_id)
+        self.path = f'/api/proposals/{self.proposal_id}/'
+
+    def test_a_concurring_office_reads_the_changed_text(self):
+        response = self.as_(self.bud_head).get(self.path)
+        self.assertEqual(response.status_code, 200, response.data)
+        changed = [s for s in response.data['all_sections']
+                   if s['change'] and s['change']['has_changed']]
+        self.assertEqual([s['section_id'] for s in changed], [self.s1.id])
+        self.assertIn('within one day', changed[0]['change']['new_text'])
+
+    def test_an_office_not_involved_does_not(self):
+        registrar = Office.objects.create(name="Registrar", abbreviation="REG")
+        outsider = self.person("reg_head", registrar, Position.HEAD)
+        response = self.as_(outsider).get(self.path)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['error'], 'Access denied')
+
+    def test_a_concurring_office_still_cannot_write(self):
+        response = self.as_(self.bud_head).patch(
+            self.path, {'overall_reason': 'Rewritten by another office.'}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['error'], 'Access denied')
+        version = Proposal.objects.get(pk=self.proposal_id).current_version()
+        self.assertEqual(version.overall_reason, REASON)

@@ -327,14 +327,22 @@ def proposal_detail(request, proposal_id):
     except Proposal.DoesNotExist:
         return Response({'error': 'Proposal not found'}, status=404)
 
-    offices = {o.pk for o in access.current_offices(request.user)}
-    if proposal.initiating_office_id not in offices:
-        return Response({'error': 'Access denied'}, status=403)
-
+    # Reading follows the one rule for seeing a proposal: the offices asked
+    # to concur must be able to read what they are agreeing to. This once
+    # admitted only the requesting office, and a concurring Head was shown
+    # "1 of 0 changed" and no text at all. Writing stays with the office
+    # that made the proposal.
+    from .concurrence_views import can_see
     if request.method == 'GET':
+        if not can_see(request.user, proposal):
+            return Response({'error': 'Access denied'}, status=403)
         data = _proposal_payload(proposal, detail=True)
         data['all_sections'] = _document_sections(proposal)
         return Response(data)
+
+    offices = {o.pk for o in access.current_offices(request.user)}
+    if proposal.initiating_office_id not in offices:
+        return Response({'error': 'Access denied'}, status=403)
 
     version = proposal.current_version()
     if not proposal.is_open:
