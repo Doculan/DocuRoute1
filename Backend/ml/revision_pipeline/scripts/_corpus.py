@@ -28,7 +28,7 @@ EXCLUDED_DOCUMENTS = {"COE"}
 
 
 def load_documents(include_excluded: bool = False) -> list[dict]:
-    """Every master copy as {title, department, sections:[{...}]}."""
+    """Every master copy as {manual_id, title, sections:[{...}]}."""
     setup_django()
     from api.models import Manual
 
@@ -40,7 +40,6 @@ def load_documents(include_excluded: bool = False) -> list[dict]:
             {
                 "manual_id": manual.id,
                 "title": manual.title,
-                "department": manual.department.name if manual.department else "",
                 "sections": [
                     {
                         "section_id": s.id,
