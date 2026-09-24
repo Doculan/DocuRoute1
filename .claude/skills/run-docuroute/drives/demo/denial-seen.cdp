@@ -1,0 +1,17 @@
+# ${WHO} finds the denied request on the ${TAB} tab and reads the reason.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ${WHO}
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+click .tab | ${TAB}
+wait ${DOC}
+click .series-row | ${DOC}
+wait Denied by the IMR
+wait ${DENIAL}
+text .page-subtitle
+shot ${TAG}denial-seen-${WHO}
+errors

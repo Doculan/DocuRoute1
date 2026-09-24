@@ -101,10 +101,11 @@ The seed leaves one request, so accepting and denying need separate
 fresh copies.
 
 Commands are listed at the top of `cdp.mjs`: `nav`, `wait`, `slowwait`
-(3 minutes, for the AI check), `click`, `type`, `fill` (replaces what the
-field holds), `set` (date inputs, which take no typed text), `select`,
-`upload`, `shot`, `text`, `value` (an input's value), `errors`, and `? `
-for an optional step. `${NAME}` is filled from the environment - `package-encoder.cdp`
+(3 minutes, for the AI check), `waitgone`, `click`, `type`, `fill`
+(replaces what the field holds; a literal `\n` types a newline), `set`
+(date inputs, which take no typed text), `select`, `upload`, `shot`,
+`text`, `value` (an input's value), `errors`, and `? ` for an optional
+step. `${NAME}` is filled from the environment - `package-encoder.cdp`
 needs `SCRATCH` holding `signed-dcr.pdf`, `signed-dcr-rescan.pdf` and
 `signed-pages.png` (any real PDF and PNG; the server checks they open).
 
@@ -131,31 +132,58 @@ App-specific points:
 - A fresh Chrome profile starts signed out; the profile persists between
   drives, so a second drive may need `? click button | Sign out` first.
 
-## 3a. The whole process, on the demo data
+## 3a. Every path of a request, on the demo data
 
-`drives/demo/` runs one change from draft to effective with the fictional
-organisation `manage.py seed_demo_org` creates: the Accounting Encoder
-drafts a change to FAM 6.02 section 2.0 and runs the check, the Head
-submits, Budget and Cash Management concur, the Encoder uploads the signed
-copies, the IMR accepts, the Encoder uploads the approving authority's
-DCR, the custodian records FAM 6.02's starting status and makes the change
-effective, and a Budget reader opens the document. Demo password
-`Office123!`.
+`drives/demo/` drives a request through the screens with the fictional
+organisation `manage.py seed_demo_org` creates (demo password
+`Office123!`): the Accounting Encoder and Head, the Budget and Cash
+Management Heads who concur, a Budget reader, the IMR and the Document
+Custodian. Each drive is one step by one person, parameterised by
+`${DOC}`, `${SECTION}` and the text; `paths.sh` strings them into the
+request's paths, each on its own FAM document, so all five run on one
+copy:
+
+| Path | Document | Steps |
+|---|---|---|
+| `effective` | FAM 6.02 | draft, submit, both concur, signed copies, IMR accepts, approving authority's DCR, custodian records a starting status and corrects it, makes the change effective, a reader opens it |
+| `return` | FAM 6.03 | draft, submit, Cash concurs, Budget returns with feedback, the Encoder redrafts and checks again, resubmit, **both** concur again (Cash's first concurrence did not carry over), locked on version 2 |
+| `withdraw` | FAM 6.01 | draft, submit, the Head withdraws with a reason, the same section drafted again |
+| `deny` | FAM 5.01 | as far as the IMR, who denies; the requesting office and both concurring offices open it and read the reason; the same section drafted again |
+| `custodian-return` | FAM 4.02 | as far as the custodian, who returns the signed DCR; the office replaces it; back with the custodian, made effective |
 
 Start from a copy of a database that holds the demo organisation (the
-live one does), not the seed above:
+live one does). Copy it with SQLite's backup, not `cp`: the live file is
+in WAL mode, and `cp` can miss what is still in the WAL.
 
 ```bash
-cp "$ROOT/Backend/db.sqlite3" "$SCRATCH/demo.sqlite3"
+../venv/Scripts/python.exe -c "import sqlite3; s=sqlite3.connect('file:db.sqlite3?mode=ro', uri=True); d=sqlite3.connect(r'$SCRATCH/demo.sqlite3'); s.backup(d)"
 export DOCUROUTE_SCRATCH_DB="$SCRATCH/demo.sqlite3" DOCUROUTE_SCRATCH_MEDIA="$SCRATCH/media"
-PYTHONPATH="$SK" ../venv/Scripts/python.exe manage.py shell --settings=scratch_settings   -c "exec(open(r'$SK/drives/demo/prep_demo.py', encoding='utf-8').read())"
-# start the three processes, then, in order:
-for f in "$SK"/drives/demo/*.cdp; do node "$SK/cdp.mjs" "$f" "$SCRATCH/shots" || break; done
+PYTHONPATH="$SK" ../venv/Scripts/python.exe manage.py shell --settings=scratch_settings \
+  -c "exec(open(r'$SK/drives/demo/prep_demo.py', encoding='utf-8').read())"
+# start the three processes, then:
+SK="$SK" SCRATCH="$SCRATCH" OUT="$SCRATCH/shots" \
+  bash "$SK/drives/demo/paths.sh" effective return withdraw deny custodian-return
+PYTHONPATH="$SK" ../venv/Scripts/python.exe manage.py shell --settings=scratch_settings \
+  -c "exec(open(r'$SK/drives/demo/verify_paths.py', encoding='utf-8').read())"
 ```
 
-`prep_demo.py` turns access by position on in the copy and refuses a copy
-where FAM 6.02 has already been through a request. The drives run in
-order and each leaves what the next needs; a fresh copy for every run.
+`prep_demo.py` turns access by position on in the copy and refuses one
+where any of the five documents has already been through a request - a
+fresh copy for every run. `paths.sh` prints each step's `TEXT`, `VALUE`,
+`FAIL` and console `ERRORS`, and stops a path at its first failure.
+`verify_paths.py` then checks in the database what the screens showed -
+versions, concurrences per version, holds released, text changed or not,
+superseded scans and baselines - and ends `ALL PATHS CONFIRMED`.
+
+Two things learned writing these drives:
+
+- **Wait for the page header, not a button's absence.** A button that
+  changes to "Working…" is already "gone"; `wait <status> · version`
+  waits for the header to show the new status, which also proves the page
+  reloaded.
+- `waitgone <css> | <text>` is for proof that an action took where the
+  text it leaves might already be on the page - after Concur, the Concur
+  button disappearing, not "CONCURRED" appearing.
 
 ## 4. Stop
 

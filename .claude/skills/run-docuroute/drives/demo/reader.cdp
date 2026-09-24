@@ -1,4 +1,4 @@
-# 9. A Budget Office reader opens FAM 6.02.
+# A Budget Office reader opens FAM 6.02 after the change to 2.0 SCOPE is effective.
 nav http://127.0.0.1:5173/
 ? click button | Sign out
 nav http://127.0.0.1:5173/

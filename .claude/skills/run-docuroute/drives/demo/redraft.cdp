@@ -1,0 +1,23 @@
+# The Encoder reads the feedback, rewrites the section and checks it again.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ACC_Juan
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+wait ${DOC}
+click .series-row | ${DOC}
+wait ${FEEDBACK}
+text .page-subtitle
+shot ${TAG}feedback-seen
+click .proposal-section-head | ${SECTION}
+wait Save this section
+fill .proposal-section-body textarea | ${TEXT2}
+click button | Save this section
+wait Run the check
+click button | Run the check
+slowwait checked —
+shot ${TAG}redrafted
+errors

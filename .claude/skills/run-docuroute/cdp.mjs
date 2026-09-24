@@ -9,8 +9,10 @@
 //   click <css> | <text>         click the first <css> element whose text contains <text>
 //   type <css> | <text>          focus <css>, then type <text> as real input
 //   fill <css> | <text>          the same, replacing what the field holds
+//                                (a literal \n in <text> types a newline)
 //   set <css> | <value>          set an input's value directly (dates)
 //   slowwait <text>              wait, for up to 3 minutes (the AI check)
+//   waitgone <css> | <text>      wait until no <css> element contains <text>
 //   select <css> | <text>        choose the option whose text contains <text>
 //   upload <css> | <path>        set a file input's file (fires change)
 //   shot <name>                  screenshot to <dir>/<name>.png
@@ -95,6 +97,19 @@ for (const raw of lines) {
         await sleep(250);
       }
       if (!found) throw new Error('text never appeared');
+    } else if (cmd === 'waitgone') {
+      // Until no <css> element contains <text>: proof that an action took,
+      // where the text it leaves might already have been on the page.
+      const [css, text] = split(rest);
+      const until = Date.now() + 20000;
+      let gone = false;
+      while (Date.now() < until) {
+        gone = await evaluate(`![...document.querySelectorAll(${JSON.stringify(css)})]
+          .some((e) => e.innerText.includes(${JSON.stringify(text || '')}))`);
+        if (gone) break;
+        await sleep(250);
+      }
+      if (!gone) throw new Error('still there');
     } else if (cmd === 'click') {
       const [css, text] = split(rest);
       const clicked = await evaluate(`(() => {
@@ -125,7 +140,8 @@ for (const raw of lines) {
       const focused = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(css)});
         if (!el) return false; el.focus(); ${cmd === 'fill' ? 'el.select();' : ''} return true; })()`);
       if (!focused) throw new Error('no such input');
-      await send('Input.insertText', { text });
+      // A script line cannot hold a newline; a literal \n stands for one.
+      await send('Input.insertText', { text: text.replace(/\\n/g, '\n') });
     } else if (cmd === 'set') {
       // For inputs that do not take typed text, such as dates: set the
       // value through the setter React tracks, then fire `input`.

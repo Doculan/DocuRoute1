@@ -1,0 +1,21 @@
+# The Accounting Head withdraws it.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ACC_Maria
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+wait ${DOC}
+click .series-row | ${DOC}
+wait Withdraw
+click .btn-ghost | Withdraw
+wait Withdraw this proposal?
+type #withdraw-reason | ${WITHDRAW_REASON}
+type #withdraw-password | Office123!
+click .modal-foot button | Withdraw
+wait Withdrawn · version
+text .page-subtitle
+shot ${TAG}withdrawn
+errors

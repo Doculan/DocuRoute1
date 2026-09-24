@@ -1889,18 +1889,12 @@ screen and the server, or between two requests:
 
 ### Open
 
-- **Two drafts from one click.** In development, React runs the "start a
-  proposal" effect twice, and the server's one-open-proposal check is
-  check-then-insert - both requests passed and FAM 6.02 got an empty
-  second draft. A production build does not double-run effects, but a
-  double click can race the same way. A real fix is a constraint, and a
-  migration; not done here.
-- **A baseline cannot be corrected** once recorded. A typo waits for the
-  next request. Worth deciding whether the custodian may correct it while
-  no request has been made effective.
-- **Revision order and a new version.** If a new version restarts the
-  revision at 0, the rule refuses it as "lower". The rule as agreed
-  compares revisions only; it may want to apply within one version.
+- ~~**Two drafts from one click.**~~ Fixed before v4.0.0: a constraint,
+  migration 0029 (see below).
+- ~~**A baseline cannot be corrected.**~~ Decided and built: correctable
+  until a change is made effective, the old row kept, superseded.
+- ~~**Revision order and a new version.**~~ Decided and built: versions
+  first, revisions within a version.
 - The "Recorded." message after concurring shows on the list, not on the
   open proposal; the page itself changes, so it is only a missing word.
 
@@ -1921,6 +1915,137 @@ ordered, the form one revision up; the baseline's custodian, once,
 password and offer; nothing on an unchanged section, the document's
 status for readers; and the three fixes - a concurring office reads, an
 outsider does not, writing stays with the requester - and the lock.
+
+---
+
+## Before v4.0.0 — the double draft, corrections, every path through the screens (awaiting approval of the tag)
+
+Decided after Checkpoint 4C:
+
+1. The 4C work committed as three commits: the screen fixes, the lock,
+   and 4c itself.
+2. **The double-draft race fixed in the database**, with a migration and a
+   test of two simultaneous requests.
+3. **A starting status is correctable** by the custodian, with the
+   password, while no change has been made effective on the document; the
+   corrected record is kept, superseded, not overwritten.
+4. **Versions, then revisions**: a lower version is refused; within the
+   same version a lower revision is refused; a new version may start its
+   revisions again.
+5. DEPLOYMENT.md corrected where it claimed the busy timeout covered the
+   read-then-write case (done in the lock commit).
+6. Every path not yet driven through the screens, driven before the tag.
+
+Migrations **0029** (one open proposal per office per document) and
+**0030** (baseline corrections), tested on a copy of the live database
+forward, back and forward, then **applied to the live database** after a
+backup (`db.sqlite3.bak-20260924-pre-0029`, integrity ok). The live
+database held no proposals, so the constraint had nothing to collide with.
+
+### One draft at a time
+
+A partial unique constraint: one proposal per office per document while it
+is a draft or out for concurrence. The view keeps its check, for the
+message, and a request that loses the race - the check found nothing, the
+insert is refused - is answered `already_open` with the draft it should
+open, as the check would have. The test runs two requests on two threads
+against **a real database file** with the project's SQLite options: the
+test database is an in-memory shared cache, where SQLite refuses a second
+writer outright instead of waiting, which is nothing like the file the
+application runs on. Both requests pass the check before either inserts
+(a barrier holds them there), and exactly one draft results.
+
+Three DCR-number tests had built several drafts on one document for one
+office - now impossible. Their helper now makes a numbered request a
+locked one, as it would be, and each on its own document.
+
+### Correcting a starting status
+
+`POST /api/manuals/<id>/status/baseline/correct/`: the custodian, the
+password and a reason, only while no request has been made effective on
+the document. A new baseline row is recorded with the reason; the mistaken
+one is kept, pointing at it (`superseded_by`, `superseded_at`). A
+correction replaces rather than follows, so it is not held to the
+ordering rule - it may go lower. The QMS reader offers "Correct starting
+status" exactly while it is allowed.
+
+### What the paths found
+
+Driving every path through the screens found three more things only the
+screens could show:
+
+1. **Withdraw was not offered while a request was out for concurrence.**
+   The server allowed it; the button was tied to `can_submit`, which ends
+   at the draft. The server now sends `can_withdraw` with its own rule.
+2. **Concur and Return stayed on screen after the office had concurred**,
+   so the page looked as if nothing had been recorded, and a second click
+   logged a second "concurred". They are now offered only to an office
+   still to decide on the current version. The server still lets an office
+   change its decision before the lock (`update_or_create`) - unchanged,
+   and a question below.
+3. **A concurring office lost sight of a request once it had concurred.**
+   Its lists held what was waiting on it and what it had started; an IMR
+   denial - whose reason every office involved is meant to read - reached
+   them only through the API. A third tab, **Other offices' requests**,
+   shown only when it has something in it, lists requests the office is
+   asked to concur on once they no longer wait on it, including one it
+   returned while it is redrafted.
+
+### Every path, through the screens
+
+With the `run-docuroute` skill, on a fresh copy of the demo data, all five
+paths in one run - 47 steps, no failures, no console errors, no server
+errors - and `verify_paths.py` confirming each in the database:
+
+- **Draft to effective** (FAM 6.02): as at Checkpoint 4C, now with the
+  custodian recording the starting status as revision 1 and correcting it
+  to 2 - the form then opened at revision 3. The corrected row is kept,
+  superseded.
+- **Returned, redrafted, resubmitted** (FAM 6.03): Cash concurred, then
+  Budget returned it with feedback on the section; the request went back to
+  draft as version 2, the Encoder read the feedback, rewrote the section
+  and ran the check again, the Head resubmitted, and **both** offices had to
+  concur again - Cash's first concurrence did not carry over, or its second
+  step would have found nothing waiting. Locked on version 2.
+- **Withdrawn** (FAM 6.01): submitted, then withdrawn by the Head with a
+  reason; the same section was drafted again at once - it was free.
+- **Denied** (FAM 5.01): signed copies in, the IMR denied with a reason;
+  the Accounting Encoder, and the Budget and Cash Heads through the new
+  tab, each opened it and read the reason in red; the text unchanged, and
+  the same section drafted again.
+- **Returned by the custodian** (FAM 4.02): accepted, the approving
+  authority's DCR in, the custodian returned it naming the signed DCR; the
+  office replaced that copy alone (the first kept, superseded) and the
+  package went back to the custodian by itself; made effective.
+
+The skill now holds these as one-step drives and a runner (`paths.sh`)
+plus the database check (`verify_paths.py`); its driver gained `waitgone`
+and `\n` in typed text.
+
+### Open
+
+- **May an office change its decision before the lock?** The server lets
+  an office that concurred return it later (or concur twice) until the
+  last concurrence locks it. The screen no longer offers it. Keep, or
+  refuse a second decision on the same version?
+
+### Test state
+
+**656 tests, all passing** - 25 more than at Checkpoint 4C. No
+`IntegrityError` anywhere in the log: the duplicate-upload failure has not
+recurred. `check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11`
+unchanged; nothing under `ml/` touched.
+
+**Shown to fail without what they test: 19 of 19** - the constraint in
+the database, the loser of the race sent to the draft; a lower version,
+a new version restarting, "02" as "2"; the correction's custodian,
+password, reason, window, superseded row, current status and freedom to
+go lower; what waits on an office staying under Awaiting, only offices
+asked to concur; Withdraw during concurrence, only to the Head, not after
+the lock; no second decision, and a decision again on a new version.
+One check first came out unprovable - the correction window was guarded
+twice, and the second guard could never fire - so the duplicate was
+removed rather than left untested.
 
 ---
 

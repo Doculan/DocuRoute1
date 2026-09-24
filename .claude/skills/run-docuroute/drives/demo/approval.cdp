@@ -1,4 +1,4 @@
-# 7. The Encoder uploads the DCR the approving authority signed.
+# The Encoder uploads the DCR the approving authority signed.
 nav http://127.0.0.1:5173/
 ? click button | Sign out
 nav http://127.0.0.1:5173/
@@ -7,10 +7,10 @@ type #login-password | Office123!
 click button[type=submit] |
 wait Proposals
 click .nav-item | Proposals
-wait FAM 6.02
-click .series-row | FAM 6.02
+wait ${DOC}
+click .series-row | ${DOC}
 wait Once the approving authority has signed
 upload #scan-approved_dcr | ${SCRATCH}/signed-dcr.pdf
-wait With the Document Custodian.
-shot 08-with-custodian
+wait With the Document Custodian · version
+shot ${TAG}with-custodian
 errors

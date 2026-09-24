@@ -1,0 +1,23 @@
+# The Budget Head returns it with feedback on the section.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | BUD_Jose
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+click .tab | Awaiting my office
+wait ${DOC}
+click .series-row | ${DOC}
+wait Return with feedback
+click button | Return with feedback
+wait Return ${DOC}?
+type #return-feedback | ${FEEDBACK}
+? select #return-section | ${SECTION}
+type #return-password | Office123!
+click .modal-foot button | Return it
+waitgone button | Return with feedback
+text .page-subtitle
+shot ${TAG}returned
+errors

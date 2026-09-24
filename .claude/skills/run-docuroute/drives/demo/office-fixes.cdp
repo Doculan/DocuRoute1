@@ -1,0 +1,23 @@
+# The Encoder replaces the named copy; the package goes back to the custodian.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ACC_Juan
+type #login-password | Office123!
+click button[type=submit] |
+wait Proposals
+click .nav-item | Proposals
+wait ${DOC}
+click .series-row | ${DOC}
+wait Replace the copies marked below
+text .page-subtitle
+shot ${TAG}return-seen
+click button | Replace
+wait Replace this signed copy?
+upload #replace-file | ${SCRATCH}/signed-dcr-rescan.pdf
+type #replace-reason | Signed again by the Head.
+type #replace-password | Office123!
+click .modal-foot button | Replace
+wait With the Document Custodian · version
+shot ${TAG}back-with-custodian
+errors

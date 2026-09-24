@@ -1,0 +1,32 @@
+# The custodian records ${DOC}'s starting status as revision 1, then
+# corrects it to revision 2.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | QMS_Pedro
+type #login-password | Office123!
+click button[type=submit] |
+wait Requests
+click .nav-item | Manuals
+wait ${DOC}
+click .card | ${DOC}
+wait Record starting status
+click .link-btn | Record starting status
+wait Starting status
+type #baseline-number | ${DOC}
+type #baseline-version | 01
+type #baseline-revision | 1
+set #baseline-effective | 2025-06-02
+type #baseline-password | Office123!
+click .btn-primary | Record
+wait Rev. 1 · effective
+click .link-btn | Correct starting status
+wait Correct the starting status
+fill #baseline-revision | 2
+type #baseline-reason | The paper copy on file reads revision 2.
+type #baseline-password | Office123!
+click .btn-primary | Record
+wait Rev. 2 · effective
+text .toc-head-meta
+shot ${TAG}baseline-corrected
+errors

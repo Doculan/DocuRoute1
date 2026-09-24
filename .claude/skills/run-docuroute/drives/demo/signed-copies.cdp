@@ -1,4 +1,4 @@
-# 5. The Encoder uploads the signed DCR and pages.
+# The Encoder uploads the signed DCR and the signed draft copy.
 nav http://127.0.0.1:5173/
 ? click button | Sign out
 nav http://127.0.0.1:5173/
@@ -7,13 +7,13 @@ type #login-password | Office123!
 click button[type=submit] |
 wait Proposals
 click .nav-item | Proposals
-wait FAM 6.02
-click .series-row | FAM 6.02
+wait ${DOC}
+click .series-row | ${DOC}
 wait Documents to sign
 text .page-subtitle
-shot 06-locked
 upload #scan-signed_dcr | ${SCRATCH}/signed-dcr.pdf
 wait signed-dcr.pdf
 upload #scan-signed_pages | ${SCRATCH}/signed-pages.png
 wait The signed copies are in
+shot ${TAG}signed
 errors

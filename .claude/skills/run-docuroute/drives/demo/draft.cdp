@@ -1,0 +1,27 @@
+# The Accounting Encoder proposes a change to ${DOC}, section ${SECTION},
+# from the document itself, and runs the check.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | ACC_Juan
+type #login-password | Office123!
+click button[type=submit] |
+wait My Manuals
+click .nav-item | My Manuals
+wait ${DOC}
+click .card | ${DOC}
+wait Table of Contents
+click .toc-item | ${SECTION}
+wait Propose changes
+click button | Propose changes
+wait Why this change is being made
+fill #overall-reason | ${REASON}
+click .proposal-section-head | ${SECTION}
+wait Save this section
+fill .proposal-section-body textarea | ${TEXT}
+click button | Save this section
+wait Run the check
+click button | Run the check
+slowwait checked —
+shot ${TAG}drafted
+errors

@@ -1,20 +1,21 @@
-# 4. CMO_Carlo concurs for their office.
+# ${WHO}, Head of a concurring office, concurs.
 nav http://127.0.0.1:5173/
 ? click button | Sign out
 nav http://127.0.0.1:5173/
-type #login-username | CMO_Carlo
+type #login-username | ${WHO}
 type #login-password | Office123!
 click button[type=submit] |
 wait Proposals
 click .nav-item | Proposals
 click .tab | Awaiting my office
-wait FAM 6.02
-click .series-row | FAM 6.02
-wait Concur
+wait ${DOC}
+click .series-row | ${DOC}
+wait Return with feedback
 click .btn-primary | Concur
-wait Concur on FAM 6.02?
+wait Concur on ${DOC}?
 type #confirm-destructive-password | Office123!
 click .modal-foot button | Concur
-wait Awaiting signature
-shot 05-concurred-CMO_Carlo
+waitgone button | Return with feedback
+text .page-subtitle
+shot ${TAG}concurred-${WHO}
 errors

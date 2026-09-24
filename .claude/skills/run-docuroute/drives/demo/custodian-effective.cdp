@@ -1,0 +1,22 @@
+# The custodian records section 5 and makes the change effective.
+nav http://127.0.0.1:5173/
+? click button | Sign out
+nav http://127.0.0.1:5173/
+type #login-username | QMS_Pedro
+type #login-password | Office123!
+click button[type=submit] |
+wait Requests
+click .nav-item | Requests
+wait With you as Document Custodian
+click .series-row | ${DOC}
+wait Document status
+value #status-revision
+fill #status-document_number | ${DOC}
+fill #status-version | ${VERSION}
+fill #status-revision | ${REVISION}
+type #effective-password | Office123!
+click .btn-primary | Make effective
+wait Effective · version
+text .page-subtitle
+shot ${TAG}effective
+errors
