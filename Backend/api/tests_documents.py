@@ -132,9 +132,15 @@ class _ProposalMaker:
         )
 
     def with_number(self, number):
+        # A number is issued at the lock, so a numbered request is a locked
+        # one. Each on its own document: an office holds one open proposal
+        # per document, and the database refuses a second.
+        from api.models import Manual
+        manual = Manual.objects.create(title="Doc", department=self.department)
         return Proposal.objects.create(
-            manual=self.manual, initiating_office=self.office,
+            manual=manual, initiating_office=self.office,
             created_by=self.user, dcr_number=number,
+            status=Proposal.AWAITING_SIGNATURE if number else Proposal.DRAFT,
         )
 
 

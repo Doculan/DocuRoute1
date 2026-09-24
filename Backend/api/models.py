@@ -1122,6 +1122,16 @@ class Proposal(models.Model):
                 fields=['dcr_number'], condition=~Q(dcr_number=''),
                 name='one_proposal_per_dcr_number',
             ),
+            # One open proposal per office per document, in the database
+            # rather than only in the view. The view's check reads, then
+            # inserts, and two requests arriving together both passed it:
+            # one click made two drafts. The statuses are OPEN_STATUSES,
+            # spelled out because a nested class cannot see the outer one.
+            models.UniqueConstraint(
+                fields=['manual', 'initiating_office'],
+                condition=Q(status__in=['draft', 'concurrence']),
+                name='one_open_proposal_per_office_and_document',
+            ),
         ]
 
     def __str__(self):

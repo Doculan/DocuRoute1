@@ -280,32 +280,44 @@ def proposals(request):
             'reason': 'not_concurring',
         }, status=403)
 
-    existing = Proposal.objects.filter(
+    existing = _open_proposal(manual, office)
+    if existing:
+        return _already_open(manual, office, existing)
+
+    try:
+        with transaction.atomic():
+            proposal = Proposal.objects.create(
+                manual=manual, initiating_office=office, created_by=request.user,
+            )
+            ProposalVersion.objects.create(proposal=proposal, number=1)
+            AuditEvent.objects.create(
+                proposal=proposal, version=proposal.current_version(),
+                event=AuditEvent.CREATED, actor=request.user,
+                position=_held_position(request.user, office), office=office,
+                office_name_at_time=office.name,
+            )
+    except IntegrityError:
+        # Another request made it between the check above and this insert
+        # - a double click, or React running the effect twice. The
+        # database kept one; send this one there.
+        return _already_open(manual, office, _open_proposal(manual, office))
+
+    return Response(_proposal_payload(proposal, detail=True), status=201)
+
+
+def _open_proposal(manual, office):
+    return Proposal.objects.filter(
         manual=manual, initiating_office=office,
         status__in=Proposal.OPEN_STATUSES,
     ).first()
-    if existing:
-        return Response({
-            'error': (
-                f'{office} already has an open proposal for {manual.title}.'
-            ),
-            'reason': 'already_open',
-            'proposal_id': existing.id,
-        }, status=409)
 
-    with transaction.atomic():
-        proposal = Proposal.objects.create(
-            manual=manual, initiating_office=office, created_by=request.user,
-        )
-        ProposalVersion.objects.create(proposal=proposal, number=1)
-        AuditEvent.objects.create(
-            proposal=proposal, version=proposal.current_version(),
-            event=AuditEvent.CREATED, actor=request.user,
-            position=_held_position(request.user, office), office=office,
-            office_name_at_time=office.name,
-        )
 
-    return Response(_proposal_payload(proposal, detail=True), status=201)
+def _already_open(manual, office, existing):
+    return Response({
+        'error': f'{office} already has an open proposal for {manual.title}.',
+        'reason': 'already_open',
+        'proposal_id': existing.id if existing else None,
+    }, status=409)
 
 
 @api_view(['GET', 'PATCH'])

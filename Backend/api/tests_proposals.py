@@ -19,12 +19,19 @@ Every test that expects an error asserts the reason, not only the status.
 """
 
 import datetime
+import os
+import shutil
+import sqlite3
+import tempfile
+import threading
+from unittest import mock
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, connections, transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from api import proposal_views
 from api.models import (
     AccessMode, AuditEvent, CustomUser, Department, Manual, ManualSection,
     ManualSeries, ManualSeriesOffice, Office, OfficeLink, Position,
@@ -578,3 +585,122 @@ class PerSectionCheckTests(ProposalFixture):
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
         row = next(s for s in data['sections'] if s['section_id'] == self.s2.id)
         self.assertNotIn('coordinated_change', row['assessment'])
+
+
+class OneDraftAtATimeTests(ProposalFixture):
+    """One open proposal per office per document - held by the database,
+    not only by the view's check, which reads before it inserts."""
+
+    def a_row(self, status=Proposal.DRAFT):
+        return Proposal.objects.create(
+            manual=self.manual, initiating_office=self.accounting,
+            created_by=self.drafter, status=status,
+        )
+
+    def test_the_database_refuses_a_second_open_proposal(self):
+        self.a_row()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self.a_row(Proposal.CONCURRENCE)
+
+    def test_a_closed_one_does_not_count(self):
+        self.a_row(Proposal.WITHDRAWN)
+        self.a_row(Proposal.EFFECTIVE)
+        self.a_row()
+        self.assertEqual(Proposal.objects.filter(status=Proposal.DRAFT).count(), 1)
+
+    def test_the_request_that_loses_the_race_is_sent_to_the_draft(self):
+        """The check found nothing - the other request had not committed
+        yet - and the insert is refused: the answer names the draft."""
+        first = self.start().data['id']
+        real = proposal_views._open_proposal
+        calls = []
+
+        def missed_then_real(manual, office):
+            calls.append(1)
+            return None if len(calls) == 1 else real(manual, office)
+
+        with mock.patch.object(proposal_views, '_open_proposal', missed_then_real):
+            response = self.start()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'already_open')
+        self.assertEqual(response.data['proposal_id'], first)
+        self.assertEqual(Proposal.objects.filter(manual=self.manual).count(), 1)
+
+
+class SimultaneousStartTests(ProposalFixture):
+    """Two requests at the same moment, on two threads and two connections,
+    against a real database file.
+
+    Not the test database itself: it lives in memory as a shared cache,
+    where SQLite refuses a second writer outright ("database table is
+    locked") instead of waiting - nothing like the file the application
+    runs on. So the committed test data is copied to a file, and the two
+    threads connect to that with the project's own SQLite options.
+
+    The data has to be committed to be copied, so this class does not run
+    inside TestCase's transaction: it reports the database as lacking
+    transactions, which makes TestCase flush afterwards instead.
+    """
+
+    @classmethod
+    def _databases_support_transactions(cls):
+        return False
+
+    def test_two_simultaneous_requests_make_exactly_one_draft(self):
+        folder = tempfile.mkdtemp()
+        path = os.path.join(folder, 'race.sqlite3')
+        connection.ensure_connection()
+        target = sqlite3.connect(path)
+        connection.connection.backup(target)
+        # WAL, as the real database already is. Two connections switching a
+        # fresh file to it at the same moment is its own collision.
+        target.execute('PRAGMA journal_mode=WAL')
+        target.close()
+
+        # Both must pass the view's check before either inserts - the
+        # race itself, not merely two requests close together.
+        both_checked = threading.Barrier(2, timeout=10)
+        local = threading.local()
+        real = proposal_views._open_proposal
+
+        def check_then_wait(manual, office):
+            found = real(manual, office)
+            if not getattr(local, 'waited', False):
+                local.waited = True
+                both_checked.wait()
+            return found
+
+        results = []
+
+        def start():
+            try:
+                client = APIClient()
+                client.force_authenticate(user=self.drafter)
+                response = client.post('/api/proposals/', {'manual_id': self.manual.id},
+                                       format='json')
+                results.append((response.status_code, response.data.get('reason')))
+            finally:
+                connections['default'].close()
+
+        settings_dict = connections.settings['default']
+        in_memory = settings_dict['NAME']
+        settings_dict['NAME'] = path      # new threads open new connections
+        try:
+            with mock.patch.object(proposal_views, '_open_proposal', check_then_wait):
+                threads = [threading.Thread(target=start) for _ in range(2)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=30)
+        finally:
+            settings_dict['NAME'] = in_memory
+
+        check = sqlite3.connect(path)
+        drafts = check.execute(
+            'select count(*) from api_proposal where manual_id = ?', (self.manual.id,),
+        ).fetchone()[0]
+        check.close()
+        shutil.rmtree(folder, ignore_errors=True)
+
+        self.assertEqual(sorted(results), [(201, None), (409, 'already_open')])
+        self.assertEqual(drafts, 1)
