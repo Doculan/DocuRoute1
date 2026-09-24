@@ -2022,12 +2022,23 @@ The skill now holds these as one-step drives and a runner (`paths.sh`)
 plus the database check (`verify_paths.py`); its driver gained `waitgone`
 and `\n` in typed text.
 
-### Open
+### Decided before the tag: one decision per office per version
 
-- **May an office change its decision before the lock?** The server lets
-  an office that concurred return it later (or concur twice) until the
-  last concurrence locks it. The screen no longer offers it. Keep, or
-  refuse a second decision on the same version?
+The server now refuses a second decision by the same office on the same
+version (`already_decided`), as the screen already did - it had quietly
+overwritten the first and logged a second "concurred". The check is made
+again inside the transaction, under the write lock; before, a double click
+that slipped past it met the (version, office) unique constraint as a
+server error. A return still opens a new version in which every office
+decides again. **Changing a concurrence into a return before the lock** is
+recorded as a possible later feature (MULTI_OFFICE_WORKFLOW_PLAN.md, §6).
+Tests: a second concurrence refused and not logged twice; a concurrence
+cannot become a return; the office decides again on a new version; the
+other click landing between the check and the transaction. **3 of 3**
+shown to fail without what they test. Full suite after it: **660 tests,
+all passing**, no `IntegrityError`. Tagged **v4.0.0** on this commit.
+
+The reason stays required on starting-status corrections.
 
 ### Test state
 

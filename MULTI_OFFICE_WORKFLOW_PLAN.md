@@ -248,6 +248,7 @@ Not on drafting, commenting, or running the AI check.
 6. **Document generation — titles, not names.** The current DCR prints a named person in section 3; the system's version prints the **position title** ("Integrated Management Representative") and leaves the name for the signatory to write. Same for every signature block. Two templates: the DCR (convert the `.doc` to `.docx` and fill the defined fields) and the manual pages (the blank manual format). Long "changes requested" text may not fit the form's box — **[decide]** whether section 2 carries the full text or a summary with *"see attached draft"*.
 7. **The audit trail.** Every transition: who, which office, when, which version by content hash.
 8. **A research opportunity.** This process produces real revisions with real decisions — concurrences, returns, IMR accepts and denials, each with reasons. Over time, a genuine evaluation set. The selection effect from the mandatory AI check still applies.
+9. **Possible later feature: an office changes its concurrence to a return before the lock.** Today an office decides once per version; a second decision is refused (`already_decided`), and a return opens a new version in which every office decides again. Allowing an office that has concurred to return the proposal before the last concurrence locks it would need its own rules - who may, until when, and how the other offices are told their agreement now rests on a version that is being redrafted. Recorded after Checkpoint 4C; not built.
 
 ---
 

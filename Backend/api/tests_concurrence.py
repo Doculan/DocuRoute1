@@ -836,3 +836,68 @@ class DecisionOfferedTests(ConcurrenceFixture):
                                     {}, format='json')
         self.submit(proposal_id)
         self.assertTrue(self.can(self.bud_head, proposal_id), 'concurrences reset with the version')
+
+
+class OneDecisionPerVersionTests(ConcurrenceFixture):
+    """An office decides once on a version - the server, as the screen."""
+
+    def setUp(self):
+        super().setUp()
+        self.proposal_id = self.a_draft()
+        self.submit(self.proposal_id)
+        response = self.decide(self.proposal_id, self.bud_head, Concurrence.CONCUR)
+        assert response.status_code == 200, response.data
+
+    def test_a_second_concurrence_is_refused_and_not_logged_twice(self):
+        response = self.decide(self.proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'already_decided')
+        self.assertEqual(Concurrence.objects.filter(office=self.budget).count(), 1)
+        self.assertEqual(AuditEvent.objects.filter(
+            proposal_id=self.proposal_id, event=AuditEvent.CONCURRED).count(), 1)
+
+    def test_a_concurrence_cannot_become_a_return(self):
+        """A possible later feature; not something to allow by accident."""
+        response = self.decide(self.proposal_id, self.bud_head, Concurrence.RETURN,
+                               feedback='On reflection, one day is too short.')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'already_decided')
+        proposal = Proposal.objects.get(pk=self.proposal_id)
+        self.assertEqual(proposal.status, Proposal.CONCURRENCE)
+        self.assertEqual(proposal.versions.count(), 1)
+        self.assertEqual(Concurrence.objects.get(office=self.budget).decision, Concurrence.CONCUR)
+
+    def test_on_a_new_version_the_office_decides_again(self):
+        self.decide(self.proposal_id, self.cmo_head, Concurrence.RETURN, feedback='One day is too short.')
+        self.as_(self.acc_enc).post(f'/api/proposals/{self.proposal_id}/sections/{self.s1.id}/check/',
+                                    {}, format='json')
+        self.assertEqual(self.submit(self.proposal_id).status_code, 200)
+        response = self.decide(self.proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.assertEqual(response.status_code, 200, response.data)
+
+
+class DoubleClickDecisionTests(ConcurrenceFixture):
+    """The other click lands between the first check and the transaction."""
+
+    def test_the_check_is_made_again_under_the_lock(self):
+        from unittest import mock
+        from api import concurrence_views
+
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        version = Proposal.objects.get(pk=proposal_id).current_version()
+        real = concurrence_views.reauth_failure
+        position = Position.objects.get(office=self.budget, kind=Position.HEAD)
+
+        def the_other_click_lands(request):
+            Concurrence.objects.create(
+                version=version, office=self.budget, decision=Concurrence.CONCUR,
+                recorded_by=self.bud_head, recorded_by_position=position,
+            )
+            return real(request)
+
+        with mock.patch.object(concurrence_views, 'reauth_failure', the_other_click_lands):
+            response = self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'already_decided')
+        self.assertEqual(Concurrence.objects.filter(version=version, office=self.budget).count(), 1)

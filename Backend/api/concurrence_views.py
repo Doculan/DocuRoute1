@@ -425,23 +425,35 @@ def decide(request, proposal_id):
             'reason': 'feedback_required',
         }, status=400)
 
+    # One decision per office per version. A return opens a new version,
+    # so this only ever refuses a second word on text the office has
+    # already agreed to - which used to overwrite the first and log a
+    # second "concurred". Changing a concurrence into a return before the
+    # lock is a possible later feature, not something to allow by accident.
+    version = proposal.current_version()
+    already = Response({
+        'error': f'{office} has already concurred on this version.',
+        'reason': 'already_decided',
+    }, status=409)
+    if Concurrence.objects.filter(version=version, office=office).exists():
+        return already
+
     failure = reauth_failure(request)
     if failure:
         return failure
 
-    version = proposal.current_version()
     section_id = request.data.get('section_id')
 
     with transaction.atomic():
-        Concurrence.objects.update_or_create(
-            version=version, office=office,
-            defaults={
-                'decision': decision,
-                'feedback': feedback,
-                'section_id': section_id or None,
-                'recorded_by': request.user,
-                'recorded_by_position': position,
-            },
+        # Again under the write lock, which an immediate transaction holds
+        # from here: a double click that slipped past the check above would
+        # otherwise meet the unique constraint as a server error.
+        if Concurrence.objects.filter(version=version, office=office).exists():
+            return already
+        Concurrence.objects.create(
+            version=version, office=office, decision=decision,
+            feedback=feedback, section_id=section_id or None,
+            recorded_by=request.user, recorded_by_position=position,
         )
 
         if decision == Concurrence.RETURN:
