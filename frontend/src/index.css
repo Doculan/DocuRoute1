@@ -2548,6 +2548,14 @@ a:hover { color: var(--brand-500); }
   align-items: start;
 }
 
+/* Admin dashboard panels need a stronger boundary than ordinary page
+   headings, so activity and reference panels remain distinct while scanning. */
+.admin-dashboard-section {
+  border-top: 2px solid var(--n-400);
+  border-bottom: 1px solid var(--n-300);
+  padding: 0.25rem 0 1.15rem;
+}
+
 @media (max-width: 900px) {
   .dash-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -2938,7 +2946,7 @@ a:hover { color: var(--brand-500); }
 
 .decision-row {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) auto auto;
+  grid-template-columns: 7.5rem minmax(0, 1fr) 7.5rem 4.5rem;
   align-items: baseline;
   gap: 0.75rem;
   width: 100%;
@@ -2952,13 +2960,24 @@ a:hover { color: var(--brand-500); }
 .decision-row:last-child { border-bottom: 0; }
 .decision-row:hover { background: var(--paper-3); }
 
+.decision-row > * { min-width: 0; }
+.decision-row .status-mark {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .decision-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.decision-who  { white-space: nowrap; }
-.decision-when { white-space: nowrap; }
+.decision-who,
+.decision-when {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 @media (max-width: 720px) {
   .decision-row {
-    grid-template-columns: 5.5rem minmax(0, 1fr);
+    grid-template-columns: 7.5rem minmax(0, 1fr);
     row-gap: 0.15rem;
   }
   .decision-who, .decision-when { grid-column: 2; }

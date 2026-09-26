@@ -32,23 +32,27 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Access",
+    label: "People & access",
     items: [
       { key: "users",       icon: usersIcon,       label: "Users",       badge: "users" },
     ],
   },
   {
-    label: "Documents",
+    label: "Document library",
     items: [
       { key: "manuals",  icon: manualsIcon,  label: "Manuals" },
       { key: "sections", icon: sectionsIcon, label: "Sections" },
-      { key: "proposals", icon: reviewIcon,  label: "Proposals" },
     ],
   },
   {
-    // Notices posted to the portal, not messaging. A calendar or a staff
-    // help page would belong here too.
-    label: "Content",
+    label: "Change workflow",
+    items: [
+      { key: "proposals", icon: reviewIcon, label: "Proposals" },
+    ],
+  },
+  {
+    // Notices posted to the portal, not messages between users.
+    label: "Portal content",
     items: [
       { key: "announcements", icon: reviewIcon, label: "Announcements" },
     ],

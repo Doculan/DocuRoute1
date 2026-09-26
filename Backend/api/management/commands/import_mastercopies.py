@@ -31,7 +31,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from api.models import CustomUser, Manual, ManualSection
-from api.views import _split_into_sections
+from api.views import _split_into_sections, extraction_quality
 from ml.ocr_engine import extract_text
 from ml.svm_model import predict_section
 
@@ -199,9 +199,11 @@ class Command(BaseCommand):
                 continue
 
             count = 0
+            blocks = []
             if text.strip():
                 created = []
-                for index, block in enumerate(_split_into_sections(text, title)):
+                blocks = _split_into_sections(text, title)
+                for index, block in enumerate(blocks):
                     try:
                         tag = (predict_section(block["content"])
                                if block["content"].strip() else "UNTAGGED")
@@ -220,6 +222,17 @@ class Command(BaseCommand):
                         parent=parent, is_reviewed=False,
                     ))
                     count += 1
+
+            quality = extraction_quality(text, blocks)
+            if quality['blocking']:
+                manual.file.delete(save=False)
+                manual.delete()
+                self.stderr.write(
+                    f"  FAILED  {title:<34} extraction produced no sections"
+                )
+                continue
+            for warning in quality['warnings']:
+                self.stderr.write(f"  REVIEW  {title:<34} {warning}")
 
             imported += 1
             seen_this_run[digest] = path.name

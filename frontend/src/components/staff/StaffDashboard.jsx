@@ -24,16 +24,21 @@ const NAV_GROUPS = [
     items: [{ key: "dashboard", icon: manualsIcon, label: "Dashboard" }],
   },
   {
-    label: "Documents",
+    label: "Read documents",
     items: [
       { key: "manuals", icon: manualsIcon, label: "My Manuals" },
       { key: "sections", icon: sectionsIcon, label: "Sections" },
     ],
   },
   {
-    label: "Your work",
+    label: "Change workflow",
     items: [
       { key: "proposals", icon: sectionsIcon, label: "Proposals" },
+    ],
+  },
+  {
+    label: "Support",
+    items: [
       { key: "help", icon: manualsIcon, label: "Help" },
     ],
   },

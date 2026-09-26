@@ -23,6 +23,8 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   const [previewSections, setPreviewSections] = useState([]);
   const [previewFileUrl, setPreviewFileUrl] = useState(null);
   const [previewFileName, setPreviewFileName] = useState(null);
+  const [previewQuality, setPreviewQuality] = useState(null);
+  const [previewExtractionError, setPreviewExtractionError] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [mergeSourceIndex, setMergeSourceIndex] = useState(null);
 
@@ -175,6 +177,8 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
       setPreviewManual({ id: res.data.manual_id, title: res.data.title });
       setPreviewFileUrl(res.data.file_url ? `${BACKEND_BASE_URL}${res.data.file_url}` : null);
       setPreviewFileName(res.data.file_name || null);
+      setPreviewQuality(res.data.extraction_quality || null);
+      setPreviewExtractionError(res.data.extraction_error || null);
 
       const sections = Array.isArray(res.data.sections_preview)
         ? res.data.sections_preview
@@ -289,6 +293,8 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
       setPreviewSections([]);
       setPreviewFileUrl(null);
       setPreviewFileName(null);
+      setPreviewQuality(null);
+      setPreviewExtractionError(null);
       setMergeSourceIndex(null);
       fetchData();
     } catch (err) {
@@ -318,6 +324,8 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
     setPreviewSections([]);
     setPreviewFileUrl(null);
     setPreviewFileName(null);
+    setPreviewQuality(null);
+    setPreviewExtractionError(null);
     setMergeSourceIndex(null);
     showMessage("Preview canceled.");
   };
@@ -449,6 +457,16 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                 <button className="btn btn-ghost btn-sm" style={{ marginLeft: "0.75rem" }} onClick={cancelMerge}>
                   Cancel
                 </button>
+              </div>
+            )}
+
+            {(previewQuality?.needs_review || previewExtractionError) && (
+              <div className="alert alert-warning" style={{ marginTop: "0.85rem" }}>
+                <strong>Review extraction before confirming.</strong>
+                {previewExtractionError && <div>{previewExtractionError}</div>}
+                {previewQuality?.warnings?.map((warning) => (
+                  <div key={warning}>{warning}</div>
+                ))}
               </div>
             )}
 

@@ -199,7 +199,7 @@ function Activity({ activity }) {
   );
 
   return (
-    <section>
+    <section className="admin-dashboard-section">
       <h2 className="section-title">Activity</h2>
       {summary}
       {totals.submitted + totals.approved + totals.rejected === 0 ? (
@@ -325,7 +325,7 @@ function ActivityTable({ days, activeDays, minimum }) {
 function RecentProposals({ rows, onGo }) {
   if (!rows || rows.length === 0) return null;
   return (
-    <section>
+    <section className="admin-dashboard-section">
       <h2 className="section-title">Recent proposals</h2>
       <div className="col" style={{ gap: "0.15rem" }}>
         {rows.map((row) => (
@@ -354,7 +354,7 @@ function RecentProposals({ rows, onGo }) {
  *  desk the notices are posted from, so every office's are visible. */
 function Upcoming({ rows, total, onGo }) {
   return (
-    <section>
+    <section className="admin-dashboard-section">
       <h2 className="section-title">Upcoming</h2>
       {rows.length === 0 ? (
         <p className="subtle text-sm" style={{ margin: 0 }}>
@@ -397,7 +397,7 @@ function Upcoming({ rows, total, onGo }) {
  *  enough for a chart to say anything a number does not. */
 function SystemState({ system, onGo }) {
   return (
-    <section>
+    <section className="admin-dashboard-section">
       <h2 className="section-title">System</h2>
       <div className="col" style={{ gap: "0.45rem" }}>
         <Figure value={system.manuals} label="manuals" onGo={() => onGo("manuals")}

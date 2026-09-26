@@ -155,6 +155,40 @@ def normalize_for_diff(text):
     return text.strip()
 
 
+def extraction_quality(text, sections):
+    """Report extraction signals that deserve human review before approval."""
+    warnings = []
+    content = text or ''
+    blocks = sections or []
+
+    if not content.strip():
+        warnings.append('No readable text was extracted from the file.')
+    if '\ufffd' in content:
+        warnings.append('The extraction contains replacement characters, so some source text may be corrupted.')
+    if len(blocks) > 1:
+        subtitles = [block.get('subtitle', '').strip().casefold() for block in blocks]
+        duplicates = len(subtitles) - len(set(subtitles))
+        if duplicates:
+            warnings.append(f'{duplicates} duplicate section title(s) were detected.')
+
+    word_count = len(re.findall(r'\w+', content))
+    if word_count >= 500 and len(blocks) <= 1:
+        warnings.append('Most extracted text is in one section; headings may not have been detected.')
+    if len(blocks) >= 3:
+        populated = sum(bool(block.get('content', '').strip()) for block in blocks)
+        if populated / len(blocks) < 0.5:
+            warnings.append('Many detected sections contain no body text; section boundaries may be incorrect.')
+
+    blocking = not content.strip() or not blocks
+    return {
+        'blocking': blocking,
+        'needs_review': bool(warnings),
+        'warnings': warnings,
+        'extracted_words': word_count,
+        'detected_sections': len(blocks),
+    }
+
+
 def build_diff(old_text, new_text):
     """Unified diff of two blocks of section content, normalized on both sides."""
     return '\n'.join(difflib.unified_diff(
@@ -1345,14 +1379,26 @@ def upload_manual(request):
         file=file
     )
 
+    extraction_error = None
     try:
         extracted_text = extract_text(file_bytes, file.name)
-    except Exception:
+    except Exception as error:
         extracted_text = ""
+        extraction_error = str(error)
 
     sections_created = []
+    blocks = []
     if extracted_text.strip():
         blocks = _split_into_sections(extracted_text, title)
+    quality = extraction_quality(extracted_text, blocks)
+    if quality['blocking']:
+        manual.file.delete(save=False)
+        manual.delete()
+        return Response({
+            'error': 'The file did not produce readable sections and was not saved.',
+            'extraction_quality': quality,
+            'extraction_error': extraction_error,
+        }, status=422)
         created_sections = []
         for idx, block in enumerate(blocks):
             try:
@@ -1386,6 +1432,8 @@ def upload_manual(request):
         'id': manual.id,
         'title': manual.title,
         'sections_created': len(sections_created),
+        'extraction_quality': quality,
+        'extraction_error': extraction_error,
         'message': f'Manual uploaded with {len(sections_created)} auto-detected sections.'
     }, status=201)
 
@@ -1412,10 +1460,12 @@ def preview_manual_sections(request):
         file=file
     )
 
+    extraction_error = None
     try:
         extracted_text = extract_text(file_bytes, file.name)
-    except Exception:
+    except Exception as error:
         extracted_text = ""
+        extraction_error = str(error)
 
     preview = []
     if extracted_text.strip():
@@ -1477,6 +1527,16 @@ def preview_manual_sections(request):
             parent_idx = find_parent_index(sec_num, preview, idx)
             if parent_idx is not None:
                 sec['parent_index'] = parent_idx
+
+    quality = extraction_quality(extracted_text, preview)
+    if quality['blocking']:
+        manual.file.delete(save=False)
+        manual.delete()
+        return Response({
+            'error': 'The file did not produce readable sections and cannot be previewed.',
+            'extraction_quality': quality,
+            'extraction_error': extraction_error,
+        }, status=422)
     
 
     # `manual.file.url` can raise if the file is not yet saved or storage is misconfigured.
@@ -1496,6 +1556,8 @@ def preview_manual_sections(request):
         'file_url': file_url,
         'file_name': file_name,
         'sections_preview': preview,
+        'extraction_quality': quality,
+        'extraction_error': extraction_error,
     }, status=200)
 
 

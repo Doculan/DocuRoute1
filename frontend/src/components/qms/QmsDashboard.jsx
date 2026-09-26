@@ -79,13 +79,13 @@ export default function QmsDashboard({ onLogout }) {
         </div>
         <div className="sidebar-eyebrow">QMS Portal</div>
         <nav className="sidebar-nav">
-          <div className="nav-group">Documents</div>
+          <div className="nav-group">Read documents</div>
           <button className={`nav-item${activePage === "manuals" ? " is-active" : ""}`}
                   onClick={() => go("manuals")}>
             <img className="nav-icon" src={manualsIcon} alt="" />
             <span>Manuals</span>
           </button>
-          <div className="nav-group">Your work</div>
+          <div className="nav-group">QMS workflow</div>
           <button className={`nav-item${activePage === "requests" ? " is-active" : ""}`}
                   onClick={() => go("requests")}>
             <img className="nav-icon" src={reviewIcon} alt="" />
