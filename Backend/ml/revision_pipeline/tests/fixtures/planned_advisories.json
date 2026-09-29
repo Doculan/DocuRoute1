@@ -1,0 +1,88 @@
+{
+  "_about": [
+    "Three real edits to FAM 6.01 that every layer missed (2026-09-30). The old texts are the sections as the database held them.",
+    "'layer1_today' is what Layer 1 reports now: no flag, no advisory. 'planned' is what the planned advisory checks should add; see LAYER4_INPUT_SPEC.md section 7. Read by test_planned_advisories.py."
+  ],
+  "change_reason": "Updated the wording after the September 2026 review of student services.",
+  "edits": [
+    {
+      "name": "item_lost_its_opening",
+      "about": "1.1 lost its opening 'To'; the objective now starts in lower case.",
+      "section_label": "1.0 OBJECTIVE",
+      "old_text": "1.1 To provide guidelines and procedures of accounting services to the students, the _raison d’etre_ of the University.",
+      "new_text": "1.1 provide guidelines and procedures of accounting services to the students, the _raison d’etre_ of the University.",
+      "layer1_today": {
+        "flags": [],
+        "advisories": [],
+        "change_type": "substantive"
+      },
+      "planned": [
+        {
+          "label": "unfinished_sentence",
+          "kind": "item_opens_lower_case",
+          "item": "1.1",
+          "was": "To"
+        }
+      ]
+    },
+    {
+      "name": "students_learners_pupil_and_a_typo",
+      "about": "3.6 calls the same person 'student', 'pupil' and 'learners', and 'receivables' became 'recievables'.",
+      "section_label": "3.0 POLICIES",
+      "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 All student claims should be supported with complete and proper documents.\n3.4 There should be a timely release of allowances to the students based on the timing stated in the applicable rulings, manual, or provisions of the Memoradum of Agreement.\n3.5 Student records such as Transfer Credential, Transcript of Records, and Certificate of Good Moral Character should only be released upon full settlement of the student with his/her accountabilities with the University.\n3.6 Only the student can claim his/her labor, allowance, stipend, subsidies, or refund. However, if the student cannot claim it personally, he/she can authorize someone to claim his/her receivables on his/her behalf. The authorization should be supported with an Authorization Letter signed by the student together with the photocopies of one (1) valid Identification Document (ID) of the student, and of the authorized person. In claiming, the original copies of IDs of the students and of the authorized person should be presented to the Special Disbursing Officer for cross-checking of their authenticity.",
+      "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 All student claims should be supported with complete and proper documents.\n3.4 There should be a timely release of allowances to the students based on the timing stated in the applicable rulings, manual, or provisions of the Memoradum of Agreement.\n3.5 Student records such as Transfer Credential, Transcript of Records, and Certificate of Good Moral Character should only be released upon full settlement of the student with his/her accountabilities with the University.\n3.6 Only the pupil can claim his/her labor, allowance, stipend, subsidies, or refund. However, if the student cannot claim it personally, he/she can authorize someone to claim his/her recievables on his/her behalf. The authorization should be supported with an Authorization Letter signed by the student together with the photocopies of one (1) valid Identification Document (ID) of the student, and of the authorized person. In claiming, the original copies of IDs of the learners and of the authorized person should be presented to the Special Disbursing Officer for cross-checking of their authenticity.",
+      "layer1_today": {
+        "flags": [],
+        "advisories": [],
+        "change_type": "substantive"
+      },
+      "planned": [
+        {
+          "label": "unknown_word",
+          "word": "recievables",
+          "suggestion": "receivables",
+          "item": "3.6"
+        },
+        {
+          "label": "inconsistent_terms",
+          "kept": "student",
+          "introduced": [
+            "pupil",
+            "learners"
+          ],
+          "item": "3.6"
+        }
+      ]
+    },
+    {
+      "name": "unfinished_added_obligation_with_a_non_word",
+      "about": "An added 3.7: a new obligation ('must'), ending in a non-word and without punctuation.",
+      "section_label": "3.0 POLICIES",
+      "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 All student claims should be supported with complete and proper documents.\n3.4 There should be a timely release of allowances to the students based on the timing stated in the applicable rulings, manual, or provisions of the Memoradum of Agreement.\n3.5 Student records such as Transfer Credential, Transcript of Records, and Certificate of Good Moral Character should only be released upon full settlement of the student with his/her accountabilities with the University.\n3.6 Only the student can claim his/her labor, allowance, stipend, subsidies, or refund. However, if the student cannot claim it personally, he/she can authorize someone to claim his/her receivables on his/her behalf. The authorization should be supported with an Authorization Letter signed by the student together with the photocopies of one (1) valid Identification Document (ID) of the student, and of the authorized person. In claiming, the original copies of IDs of the students and of the authorized person should be presented to the Special Disbursing Officer for cross-checking of their authenticity.",
+      "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 All student claims should be supported with complete and proper documents.\n3.4 There should be a timely release of allowances to the students based on the timing stated in the applicable rulings, manual, or provisions of the Memoradum of Agreement.\n3.5 Student records such as Transfer Credential, Transcript of Records, and Certificate of Good Moral Character should only be released upon full settlement of the student with his/her accountabilities with the University.\n3.6 Only the student can claim his/her labor, allowance, stipend, subsidies, or refund. However, if the student cannot claim it personally, he/she can authorize someone to claim his/her receivables on his/her behalf. The authorization should be supported with an Authorization Letter signed by the student together with the photocopies of one (1) valid Identification Document (ID) of the student, and of the authorized person. In claiming, the original copies of IDs of the students and of the authorized person should be presented to the Special Disbursing Officer for cross-checking of their authenticity.\n3.7 Learner must adhere to the university's adfasdn",
+      "layer1_today": {
+        "flags": [],
+        "advisories": [],
+        "change_type": "substantive"
+      },
+      "planned": [
+        {
+          "label": "unknown_word",
+          "word": "adfasdn",
+          "item": "3.7"
+        },
+        {
+          "label": "unfinished_sentence",
+          "kind": "no_final_punctuation",
+          "item": "3.7"
+        },
+        {
+          "label": "adds_requirement",
+          "kind": "added_sentence",
+          "word": "must",
+          "item": "3.7"
+        }
+      ]
+    }
+  ]
+}

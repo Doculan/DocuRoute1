@@ -2354,6 +2354,39 @@ it was committed as it stood and not polished further.
 
 ---
 
+## Three missed edits diagnosed; four advisories planned (2026-09-30)
+
+Nothing built; no change to any layer. Three real edits to FAM 6.01 got the
+same generic note: 1.1 losing its opening "To"; "student" called "pupil"
+and "learners" within 3.6, with "recievables"; and an added
+"3.7 Learner must adhere to the university's adfasdn".
+
+- **Diagnosis:** no Layer 1 flag or advisory on any of them. Only c had an
+  issue, and that was the model's `out_of_scope_content`. The old Layer 4
+  only put issues into words, so a and b got a verdict sentence and "Please
+  check these points" with no points (run on these inputs with the
+  `d0b8ebe` code to confirm). The current note is still generic for a and b.
+- **Planned, as advisories only** (`affects_verdict` false; no feature; the
+  fingerprint and figures are unaffected): `unknown_word`,
+  `inconsistent_terms`, `unfinished_sentence`, `adds_requirement`. Evidence
+  shapes, data needs and measured false positives are in
+  LAYER4_INPUT_SPEC.md section 7; the prototype is
+  `scripts/measure_planned_advisories.py`, not wired in.
+- **Open decisions:** the word list (pyspellchecker as a dependency, or a
+  committed file); the manuals' vocabulary (a committed, generated file is
+  recommended over reading the database); whether "will"/"should" count as
+  obligations; the clauses (6.3 proposed for `adds_requirement`).
+- **Not planned:** detecting a sentence without its main verb. It needs a
+  part-of-speech tagger, which the project does not have.
+- **Fixtures:** `tests/fixtures/planned_advisories.json` and
+  `test_planned_advisories.py`: rule flags held unchanged, and each planned
+  advisory a strict xfail.
+- **Found:** Layer 4's quoted context can cut an item number ("“.1 To
+  provide guidelines”"), because it counts "1.1" as three tokens. Recorded
+  in the spec for the new engine; not fixed in the note being replaced.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

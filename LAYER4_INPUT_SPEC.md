@@ -91,6 +91,8 @@ A hard fail forces the verdict to `reject` at confidence 1.0; issues are still c
 
 All carry `severity: "low"`. Only faults the edit introduced are reported. None of the ten captured cases has an advisory.
 
+**Four more advisories are planned** (`unknown_word`, `inconsistent_terms`, `unfinished_sentence`, `adds_requirement`): §7 has their evidence shapes, so the new wording can cover them.
+
 ### 1.6 The other arguments
 
 | argument | type | example | notes |
@@ -108,7 +110,7 @@ Layer 1 does not hand over a structured diff. Today's Layer 4 builds one from `o
 | `hunks[]` | list | one per changed run; edits a word or two apart on one line are merged | reliable |
 | `hunks[].tag` | str | `replace`, `delete`, `insert` | reliable |
 | `hunks[].old`, `.new` | str | `"365 days or 1 year"` → `"180 days or 6 months"` | exact for edits within a line. A hunk spanning whole lines is cut at word tokens, so it can start or end mid-number and carry pipes and line breaks ("4 Credentials … fees.\n3." in case 10). For whole lines, use `removed_lines` / `added_lines`. |
-| `hunks[].old_ctx`, `.new_ctx` | str | the same plus up to two unchanged words each side, stopping at a table cell or line break | reliable |
+| `hunks[].old_ctx`, `.new_ctx` | str | the same plus up to two unchanged words each side, stopping at a table cell or line break | Counts tokens, and an item number is three ("1", ".", "1"), so context can **cut an item number**: "“.1 To provide guidelines” → “.1 provide guidelines”" (§7, edit a). Take context by words, and never start it inside a number. |
 | `hunks[].removed`, `.added` | int | words (punctuation not counted) | reliable |
 | `hunks[].punctuation_only` | bool | `true` for a comma | reliable |
 | `hunks[].item` | str | `"3.6"`, `"step 2"` or `""` | Where it is. `"3.6"` for a numbered policy line, `"step n"` for a numbered table row. `""` for prose without numbers (e.g. 2.0 SCOPE). A continuation row is placed by its own step number, not by the role above it. |
@@ -1729,3 +1731,144 @@ The change reason for every check: *"Aligned with the collection guidelines adop
 **Rules-only mode:** on a clone without trained weights, Layer 2 is unavailable, `confidence_source` is `rules`, and there are no model-only or `both` issues. Because the policy keeps a rule-only flag only for the three precise labels, **`issues` can then hold only `excessive_deletion`, `modal_weakened` and `non_equivalent_term`**; everything else the rules found is in `layer1_result.flags` alone. The wording must still read correctly.
 
 **The pipeline boundary:** the new engine may read anything in §1 and the derived diff. Passing it more (§1.9) changes only the `explain()` call. Anything that would change what **Layer 2** receives stops for approval.
+
+---
+
+## 7. Planned advisories
+
+*Planned 2026-09-30, not built.* Four new Layer 1 checks, each reported as an **advisory**, added so the new wording can describe them. They come from three real edits to FAM 6.01 that no layer caught (7.6).
+
+### 7.1 The boundary
+
+- **Advisories only.** Each goes into `layer1_result.advisories` beside `malformed_citation`, and so reaches Layer 4 in both `layer1_result.advisories` and `fusion_result.advisories`. None is an issue label.
+- **`affects_verdict: false` on all four.** Layer 3 raises an approve to needs_revision on any advisory with `affects_verdict` true (§1.1, `overrides`). `vague_change_reason` must stay the only one that does, so the verdict is untouched. The field must be **set explicitly**: an advisory without it is treated as acting on the verdict (`run_layer3` defaults it to true for older advisories).
+- **No new feature**, so nothing reaches Layer 2 or the fusion model. `pipeline_fingerprint()` hashes the labels and the feature list only, so it does not change, and the published figures are unaffected (`evaluate_folds.py` scores flags and verdicts, not advisories).
+- All carry `severity: "low"` and report only what the edit introduced, like the existing advisories.
+
+Every count below comes from a prototype of the four checks, `Backend/ml/revision_pipeline/scripts/measure_planned_advisories.py`. It is not wired into anything, and its docstring says how to re-run it.
+
+### 7.2 `unknown_word`: spelling and non-words
+
+**Fires when** the edit introduces a lower-case word of three or more letters that is in neither an English dictionary nor the manuals' own vocabulary. It never checks capitalised, all-capitals or mixed-case words, so names and codes ("eNGAS", "ILS/PLC", "Leyte") are left alone, and neither are hyphen fragments ("pre-", "multi-"), e-mail addresses, URLs or italicised foreign phrases ("_raison d'etre_").
+
+**Needs:**
+- An English word list, either pyspellchecker's (MIT licence, 160,000 words, 636 KB compressed; also gives a "did you mean") or a committed list such as SCOWL. **Your decision:** add the dependency, or commit a word-list file.
+- The manuals' vocabulary. I recommend a committed file generated from the manuals, like `entities.json`, so Layer 1 stays deterministic and independent of the database. The alternative is to read it from the database at check time.
+- The words in `entities.json` and `glossary.txt`.
+- A reviewed allowlist of real words the dictionary lacks. Start with the 13 below.
+
+**False positives, measured:** each manual scanned with only the other 18 as vocabulary, every word treated as newly typed. That is the worst case: in use, a word only counts if the edit introduced it. **17 distinct words across all 19 manuals:**
+- **3 genuine errors** in the manuals, all extraction glue: "ifany", "srecords", "witnessesin".
+- **1 abbreviation:** "pts".
+- **13 real words the dictionary lacks:** availment, biddings, clientele, cum, cyberbullying, hijab, innovativeness, nonconformities, nonperformers, sando, underperforming, undertime, webinars. These are the allowlist's starting content.
+
+On the 2,762 generated edits it fired 0 times. That is not evidence, because the vocabulary contains every manual the edits were made from; the scan above is the real measure.
+
+**Limit:** a misspelt capitalised word is never flagged. "Memoradum" is already in FAM 6.01's 3.4, at the start of a name.
+
+**Evidence handed to Layer 4:**
+
+```json
+{"label": "unknown_word", "clause": "7.5.3", "severity": "low", "affects_verdict": false,
+ "evidence": "recievables",
+ "words": [{"word": "recievables", "suggestion": "receivables", "item": "3.6"}]}
+```
+
+`suggestion` can be `null`: "adfasdn" has none. Several words means several entries.
+
+### 7.3 `inconsistent_terms`: one thing, two names, in one section
+
+**Fires when** a single word is swapped for another in some places and kept in others, so the section now calls one thing by two names, and the glossary does not say the two mean the same. This needs no word list: it reads the swaps from the diff. It is skipped for spelling fixes (edit distance ≤ 2, which `unknown_word` covers), for modal swaps, sense reversals, glossary non-equivalents (all reported already) and for role-for-role swaps (`responsibility_changed`).
+
+**Needs:** nothing new. It uses `word_diff`, `glossary.txt`, the roles in `entities.json` and `config.SENSE_REVERSALS`. **The glossary is the control:** if the QMS office declares "learner" and "student" equivalent, it stops firing on that pair, which is the right behaviour.
+
+**False positives, measured:**
+
+| edits | fired | what |
+|---|---:|---|
+| 1,019 harmless generated edits | 1 | "endorsement" / "Forwards", a capitalised step verb |
+| 1,743 other generated edits | 52 | Number words ("one" → "eleven", which `numeric_changed` already covers) and fragments of role names ("Student" → "VPSD") |
+
+It cannot be measured on the manuals alone, because it needs an edit.
+
+**Two refinements, not yet measured:** check lower-case words only, on both sides (this drops names, acronyms, role fragments and capitalised step verbs), and exclude number words.
+
+**Evidence handed to Layer 4:**
+
+```json
+{"label": "inconsistent_terms", "clause": "7.5.3", "severity": "low", "affects_verdict": false,
+ "evidence": "student / pupil, learners",
+ "groups": [{"kept": "student", "introduced": ["pupil", "learners"], "items": ["3.6"]}]}
+```
+
+`kept` is the word as it still appears in the section; `introduced` is what replaced it, in the order found. Singular and plural are treated as one word.
+
+### 7.4 `unfinished_sentence`: broken or unfinished lines
+
+**Fires when** a line the edit changed or added (tables and headings are skipped):
+
+- **`no_final_punctuation`:** the line has four or more words and ends without punctuation, where the old line had it or, for a new line, where most of the section's lines do. A list line ending in "," / ";" / "and" / "or" counts as continuing.
+- **`item_opens_lower_case`:** a numbered item now opens in lower case where it did not before. This is how "1.1 To provide" → "1.1 provide" shows; lettered sub-items ("3.15. a That…") are left alone.
+
+**Needs:** nothing new.
+
+**Limit:** "a sentence left without its main verb" **is not detected.** That needs part-of-speech tagging, and none is installed here; spaCy's small English model (about 12 MB) would do it. It is not proposed now. The lost opening word catches edit a without it.
+
+**False positives, measured:**
+
+| edits | fired | what |
+|---|---:|---|
+| 1,019 harmless generated edits | 0 | |
+| 1,743 other generated edits | 38 | 37 on inserted foreign text: rating-scale lines ("1 – can supply…") and subsection titles |
+| every line of the manuals treated as new (worst case) | 90 of 976 lines | Mostly numbered subsection titles inside PROCEDURES ("4.2 Releasing of the Monthly Food Allowance…"); also two policies that really do lack a full stop (FAM 4.01 3.24, FAM 5.01 3.6) and one truncated extraction ("…Trust Re") |
+
+**One refinement, not yet measured:** treat a numbered line of up to 12 words, mostly in title case, as a heading.
+
+**Evidence handed to Layer 4:**
+
+```json
+{"label": "unfinished_sentence", "clause": "7.5.3", "severity": "low", "affects_verdict": false,
+ "evidence": "1.1 provide guidelines and procedures of accounting services to the students…",
+ "lines": [{"kind": "item_opens_lower_case", "item": "1.1", "was": "To",
+            "line": "1.1 provide guidelines and procedures of accounting services to the students, the _raison d’etre_ of the University."}]}
+```
+
+`was` (the word the item used to open with) is present only for `item_opens_lower_case`; `line` is the whole new line.
+
+### 7.5 `adds_requirement`: a new obligation
+
+**Fires when** the edit adds a sentence stating an obligation ("shall", "must", "required", "is/are required to"), or swaps a permission for one ("may" → "shall"). "Will" and "should" are left out: "will not be released" is future tense, and the brief named the other four.
+
+**Needs:** nothing new.
+
+**This is information, not a fault.** Adding a requirement is often the point of a revision, and 134 of the manuals' 1,498 sentences state an obligation. The note should say that a requirement was added, never that one should not have been.
+
+**False positives, measured:**
+
+| edits | fired | what |
+|---|---:|---|
+| 1,019 harmless generated edits | 1 | A cross-reference generator split "E.O. No. 2" into "E.O (see 4.1 …)", so the old sentence no longer matched |
+| 1,743 other generated edits | 66 | All on inserted foreign policies that state "shall", which are correct hits |
+
+**Evidence handed to Layer 4:**
+
+```json
+{"label": "adds_requirement", "clause": "6.3", "severity": "low", "affects_verdict": false,
+ "evidence": "3.7 Learner must adhere to the university's adfasdn",
+ "requirements": [{"kind": "added_sentence", "word": "must", "item": "3.7",
+                   "sentence": "3.7 Learner must adhere to the university's adfasdn"}]}
+```
+
+For a swapped permission, `kind` is `"strengthened"` and the entry adds `was`, e.g. `"was": "may"`. The clause is proposed as 6.3 (a change made on purpose); the other three as 7.5.3. `iso_relevance.json` would need the four keys; that file is read by Layer 4 only.
+
+### 7.6 The three edits, and what each layer says today
+
+All three are on FAM 6.01, with the reason *"Updated the wording after the September 2026 review of student services."*. They are kept as test fixtures in `Backend/ml/revision_pipeline/tests/fixtures/planned_advisories.json`, read by `test_planned_advisories.py`. That test holds the rule flags unchanged, and marks each planned advisory as a strict expected failure until it is built.
+
+| edit | Layer 1 flags | Layer 1 advisories | issues reaching Layer 4 | verdict (hidden) | planned advisories |
+|---|---|---|---|---|---|
+| **a.** 1.0 OBJECTIVE, 1.1: "To provide guidelines…" → "provide guidelines…" | none | none | none (model: `requirement_removed` 0.45, `negation_changed` 0.45, both under threshold) | reject 0.875 | `unfinished_sentence` (item opens lower case, was "To") |
+| **b.** 3.0 POLICIES, 3.6: "the student can claim" → "the pupil can claim"; "IDs of the students" → "IDs of the learners"; "receivables" → "recievables" | none (`unknown_swaps` 3; "student" is a role but still named in 3.6, so no role changed) | none | none (model: `key_term_deleted` 0.47, `responsibility_changed` 0.30, under threshold) | needs_revision 0.90 | `unknown_word` (recievables → receivables); `inconsistent_terms` (student / pupil, learners) |
+| **c.** 3.0 POLICIES: added "3.7 Learner must adhere to the university's adfasdn" | none (`inserted_word_ratio` 0.04 only) | none | `out_of_scope_content`, model-only, 0.97 | reject 1.0 | `unknown_word` (adfasdn); `unfinished_sentence` (no final punctuation); `adds_requirement` (must, 3.7) |
+
+**Before `e7b7693`**, Layer 4 put only issues into words, so an edit with none got a verdict sentence and a closing line: *"This revision changes the requirement and should be rejected. Please check these points before deciding."* (a, reviewer), with no points to check. Edit c got one more sentence, from its single model-only issue. **Now**, a and b get "No specific concern passed its threshold, but the check's overall reading of this change was less settled than that suggests…", which is still generic, because no layer detects what is wrong with them.
