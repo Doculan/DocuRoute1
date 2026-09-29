@@ -1,0 +1,1499 @@
+{
+  "about": "Layer 4's real inputs, captured by wrapping explain() during the real check path (proposal_views._assess_unsaved) on a scratch copy of the database. See LAYER4_INPUT_SPEC.md.",
+  "captured_at_commit": "cf26b04",
+  "change_reason_used": "Aligned with the collection guidelines adopted at the August 2026 management review.",
+  "cases": {
+    "01_typo": {
+      "edit": "a duplicated word removed (typo)",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "needs_revision",
+          "confidence": 0.9511,
+          "issues": [
+            {
+              "label": "key_term_deleted",
+              "source": "model",
+              "confidence": 0.9832,
+              "severity": "medium",
+              "clause": "7.5.3",
+              "evidence": ""
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0468,
+            "needs_revision": 0.9511,
+            "reject": 0.0022
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0061,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.0061,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "| Responsibility | Activity | | - - - | - - - | | Employees | 1 . Submit Promissory Notes to the Accounting Office . | | Accounting Staff-7 | 2 . Prepares Summary of all the Promissory Notes received from the employees for the payment of school fees of their children including books , for the payment of their own school fees at the Graduate School , among others . The Summary shall include a column if which particular claim of the employee ( e . g . midyear bonus , year-end bonus , CNA Incentive , IGP Incentive , Honoraria , etc . ) the said [DEL] the [/DEL] accountability will be charged or deducted from . | | | 3 . Furnish the Payroll Preparer , Accounting Staff , a copy of the Summary so that it can be deducted to the claims of the employees . | | Accounting Staff-2 | 4 . Effects the deduction in the payroll . |"
+        },
+        "section_label": "4.4 Accounts Receivable from Employees",
+        "old_text": "| Responsibility | Activity |\n| --- | --- |\n| Employees | 1. Submit Promissory Notes to the Accounting Office. |\n| Accounting Staff-7 | 2. Prepares Summary of all the Promissory Notes received from the employees for the payment of school fees of their children including books, for the payment of their own school fees at the Graduate School, among others. The Summary shall include a column if which particular claim of the employee (e.g. midyear bonus, year-end bonus, CNA Incentive, IGP Incentive, Honoraria, etc.) the said the accountability will be charged or deducted from. |\n| | 3. Furnish the Payroll Preparer, Accounting Staff, a copy of the Summary so that it can be deducted to the claims of the employees. |\n| Accounting Staff-2 | 4. Effects the deduction in the payroll. |",
+        "new_text": "| Responsibility | Activity |\n| --- | --- |\n| Employees | 1. Submit Promissory Notes to the Accounting Office. |\n| Accounting Staff-7 | 2. Prepares Summary of all the Promissory Notes received from the employees for the payment of school fees of their children including books, for the payment of their own school fees at the Graduate School, among others. The Summary shall include a column if which particular claim of the employee (e.g. midyear bonus, year-end bonus, CNA Incentive, IGP Incentive, Honoraria, etc.) the said accountability will be charged or deducted from. |\n| | 3. Furnish the Payroll Preparer, Accounting Staff, a copy of the Summary so that it can be deducted to the claims of the employees. |\n| Accounting Staff-2 | 4. Effects the deduction in the payroll. |",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "delete",
+            "old": "the",
+            "new": "",
+            "old_ctx": "the said the accountability will",
+            "new_ctx": "the said accountability will",
+            "removed": 1,
+            "added": 0,
+            "punctuation_only": false,
+            "item": "step 2"
+          }
+        ],
+        "words_removed": 1,
+        "words_added": 0,
+        "items": [
+          "step 2"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA small wording edit to 4.4 Accounts Receivable from Employees, at step 2: “the said the accountability will” → “the said accountability will”.\n\nWhat to look at\n- The check's model strongly suspects that a term the section depends on — a defined term, a form name or a legal reference — was dropped, though it found no specific words to point to. The rule check found that no listed term, form name or legal reference is missing from the new text, so this may be a false lead.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure, obligation or named role changed.",
+        "reviewer": "What changed\nA small wording edit to 4.4 Accounts Receivable from Employees, at step 2: “the said the accountability will” → “the said accountability will”.\n\nWhat to look at\n- The check's model strongly suspects that a term the section depends on — a defined term, a form name or a legal reference — was dropped, though it found no specific words to point to. The rule check found that no listed term, form name or legal reference is missing from the new text, so this may be a false lead.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure, obligation or named role changed."
+      }
+    },
+    "02_comma": {
+      "edit": "a comma added",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "approve",
+          "confidence": 0.9989,
+          "issues": [],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.9989,
+            "needs_revision": 0.0,
+            "reject": 0.0011
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0,
+            "inserted_word_ratio": 0.0062,
+            "net_deleted_word_ratio": 0.0,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [],
+          "advisories": [],
+          "change_type": "cosmetic",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than 365 days or 1 year [INS] , [/INS] are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year, are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "insert",
+            "old": "",
+            "new": ",",
+            "old_ctx": "1 year are considered",
+            "new_ctx": "1 year, are considered",
+            "removed": 0,
+            "added": 0,
+            "punctuation_only": true,
+            "item": "3.6"
+          }
+        ],
+        "words_removed": 0,
+        "words_added": 0,
+        "items": [
+          "3.6"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA punctuation fix to 3.0 POLICIES, at 3.6: “1 year are considered” → “1 year, are considered”.\n\nWhat looks fine\nNo specific concern passed its threshold.\nNothing the section requires has changed; the edit touches spelling, punctuation or layout only.",
+        "reviewer": "What changed\nA punctuation fix to 3.0 POLICIES, at 3.6: “1 year are considered” → “1 year, are considered”.\n\nWhat looks fine\nNo specific concern passed its threshold.\nNothing the section requires has changed; the edit touches spelling, punctuation or layout only."
+      }
+    },
+    "03_near_synonym": {
+      "edit": "\"in a timely manner\" -> \"promptly\"",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 0.9968,
+          "issues": [
+            {
+              "label": "negation_changed",
+              "source": "model",
+              "confidence": 0.914,
+              "severity": "high",
+              "clause": "7.5.3",
+              "evidence": ""
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0032,
+            "needs_revision": 0.0,
+            "reject": 0.9968
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.0248,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 1,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [
+            {
+              "label": "numeric_changed",
+              "clause": "7.5.3",
+              "severity": "medium",
+              "evidence": "\"timely\"",
+              "values": [
+                "timely"
+              ],
+              "from_values": [
+                "timely"
+              ],
+              "to_values": [],
+              "direction": "removed",
+              "from_text": "\"timely\"",
+              "to_text": ""
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected [DEL] in a timely manner [/DEL] [INS] promptly [/INS] . 3 . 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected promptly.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "replace",
+            "old": "in a timely manner",
+            "new": "promptly",
+            "old_ctx": "be collected in a timely manner.",
+            "new_ctx": "be collected promptly.",
+            "removed": 4,
+            "added": 1,
+            "punctuation_only": false,
+            "item": "3.3"
+          }
+        ],
+        "words_removed": 4,
+        "words_added": 1,
+        "items": [
+          "3.3"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA small wording edit to 3.0 POLICIES, at 3.3: “be collected in a timely manner.” → “be collected promptly.”\n\nWhat to look at\n- The check's model strongly suspects that a negation changed, reversing what the section requires, though it found no specific words to point to. The rule check found that no “not”, “no” or “never” was added or removed, so this may be a false lead.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new wording is accurate: the check compares wording, not facts.",
+        "reviewer": "What changed\nA small wording edit to 3.0 POLICIES, at 3.3: “be collected in a timely manner.” → “be collected promptly.”\n\nWhat to look at\n- The check's model strongly suspects that a negation changed, reversing what the section requires, though it found no specific words to point to. The rule check found that no “not”, “no” or “never” was added or removed, so this may be a false lead.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new wording is accurate: the check compares wording, not facts."
+      }
+    },
+    "04_shall_may": {
+      "edit": "\"shall\" -> \"may\"",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "needs_revision",
+          "confidence": 1.0,
+          "issues": [
+            {
+              "label": "modal_weakened",
+              "source": "both",
+              "confidence": 1.0,
+              "severity": "medium",
+              "clause": "7.5.3",
+              "evidence": "\"shall\" became \"may\"",
+              "pairs": [
+                [
+                  "shall",
+                  "may"
+                ]
+              ]
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0,
+            "needs_revision": 1.0,
+            "reject": 0.0
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.0062,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 1,
+            "negation_changed": 0,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 1,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [
+            {
+              "label": "modal_weakened",
+              "clause": "7.5.3",
+              "severity": "medium",
+              "evidence": "\"shall\" became \"may\"",
+              "pairs": [
+                [
+                  "shall",
+                  "may"
+                ]
+              ]
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information [DEL] shall [/DEL] [INS] may [/INS] be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information may be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "replace",
+            "old": "shall",
+            "new": "may",
+            "old_ctx": "personal information shall be handled",
+            "new_ctx": "personal information may be handled",
+            "removed": 1,
+            "added": 1,
+            "punctuation_only": false,
+            "item": "3.1"
+          }
+        ],
+        "words_removed": 1,
+        "words_added": 1,
+        "items": [
+          "3.1"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA small wording edit to 3.0 POLICIES, at 3.1: “personal information shall be handled” → “personal information may be handled”.\n\nWhat to look at\n- At 3.1, “shall” became “may”, so a requirement becomes a permission. People following the section may now treat the step as optional, and an auditor can no longer hold the office to it.\n  Expect to be asked: Is this step meant to become optional, and who decides when it is skipped?\n  To check: Read the sentence as someone who would rather skip the step, and see whether it still holds.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or named role changed.\n\nWhat this check can't tell you\n- Whether the law or policy this section rests on allows the change.",
+        "reviewer": "What changed\nA small wording edit to 3.0 POLICIES, at 3.1: “personal information shall be handled” → “personal information may be handled”.\n\nWhat to look at\n- At 3.1, “shall” became “may”, so a requirement becomes a permission. People following the section may now treat the step as optional, and an auditor can no longer hold the office to it.\n  Worth asking the drafting office: Is this step meant to become optional, and who decides when it is skipped?\n  To check: Read the sentence as someone who would rather skip the step, and see whether it still holds.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or named role changed.\n\nWhat this check can't tell you\n- Whether the law or policy this section rests on allows the change."
+      }
+    },
+    "05_clarifying": {
+      "edit": "a clarifying sentence added",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 0.9997,
+          "issues": [
+            {
+              "label": "out_of_scope_content",
+              "source": "model",
+              "confidence": 0.9604,
+              "severity": "medium",
+              "clause": "7.5.3",
+              "evidence": ""
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0003,
+            "needs_revision": 0.0,
+            "reject": 0.9997
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0,
+            "inserted_word_ratio": 0.0932,
+            "net_deleted_word_ratio": 0.0,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already . [INS] The age of an account is counted from the date the receivable was recorded . [/INS] 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already. The age of an account is counted from the date the receivable was recorded.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "insert",
+            "old": "",
+            "new": "The age of an account is counted from the date the receivable was recorded.",
+            "old_ctx": "",
+            "new_ctx": "The age of an account is counted from the date the receivable was recorded.",
+            "removed": 0,
+            "added": 14,
+            "punctuation_only": false,
+            "item": "3.6"
+          }
+        ],
+        "words_removed": 0,
+        "words_added": 14,
+        "items": [
+          "3.6"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nAn added sentence in 3.0 POLICIES, at 3.6: “The age of an account is counted from the date the receivable was recorded.”\n\nWhat to look at\n- The check's model strongly suspects that the added wording goes beyond what this section covers, though it found no specific words to point to. Readers looking for this rule may not find it where it belongs, and the same point may end up stated in two places.\n  Expect to be asked: Does this belong in this section, or in another one?\n  To check: See whether another section already covers it.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure, obligation or named role changed.\nNothing was removed.\n\nWhat this check can't tell you\n- Whether the added wording is accurate, and where readers expect to find it.",
+        "reviewer": "What changed\nAn added sentence in 3.0 POLICIES, at 3.6: “The age of an account is counted from the date the receivable was recorded.”\n\nWhat to look at\n- The check's model strongly suspects that the added wording goes beyond what this section covers, though it found no specific words to point to. Readers looking for this rule may not find it where it belongs, and the same point may end up stated in two places.\n  Worth asking the drafting office: Does this belong in this section, or in another one?\n  To check: See whether another section already covers it.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure, obligation or named role changed.\nNothing was removed.\n\nWhat this check can't tell you\n- Whether the added wording is accurate, and where readers expect to find it."
+      }
+    },
+    "06_figure": {
+      "edit": "365 days -> 180 days",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 0.8266,
+          "issues": [
+            {
+              "label": "numeric_changed",
+              "source": "both",
+              "confidence": 1.0,
+              "severity": "medium",
+              "clause": "7.5.3",
+              "evidence": "\"1 year\", \"365 days\" to \"180 days\", \"6 months\"",
+              "values": [
+                "1 year",
+                "365 days",
+                "180 days",
+                "6 months"
+              ],
+              "direction": "changed",
+              "from_text": "\"1 year\", \"365 days\"",
+              "to_text": "\"180 days\", \"6 months\""
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0005,
+            "needs_revision": 0.173,
+            "reject": 0.8266
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.0186,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 4,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 3,
+            "cross_ref_conflict_count": 1
+          },
+          "flags": [
+            {
+              "label": "numeric_changed",
+              "clause": "7.5.3",
+              "severity": "medium",
+              "evidence": "\"1 year\", \"365 days\" to \"180 days\", \"6 months\"",
+              "values": [
+                "1 year",
+                "365 days",
+                "180 days",
+                "6 months"
+              ],
+              "from_values": [
+                "1 year",
+                "365 days"
+              ],
+              "to_values": [
+                "180 days",
+                "6 months"
+              ],
+              "direction": "changed",
+              "from_text": "\"1 year\", \"365 days\"",
+              "to_text": "\"180 days\", \"6 months\""
+            },
+            {
+              "label": "contradicts_manual",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "1 year",
+              "conflicts": [
+                {
+                  "value": "1 year",
+                  "kind": "numeric"
+                }
+              ]
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than [DEL] 365 [/DEL] [INS] 180 [/INS] days or [DEL] 1 year [/DEL] [INS] 6 months [/INS] are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 180 days or 6 months are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "replace",
+            "old": "365 days or 1 year",
+            "new": "180 days or 6 months",
+            "old_ctx": "more than 365 days or 1 year are considered",
+            "new_ctx": "more than 180 days or 6 months are considered",
+            "removed": 3,
+            "added": 3,
+            "punctuation_only": false,
+            "item": "3.6"
+          }
+        ],
+        "words_removed": 3,
+        "words_added": 3,
+        "items": [
+          "3.6"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA small wording edit to 3.0 POLICIES, at 3.6: “more than 365 days or 1 year are considered” → “more than 180 days or 6 months are considered”.\n\nWhat to look at\n- At 3.6, a figure changed: “1 year”, “365 days” became “180 days”, “6 months”. Offices schedule and measure their work against this figure, and forms, systems and other sections that repeat it may now disagree.\n  Expect to be asked: Where does the new figure come from: a memorandum, a policy or a law?\n  To check: Look for other sections, forms and systems that use the same figure.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new figure matches the memorandum, policy or law it comes from.",
+        "reviewer": "What changed\nA small wording edit to 3.0 POLICIES, at 3.6: “more than 365 days or 1 year are considered” → “more than 180 days or 6 months are considered”.\n\nWhat to look at\n- At 3.6, a figure changed: “1 year”, “365 days” became “180 days”, “6 months”. Offices schedule and measure their work against this figure, and forms, systems and other sections that repeat it may now disagree.\n  Worth asking the drafting office: Where does the new figure come from: a memorandum, a policy or a law?\n  To check: Look for other sections, forms and systems that use the same figure.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new figure matches the memorandum, policy or law it comes from."
+      }
+    },
+    "07_not_removed": {
+      "edit": "\"not\" removed",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 1.0,
+          "issues": [
+            {
+              "label": "negation_changed",
+              "source": "both",
+              "confidence": 1.0,
+              "severity": "high",
+              "clause": "7.5.3",
+              "evidence": "\"not\"",
+              "action": "removed",
+              "added": [],
+              "removed": [
+                "not"
+              ]
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0,
+            "needs_revision": 0.0,
+            "reject": 1.0
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0062,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.0062,
+            "sentences_removed": 0,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 1,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 0,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [
+            {
+              "label": "negation_changed",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "\"not\"",
+              "action": "removed",
+              "added": [],
+              "removed": [
+                "not"
+              ],
+              "reversals": []
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . 4 Credentials and official records of Undergraduate students will [DEL] not [/DEL] be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "delete",
+            "old": "not",
+            "new": "",
+            "old_ctx": "students will not be released",
+            "new_ctx": "students will be released",
+            "removed": 1,
+            "added": 0,
+            "punctuation_only": false,
+            "item": "3.4"
+          }
+        ],
+        "words_removed": 1,
+        "words_added": 0,
+        "items": [
+          "3.4"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA small wording edit to 3.0 POLICIES, at 3.4: “students will not be released” → “students will be released”.\n\nWhat to look at\n- At 3.4, “not” was removed, which reverses what the sentence requires. The section now allows what it prohibited, or the reverse, so the people applying it will act the opposite way.\n  Expect to be asked: Is the reversal intended, and does the law or policy behind this section allow it?\n  To check: Read the sentence before and after, and confirm the new meaning is the one intended.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure, obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the law or policy this section rests on allows the change.",
+        "reviewer": "What changed\nA small wording edit to 3.0 POLICIES, at 3.4: “students will not be released” → “students will be released”.\n\nWhat to look at\n- At 3.4, “not” was removed, which reverses what the sentence requires. The section now allows what it prohibited, or the reverse, so the people applying it will act the opposite way.\n  Worth asking the drafting office: Is the reversal intended, and does the law or policy behind this section allow it?\n  To check: Read the sentence before and after, and confirm the new meaning is the one intended.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure, obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the law or policy this section rests on allows the change."
+      }
+    },
+    "08_reassigned": {
+      "edit": "a step reassigned",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 1.0,
+          "issues": [
+            {
+              "label": "responsibility_changed",
+              "source": "both",
+              "confidence": 1.0,
+              "severity": "high",
+              "clause": "5.3",
+              "evidence": "accountant, records management staff",
+              "roles": [
+                "accountant",
+                "records management staff"
+              ]
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0,
+            "needs_revision": 0.0,
+            "reject": 1.0
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.0,
+            "deleted_word_ratio": 0.0,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.0256,
+            "sentences_removed": 1,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 2,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [
+            {
+              "label": "responsibility_changed",
+              "clause": "5.3",
+              "severity": "high",
+              "evidence": "accountant, records management staff",
+              "roles": [
+                "accountant",
+                "records management staff"
+              ]
+            },
+            {
+              "label": "requirement_removed",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "| Records Management Staff | 6.",
+              "count": 1
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "| Responsibility | Activity | | - - - | - - - | | Accountant | 1 . Generates the Schedule of Accounts Receivable with Aging using the eNGAS System . | | | 2 . Sort those accounts with age of over 1 year . | | | 3 . Prepares Demand Letters to those debtors with accounts aging over 1 year . | | | 4 . Forwards copies of the demand letters to the University President for signature . | | University President | 5 . Signs the Demand Letters . | | [DEL] Records Management Staff [/DEL] [INS] Accountant [/INS] | 6 . Sends the Demand Letters to the debtors through a courier if necessary . |"
+        },
+        "section_label": "4.5 Accounts Receivable from Other Debtors",
+        "old_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| | 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+        "new_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| | 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Accountant | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "replace",
+            "old": "Records Management Staff",
+            "new": "Accountant",
+            "old_ctx": "Records Management Staff",
+            "new_ctx": "Accountant",
+            "removed": 3,
+            "added": 1,
+            "punctuation_only": false,
+            "item": "step 6"
+          }
+        ],
+        "words_removed": 3,
+        "words_added": 1,
+        "items": [
+          "step 6"
+        ],
+        "removed_lines": [],
+        "added_lines": [],
+        "only_whole_lines": false,
+        "lines_quotable": false
+      },
+      "current_note": {
+        "submitter": "What you changed\nA small wording edit to 4.5 Accounts Receivable from Other Debtors, at step 6: “Records Management Staff” → “Accountant”.\n\nWhat to look at\n- At step 6, Records Management Staff is no longer named. The office now named takes on the work and the accountability for it; if it has not agreed, the step may go undone.\n  Expect to be asked: Has the office now named agreed to take this on?\n  To check: Confirm with the office now named, and look for other sections that assign the same step.\n  This touches ISO 9001:2015 clause 5.3, which asks that each role's responsibilities and authority are given to someone specific and made known to the people who work with them.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether the office now named has agreed, and has the people to do the work.",
+        "reviewer": "What changed\nA small wording edit to 4.5 Accounts Receivable from Other Debtors, at step 6: “Records Management Staff” → “Accountant”.\n\nWhat to look at\n- At step 6, Records Management Staff is no longer named. The office now named takes on the work and the accountability for it; if it has not agreed, the step may go undone.\n  Worth asking the drafting office: Has the office now named agreed to take this on?\n  To check: Confirm with the office now named, and look for other sections that assign the same step.\n  This touches ISO 9001:2015 clause 5.3, which asks that each role's responsibilities and authority are given to someone specific and made known to the people who work with them.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether the office now named has agreed, and has the people to do the work."
+      }
+    },
+    "09_approvals_removed": {
+      "edit": "two approval steps removed",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 1.0,
+          "issues": [
+            {
+              "label": "requirement_removed",
+              "source": "both",
+              "confidence": 1.0,
+              "severity": "high",
+              "clause": "7.5.3",
+              "evidence": "| | 4.",
+              "count": 4
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0,
+            "needs_revision": 0.0,
+            "reject": 1.0
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.25,
+            "deleted_word_ratio": 0.2564,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.2564,
+            "sentences_removed": 4,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 0,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 1,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 0
+          },
+          "flags": [
+            {
+              "label": "responsibility_changed",
+              "clause": "5.3",
+              "severity": "high",
+              "evidence": "university president",
+              "roles": [
+                "university president"
+              ]
+            },
+            {
+              "label": "requirement_removed",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "| | 4.",
+              "count": 4
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "| Responsibility | Activity | | - - - | - - - | | Accountant | 1 . Generates the Schedule of Accounts Receivable with Aging using the eNGAS System . | | | 2 . Sort those accounts with age of over 1 year . | | | 3 . Prepares Demand Letters to those debtors with accounts aging over 1 year . | | [DEL] | 4 . Forwards copies of the demand letters to the University President for signature . | | University President | 5 . Signs the Demand Letters . | | [/DEL] Records Management Staff | 6 . Sends the Demand Letters to the debtors through a courier if necessary . |"
+        },
+        "section_label": "4.5 Accounts Receivable from Other Debtors",
+        "old_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| | 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+        "new_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "delete",
+            "old": "| 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n|",
+            "new": "",
+            "old_ctx": "| 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management",
+            "new_ctx": "Records Management",
+            "removed": 20,
+            "added": 0,
+            "punctuation_only": false,
+            "item": "step 4"
+          }
+        ],
+        "words_removed": 20,
+        "words_added": 0,
+        "items": [
+          "step 4"
+        ],
+        "removed_lines": [
+          "| | 4. Forwards copies of the demand letters to the University President for signature. |",
+          "| University President | 5. Signs the Demand Letters. |"
+        ],
+        "added_lines": [],
+        "only_whole_lines": true,
+        "lines_quotable": true
+      },
+      "current_note": {
+        "submitter": "What you changed\nRemoved two lines from 4.5 Accounts Receivable from Other Debtors: “4. Forwards copies of the demand letters to the University President for signature.”; “University President — 5. Signs the Demand Letters.”\n\nWhat to look at\n- Two requirements no longer appear: they are the lines removed above. Whatever the removed text required is no longer required by this document, and an auditor will no longer look for it.\n  Expect to be asked: Why is this no longer required, and is it covered somewhere else?\n  To check: Say where the requirement now lives, or state in the reason that it is being dropped.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether what was removed is covered by another manual, a memorandum or a form.",
+        "reviewer": "What changed\nRemoved two lines from 4.5 Accounts Receivable from Other Debtors: “4. Forwards copies of the demand letters to the University President for signature.”; “University President — 5. Signs the Demand Letters.”\n\nWhat to look at\n- Two requirements no longer appear: they are the lines removed above. Whatever the removed text required is no longer required by this document, and an auditor will no longer look for it.\n  Worth asking the drafting office: Why is this no longer required, and is it covered somewhere else?\n  To check: Say where the requirement now lives, or state in the reason that it is being dropped.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether what was removed is covered by another manual, a memorandum or a form."
+      }
+    },
+    "10_policies_deleted": {
+      "edit": "two policies deleted",
+      "explain_arguments": {
+        "fusion_result": {
+          "verdict": "reject",
+          "confidence": 1.0,
+          "issues": [
+            {
+              "label": "requirement_removed",
+              "source": "both",
+              "confidence": 1.0,
+              "severity": "high",
+              "clause": "7.5.3",
+              "evidence": "3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Fre",
+              "count": 2
+            }
+          ],
+          "advisories": [],
+          "overrides": [],
+          "probabilities": {
+            "approve": 0.0,
+            "needs_revision": 0.0,
+            "reject": 1.0
+          },
+          "confidence_source": "fusion"
+        },
+        "layer1_result": {
+          "hard_fails": [],
+          "features": {
+            "deleted_line_ratio": 0.2857,
+            "deleted_word_ratio": 0.3478,
+            "inserted_word_ratio": 0.0,
+            "net_deleted_word_ratio": 0.3478,
+            "sentences_removed": 2,
+            "key_terms_deleted_count": 0,
+            "modal_weakened_count": 0,
+            "negation_changed": 1,
+            "numeric_changed_count": 0,
+            "role_terms_changed_count": 1,
+            "equivalent_swaps": 0,
+            "non_equivalent_swaps": 0,
+            "unknown_swaps": 0,
+            "cross_ref_conflict_count": 1
+          },
+          "flags": [
+            {
+              "label": "negation_changed",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "\"not\"",
+              "action": "removed",
+              "added": [],
+              "removed": [
+                "not"
+              ],
+              "reversals": []
+            },
+            {
+              "label": "responsibility_changed",
+              "clause": "5.3",
+              "severity": "high",
+              "evidence": "student",
+              "roles": [
+                "student"
+              ]
+            },
+            {
+              "label": "requirement_removed",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Fre",
+              "count": 2
+            },
+            {
+              "label": "contradicts_manual",
+              "clause": "7.5.3",
+              "severity": "high",
+              "evidence": "student",
+              "conflicts": [
+                {
+                  "value": "student",
+                  "kind": "role"
+                }
+              ]
+            }
+          ],
+          "advisories": [],
+          "change_type": "substantive",
+          "equivalent_swaps": [],
+          "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . [DEL] 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . [/DEL] 6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+        },
+        "section_label": "3.0 POLICIES",
+        "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+        "audience": "reviewer | submitter (called once for each)"
+      },
+      "derived_by_layer4_from_the_texts": {
+        "hunks": [
+          {
+            "tag": "delete",
+            "old": "4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.",
+            "new": "",
+            "old_ctx": "3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts",
+            "new_ctx": "3.6 Accounts",
+            "removed": 52,
+            "added": 0,
+            "punctuation_only": false,
+            "item": "3.4"
+          }
+        ],
+        "words_removed": 52,
+        "words_added": 0,
+        "items": [
+          "3.4"
+        ],
+        "removed_lines": [
+          "3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.",
+          "3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees."
+        ],
+        "added_lines": [],
+        "only_whole_lines": true,
+        "lines_quotable": true
+      },
+      "current_note": {
+        "submitter": "What you changed\nRemoved two lines from 3.0 POLICIES: “3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.”; “3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.”\n\nWhat to look at\n- Two requirements no longer appear: they are the lines removed above. Whatever the removed text required is no longer required by this document, and an auditor will no longer look for it.\n  Expect to be asked: Why is this no longer required, and is it covered somewhere else?\n  To check: Say where the requirement now lives, or state in the reason that it is being dropped.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether what was removed is covered by another manual, a memorandum or a form.",
+        "reviewer": "What changed\nRemoved two lines from 3.0 POLICIES: “3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.”; “3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.”\n\nWhat to look at\n- Two requirements no longer appear: they are the lines removed above. Whatever the removed text required is no longer required by this document, and an auditor will no longer look for it.\n  Worth asking the drafting office: Why is this no longer required, and is it covered somewhere else?\n  To check: Say where the requirement now lives, or state in the reason that it is being dropped.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether what was removed is covered by another manual, a memorandum or a form."
+      }
+    }
+  },
+  "proposals": {
+    "P1_mixed": {
+      "description": "A harmless edit alongside a serious one",
+      "overall_reason": "Aligned with the collection guidelines adopted at the August 2026 management review.",
+      "section_ids": {
+        "2.0 SCOPE": 8986,
+        "4.5 Accounts Receivable from Other Debtors": 8990
+      },
+      "sections": [
+        {
+          "section": "2.0 SCOPE",
+          "retrieved_section_ids": [
+            8988,
+            8987,
+            8985
+          ],
+          "coordinated_change_advisory": null,
+          "explain_arguments": {
+            "fusion_result": {
+              "verdict": "approve",
+              "confidence": 1.0,
+              "issues": [],
+              "advisories": [],
+              "overrides": [],
+              "probabilities": {
+                "approve": 1.0,
+                "needs_revision": 0.0,
+                "reject": 0.0
+              },
+              "confidence_source": "fusion"
+            },
+            "layer1_result": {
+              "hard_fails": [],
+              "features": {
+                "deleted_line_ratio": 0.0,
+                "deleted_word_ratio": 0.0,
+                "inserted_word_ratio": 0.0185,
+                "net_deleted_word_ratio": 0.0,
+                "sentences_removed": 0,
+                "key_terms_deleted_count": 0,
+                "modal_weakened_count": 0,
+                "negation_changed": 0,
+                "numeric_changed_count": 0,
+                "role_terms_changed_count": 0,
+                "equivalent_swaps": 0,
+                "non_equivalent_swaps": 0,
+                "unknown_swaps": 0,
+                "cross_ref_conflict_count": 0
+              },
+              "flags": [],
+              "advisories": [],
+              "change_type": "cosmetic",
+              "equivalent_swaps": [],
+              "marked": "These procedures apply to all accounts receivable arising from the official transactions of the University such as from the operations of the LNU House , of the LNU Cafeteria , and Inter-Agency transaction with the Commission on Higher Education ( CHED ) [INS] , [/INS] for the implementation of the Free Higher Education , among others ."
+            },
+            "section_label": "2.0 SCOPE",
+            "old_text": "These procedures apply to all accounts receivable arising from the official transactions of the University such as from the operations of the LNU House, of the LNU Cafeteria, and Inter-Agency transaction with the Commission on Higher Education (CHED) for the implementation of the Free Higher Education, among others.",
+            "new_text": "These procedures apply to all accounts receivable arising from the official transactions of the University such as from the operations of the LNU House, of the LNU Cafeteria, and Inter-Agency transaction with the Commission on Higher Education (CHED), for the implementation of the Free Higher Education, among others.",
+            "audience": "reviewer | submitter (called once for each)"
+          },
+          "derived_by_layer4_from_the_texts": {
+            "hunks": [
+              {
+                "tag": "insert",
+                "old": "",
+                "new": ",",
+                "old_ctx": "CHED) for the",
+                "new_ctx": "CHED), for the",
+                "removed": 0,
+                "added": 0,
+                "punctuation_only": true,
+                "item": ""
+              }
+            ],
+            "words_removed": 0,
+            "words_added": 0,
+            "items": [],
+            "removed_lines": [],
+            "added_lines": [],
+            "only_whole_lines": false,
+            "lines_quotable": false
+          },
+          "current_note": {
+            "submitter": "What you changed\nA punctuation fix to 2.0 SCOPE: “CHED) for the” → “CHED), for the”.\n\nWhat looks fine\nNo specific concern passed its threshold.\nNothing the section requires has changed; the edit touches spelling, punctuation or layout only.",
+            "reviewer": "What changed\nA punctuation fix to 2.0 SCOPE: “CHED) for the” → “CHED), for the”.\n\nWhat looks fine\nNo specific concern passed its threshold.\nNothing the section requires has changed; the edit touches spelling, punctuation or layout only."
+          }
+        },
+        {
+          "section": "4.5 Accounts Receivable from Other Debtors",
+          "retrieved_section_ids": [
+            8987,
+            8989,
+            8985
+          ],
+          "coordinated_change_advisory": null,
+          "explain_arguments": {
+            "fusion_result": {
+              "verdict": "reject",
+              "confidence": 1.0,
+              "issues": [
+                {
+                  "label": "requirement_removed",
+                  "source": "both",
+                  "confidence": 1.0,
+                  "severity": "high",
+                  "clause": "7.5.3",
+                  "evidence": "| | 4.",
+                  "count": 4
+                }
+              ],
+              "advisories": [],
+              "overrides": [],
+              "probabilities": {
+                "approve": 0.0,
+                "needs_revision": 0.0,
+                "reject": 1.0
+              },
+              "confidence_source": "fusion"
+            },
+            "layer1_result": {
+              "hard_fails": [],
+              "features": {
+                "deleted_line_ratio": 0.25,
+                "deleted_word_ratio": 0.2564,
+                "inserted_word_ratio": 0.0,
+                "net_deleted_word_ratio": 0.2564,
+                "sentences_removed": 4,
+                "key_terms_deleted_count": 0,
+                "modal_weakened_count": 0,
+                "negation_changed": 0,
+                "numeric_changed_count": 0,
+                "role_terms_changed_count": 1,
+                "equivalent_swaps": 0,
+                "non_equivalent_swaps": 0,
+                "unknown_swaps": 0,
+                "cross_ref_conflict_count": 0
+              },
+              "flags": [
+                {
+                  "label": "responsibility_changed",
+                  "clause": "5.3",
+                  "severity": "high",
+                  "evidence": "university president",
+                  "roles": [
+                    "university president"
+                  ]
+                },
+                {
+                  "label": "requirement_removed",
+                  "clause": "7.5.3",
+                  "severity": "high",
+                  "evidence": "| | 4.",
+                  "count": 4
+                }
+              ],
+              "advisories": [],
+              "change_type": "substantive",
+              "equivalent_swaps": [],
+              "marked": "| Responsibility | Activity | | - - - | - - - | | Accountant | 1 . Generates the Schedule of Accounts Receivable with Aging using the eNGAS System . | | | 2 . Sort those accounts with age of over 1 year . | | | 3 . Prepares Demand Letters to those debtors with accounts aging over 1 year . | | [DEL] | 4 . Forwards copies of the demand letters to the University President for signature . | | University President | 5 . Signs the Demand Letters . | | [/DEL] Records Management Staff | 6 . Sends the Demand Letters to the debtors through a courier if necessary . |"
+            },
+            "section_label": "4.5 Accounts Receivable from Other Debtors",
+            "old_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| | 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+            "new_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+            "audience": "reviewer | submitter (called once for each)"
+          },
+          "derived_by_layer4_from_the_texts": {
+            "hunks": [
+              {
+                "tag": "delete",
+                "old": "| 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n|",
+                "new": "",
+                "old_ctx": "| 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management",
+                "new_ctx": "Records Management",
+                "removed": 20,
+                "added": 0,
+                "punctuation_only": false,
+                "item": "step 4"
+              }
+            ],
+            "words_removed": 20,
+            "words_added": 0,
+            "items": [
+              "step 4"
+            ],
+            "removed_lines": [
+              "| | 4. Forwards copies of the demand letters to the University President for signature. |",
+              "| University President | 5. Signs the Demand Letters. |"
+            ],
+            "added_lines": [],
+            "only_whole_lines": true,
+            "lines_quotable": true
+          },
+          "current_note": {
+            "submitter": "What you changed\nRemoved two lines from 4.5 Accounts Receivable from Other Debtors: “4. Forwards copies of the demand letters to the University President for signature.”; “University President — 5. Signs the Demand Letters.”\n\nWhat to look at\n- Two requirements no longer appear: they are the lines removed above. Whatever the removed text required is no longer required by this document, and an auditor will no longer look for it.\n  Expect to be asked: Why is this no longer required, and is it covered somewhere else?\n  To check: Say where the requirement now lives, or state in the reason that it is being dropped.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether what was removed is covered by another manual, a memorandum or a form.",
+            "reviewer": "What changed\nRemoved two lines from 4.5 Accounts Receivable from Other Debtors: “4. Forwards copies of the demand letters to the University President for signature.”; “University President — 5. Signs the Demand Letters.”\n\nWhat to look at\n- Two requirements no longer appear: they are the lines removed above. Whatever the removed text required is no longer required by this document, and an auditor will no longer look for it.\n  Worth asking the drafting office: Why is this no longer required, and is it covered somewhere else?\n  To check: Say where the requirement now lives, or state in the reason that it is being dropped.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo figure or obligation changed.\n\nWhat this check can't tell you\n- Whether what was removed is covered by another manual, a memorandum or a form."
+          }
+        }
+      ]
+    },
+    "P2_coordinated": {
+      "description": "The same figure changed consistently in two sections",
+      "overall_reason": "Aligned with the collection guidelines adopted at the August 2026 management review.",
+      "section_ids": {
+        "3.0 POLICIES": 8987,
+        "4.5 Accounts Receivable from Other Debtors": 8990
+      },
+      "sections": [
+        {
+          "section": "3.0 POLICIES",
+          "retrieved_section_ids": [
+            8988,
+            8990,
+            8986
+          ],
+          "coordinated_change_advisory": null,
+          "explain_arguments": {
+            "fusion_result": {
+              "verdict": "reject",
+              "confidence": 0.8266,
+              "issues": [
+                {
+                  "label": "numeric_changed",
+                  "source": "both",
+                  "confidence": 1.0,
+                  "severity": "medium",
+                  "clause": "7.5.3",
+                  "evidence": "\"1 year\", \"365 days\" to \"180 days\", \"6 months\"",
+                  "values": [
+                    "1 year",
+                    "365 days",
+                    "180 days",
+                    "6 months"
+                  ],
+                  "direction": "changed",
+                  "from_text": "\"1 year\", \"365 days\"",
+                  "to_text": "\"180 days\", \"6 months\""
+                }
+              ],
+              "advisories": [],
+              "overrides": [],
+              "probabilities": {
+                "approve": 0.0005,
+                "needs_revision": 0.173,
+                "reject": 0.8266
+              },
+              "confidence_source": "fusion"
+            },
+            "layer1_result": {
+              "hard_fails": [],
+              "features": {
+                "deleted_line_ratio": 0.0,
+                "deleted_word_ratio": 0.0,
+                "inserted_word_ratio": 0.0,
+                "net_deleted_word_ratio": 0.0186,
+                "sentences_removed": 0,
+                "key_terms_deleted_count": 0,
+                "modal_weakened_count": 0,
+                "negation_changed": 0,
+                "numeric_changed_count": 4,
+                "role_terms_changed_count": 0,
+                "equivalent_swaps": 0,
+                "non_equivalent_swaps": 0,
+                "unknown_swaps": 3,
+                "cross_ref_conflict_count": 1
+              },
+              "flags": [
+                {
+                  "label": "numeric_changed",
+                  "clause": "7.5.3",
+                  "severity": "medium",
+                  "evidence": "\"1 year\", \"365 days\" to \"180 days\", \"6 months\"",
+                  "values": [
+                    "1 year",
+                    "365 days",
+                    "180 days",
+                    "6 months"
+                  ],
+                  "from_values": [
+                    "1 year",
+                    "365 days"
+                  ],
+                  "to_values": [
+                    "180 days",
+                    "6 months"
+                  ],
+                  "direction": "changed",
+                  "from_text": "\"1 year\", \"365 days\"",
+                  "to_text": "\"180 days\", \"6 months\""
+                },
+                {
+                  "label": "contradicts_manual",
+                  "clause": "7.5.3",
+                  "severity": "high",
+                  "evidence": "1 year",
+                  "conflicts": [
+                    {
+                      "value": "1 year",
+                      "kind": "numeric"
+                    }
+                  ]
+                }
+              ],
+              "advisories": [],
+              "change_type": "substantive",
+              "equivalent_swaps": [],
+              "marked": "3 . 1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012 . 3 . 2 Any request for information shall be governed by Executive Order No . 02 , series of 2016 or the Freedom of Information . 3 . 3 Accounts Receivable should be collected in a timely manner . 3 . 4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education . 3 . 5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees . 3 . 6 Accounts Receivable that are outstanding for more than [DEL] 365 [/DEL] [INS] 180 [/INS] days or [DEL] 1 year [/DEL] [INS] 6 months [/INS] are considered past due already . 3 . 7 Demand Letters should be sent to the debtors for those past due accounts ."
+            },
+            "section_label": "3.0 POLICIES",
+            "old_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 365 days or 1 year are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+            "new_text": "3.1 Any records which may contain personal information shall be handled in accordance with Republic Act 10173 or the Data Privacy Act of 2012.\n3.2 Any request for information shall be governed by Executive Order No. 02, series of 2016 or the Freedom of Information.\n3.3 Accounts Receivable should be collected in a timely manner.\n3.4 Credentials and official records of Undergraduate students will not be released if they still have unpaid school fees prior to the implementation of the Free Higher Education.\n3.5 Credentials and official records of ILS/PLC and Masters/Doctoral students will only be released upon settlement of all their assessed school fees.\n3.6 Accounts Receivable that are outstanding for more than 180 days or 6 months are considered past due already.\n3.7 Demand Letters should be sent to the debtors for those past due accounts.",
+            "audience": "reviewer | submitter (called once for each)"
+          },
+          "derived_by_layer4_from_the_texts": {
+            "hunks": [
+              {
+                "tag": "replace",
+                "old": "365 days or 1 year",
+                "new": "180 days or 6 months",
+                "old_ctx": "more than 365 days or 1 year are considered",
+                "new_ctx": "more than 180 days or 6 months are considered",
+                "removed": 3,
+                "added": 3,
+                "punctuation_only": false,
+                "item": "3.6"
+              }
+            ],
+            "words_removed": 3,
+            "words_added": 3,
+            "items": [
+              "3.6"
+            ],
+            "removed_lines": [],
+            "added_lines": [],
+            "only_whole_lines": false,
+            "lines_quotable": false
+          },
+          "current_note": {
+            "submitter": "What you changed\nA small wording edit to 3.0 POLICIES, at 3.6: “more than 365 days or 1 year are considered” → “more than 180 days or 6 months are considered”.\n\nWhat to look at\n- At 3.6, a figure changed: “1 year”, “365 days” became “180 days”, “6 months”. Offices schedule and measure their work against this figure, and forms, systems and other sections that repeat it may now disagree.\n  Expect to be asked: Where does the new figure come from: a memorandum, a policy or a law?\n  To check: Look for other sections, forms and systems that use the same figure.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new figure matches the memorandum, policy or law it comes from.",
+            "reviewer": "What changed\nA small wording edit to 3.0 POLICIES, at 3.6: “more than 365 days or 1 year are considered” → “more than 180 days or 6 months are considered”.\n\nWhat to look at\n- At 3.6, a figure changed: “1 year”, “365 days” became “180 days”, “6 months”. Offices schedule and measure their work against this figure, and forms, systems and other sections that repeat it may now disagree.\n  Worth asking the drafting office: Where does the new figure come from: a memorandum, a policy or a law?\n  To check: Look for other sections, forms and systems that use the same figure.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new figure matches the memorandum, policy or law it comes from."
+          }
+        },
+        {
+          "section": "4.5 Accounts Receivable from Other Debtors",
+          "retrieved_section_ids": [
+            8987,
+            8985,
+            8989
+          ],
+          "coordinated_change_advisory": null,
+          "explain_arguments": {
+            "fusion_result": {
+              "verdict": "needs_revision",
+              "confidence": 0.9999,
+              "issues": [
+                {
+                  "label": "numeric_changed",
+                  "source": "both",
+                  "confidence": 1.0,
+                  "severity": "medium",
+                  "clause": "7.5.3",
+                  "evidence": "\"1 year\" to \"6 months\"",
+                  "values": [
+                    "1 year",
+                    "6 months"
+                  ],
+                  "direction": "changed",
+                  "from_text": "\"1 year\"",
+                  "to_text": "\"6 months\""
+                }
+              ],
+              "advisories": [],
+              "overrides": [],
+              "probabilities": {
+                "approve": 0.0001,
+                "needs_revision": 0.9999,
+                "reject": 0.0001
+              },
+              "confidence_source": "fusion"
+            },
+            "layer1_result": {
+              "hard_fails": [],
+              "features": {
+                "deleted_line_ratio": 0.0,
+                "deleted_word_ratio": 0.0,
+                "inserted_word_ratio": 0.0,
+                "net_deleted_word_ratio": 0.0342,
+                "sentences_removed": 0,
+                "key_terms_deleted_count": 0,
+                "modal_weakened_count": 0,
+                "negation_changed": 0,
+                "numeric_changed_count": 2,
+                "role_terms_changed_count": 0,
+                "equivalent_swaps": 0,
+                "non_equivalent_swaps": 0,
+                "unknown_swaps": 4,
+                "cross_ref_conflict_count": 1
+              },
+              "flags": [
+                {
+                  "label": "numeric_changed",
+                  "clause": "7.5.3",
+                  "severity": "medium",
+                  "evidence": "\"1 year\" to \"6 months\"",
+                  "values": [
+                    "1 year",
+                    "6 months"
+                  ],
+                  "from_values": [
+                    "1 year"
+                  ],
+                  "to_values": [
+                    "6 months"
+                  ],
+                  "direction": "changed",
+                  "from_text": "\"1 year\"",
+                  "to_text": "\"6 months\""
+                },
+                {
+                  "label": "contradicts_manual",
+                  "clause": "7.5.3",
+                  "severity": "high",
+                  "evidence": "1 year",
+                  "conflicts": [
+                    {
+                      "value": "1 year",
+                      "kind": "numeric"
+                    }
+                  ]
+                }
+              ],
+              "advisories": [],
+              "change_type": "substantive",
+              "equivalent_swaps": [],
+              "marked": "| Responsibility | Activity | | - - - | - - - | | Accountant | 1 . Generates the Schedule of Accounts Receivable with Aging using the eNGAS System . | | | 2 . Sort those accounts with age of over [DEL] 1 year [/DEL] [INS] 6 months [/INS] . | | | 3 . Prepares Demand Letters to those debtors with accounts aging over [DEL] 1 year [/DEL] [INS] 6 months [/INS] . | | | 4 . Forwards copies of the demand letters to the University President for signature . | | University President | 5 . Signs the Demand Letters . | | Records Management Staff | 6 . Sends the Demand Letters to the debtors through a courier if necessary . |"
+            },
+            "section_label": "4.5 Accounts Receivable from Other Debtors",
+            "old_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 1 year. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 1 year. |\n| | 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+            "new_text": "| Responsibility | Activity |\n| --- | --- |\n| Accountant | 1. Generates the Schedule of Accounts Receivable with Aging using the eNGAS System. |\n| | 2. Sort those accounts with age of over 6 months. |\n| | 3. Prepares Demand Letters to those debtors with accounts aging over 6 months. |\n| | 4. Forwards copies of the demand letters to the University President for signature. |\n| University President | 5. Signs the Demand Letters. |\n| Records Management Staff | 6. Sends the Demand Letters to the debtors through a courier if necessary. |",
+            "audience": "reviewer | submitter (called once for each)"
+          },
+          "derived_by_layer4_from_the_texts": {
+            "hunks": [
+              {
+                "tag": "replace",
+                "old": "1 year",
+                "new": "6 months",
+                "old_ctx": "of over 1 year.",
+                "new_ctx": "of over 6 months.",
+                "removed": 2,
+                "added": 2,
+                "punctuation_only": false,
+                "item": "step 2"
+              },
+              {
+                "tag": "replace",
+                "old": "1 year",
+                "new": "6 months",
+                "old_ctx": "aging over 1 year.",
+                "new_ctx": "aging over 6 months.",
+                "removed": 2,
+                "added": 2,
+                "punctuation_only": false,
+                "item": "step 3"
+              }
+            ],
+            "words_removed": 4,
+            "words_added": 4,
+            "items": [
+              "step 2",
+              "step 3"
+            ],
+            "removed_lines": [],
+            "added_lines": [],
+            "only_whole_lines": false,
+            "lines_quotable": false
+          },
+          "current_note": {
+            "submitter": "What you changed\nA small wording edit to 4.5 Accounts Receivable from Other Debtors, at step 2 and step 3: “of over 1 year.” → “of over 6 months.” (step 2); “aging over 1 year.” → “aging over 6 months.” (step 3).\n\nWhat to look at\n- A figure changed: “1 year” became “6 months”. Offices schedule and measure their work against this figure, and forms, systems and other sections that repeat it may now disagree.\n  Expect to be asked: Where does the new figure come from: a memorandum, a policy or a law?\n  To check: Look for other sections, forms and systems that use the same figure.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new figure matches the memorandum, policy or law it comes from.",
+            "reviewer": "What changed\nA small wording edit to 4.5 Accounts Receivable from Other Debtors, at step 2 and step 3: “of over 1 year.” → “of over 6 months.” (step 2); “aging over 1 year.” → “aging over 6 months.” (step 3).\n\nWhat to look at\n- A figure changed: “1 year” became “6 months”. Offices schedule and measure their work against this figure, and forms, systems and other sections that repeat it may now disagree.\n  Worth asking the drafting office: Where does the new figure come from: a memorandum, a policy or a law?\n  To check: Look for other sections, forms and systems that use the same figure.\n  This touches ISO 9001:2015 clause 7.5.3, which asks that the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version.\n\nWhat looks fine\nNo obligation or named role changed.\n\nWhat this check can't tell you\n- Whether the new figure matches the memorandum, policy or law it comes from."
+          }
+        }
+      ]
+    }
+  }
+}

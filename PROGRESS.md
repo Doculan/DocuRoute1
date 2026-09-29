@@ -2315,6 +2315,45 @@ errors.
 
 ---
 
+## Layer 4 input spec; 0.975 vs 0.978 traced; loose ends (2026-09-29)
+
+No model change, fingerprint unchanged. Layer 4's note text is to be
+replaced by a new engine built to wording drafted outside the codebase, so
+it was committed as it stood and not polished further.
+
+- **`LAYER4_INPUT_SPEC.md`**: everything Layer 4 receives, per label; how
+  multi-section proposals work today; the current wording in full; and the
+  real inputs for the ten diagnosis edits and two proposals, captured by
+  wrapping `explain()` on the real check path. The full capture, with the
+  current notes, is `LAYER4_INPUT_CASES.json`. The ten edits were rebuilt,
+  since the originals were not saved; they reproduce the diagnosis figures
+  exactly.
+- **Found while capturing:** many rule flags never reach Layer 3's issues,
+  because `rules_precise` keeps a rule-only flag only for three labels. In
+  the coordinated-change proposal, both sections' rules found the "1 year"
+  conflict and the policy dropped it, so the coordinated-change line could
+  not appear. Recorded in the spec (§3); nothing changed.
+- **0.975 vs 0.978 traced: the scikit-learn version.** Same predictions,
+  code and seed: 1.9.0 (project venv) gives 0.978, 1.6.0 (system `py`, which
+  EVALUATION.md's reproduce command called) gives 0.975. Threads make no
+  difference. The earlier note's "not the scikit-learn version" was wrong:
+  that run used the system Python. A full run in the venv reproduces the
+  committed report exactly. The fold predictions (byte-identical to the copy
+  in `Documents/MANUALS/folds`) are committed with `MANIFEST.sha256` and a
+  `.gitattributes` rule that keeps their bytes through `core.autocrlf`.
+  EVALUATION.md §0 and §6 state both figures with their versions.
+  **Open:** `requirements.txt` does not pin scikit-learn.
+- **Diagnosis recorded** in EVALUATION.md §1 and limitation 15: overconfident
+  on realistic harmless edits, because the dataset has no realistic benign
+  rewording. Roadmap: generator, retraining, calibration check.
+- **Help** now describes the v4 proposal flow.
+- **`tests_import_duplicates` fixed.** The earlier diagnosis (a folder
+  mismatch) was wrong: the importer found the files, then refused them,
+  because since `d0b8ebe` it rejects a PDF that extracts to no sections, and
+  the tests' minimal PDFs extract to nothing. The tests now stub extraction.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are
