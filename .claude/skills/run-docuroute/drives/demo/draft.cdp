@@ -22,6 +22,8 @@ fill .proposal-section-body textarea | ${TEXT}
 click button | Save this section
 wait Run the check
 click button | Run the check
-slowwait checked —
+# The check is done when the section stops asking for one. (It used to
+# wait for the verdict beside "checked"; no verdict is shown now.)
+slowwaitgone .badge | needs a check
 shot ${TAG}drafted
 errors

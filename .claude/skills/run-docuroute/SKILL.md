@@ -101,7 +101,7 @@ The seed leaves one request, so accepting and denying need separate
 fresh copies.
 
 Commands are listed at the top of `cdp.mjs`: `nav`, `wait`, `slowwait`
-(3 minutes, for the AI check), `waitgone`, `click`, `type`, `fill`
+(3 minutes, for the AI check), `waitgone`, `slowwaitgone`, `click`, `type`, `fill`
 (replaces what the field holds; a literal `\n` types a newline), `set`
 (date inputs, which take no typed text), `select`, `upload`, `shot`,
 `text`, `value` (an input's value), `errors`, and `? ` for an optional

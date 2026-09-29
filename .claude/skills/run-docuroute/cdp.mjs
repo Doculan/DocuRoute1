@@ -13,6 +13,7 @@
 //   set <css> | <value>          set an input's value directly (dates)
 //   slowwait <text>              wait, for up to 3 minutes (the AI check)
 //   waitgone <css> | <text>      wait until no <css> element contains <text>
+//   slowwaitgone <css> | <text>  waitgone, for up to 3 minutes (the AI check)
 //   select <css> | <text>        choose the option whose text contains <text>
 //   upload <css> | <path>        set a file input's file (fires change)
 //   shot <name>                  screenshot to <dir>/<name>.png
@@ -97,11 +98,11 @@ for (const raw of lines) {
         await sleep(250);
       }
       if (!found) throw new Error('text never appeared');
-    } else if (cmd === 'waitgone') {
+    } else if (cmd === 'waitgone' || cmd === 'slowwaitgone') {
       // Until no <css> element contains <text>: proof that an action took,
       // where the text it leaves might already have been on the page.
       const [css, text] = split(rest);
-      const until = Date.now() + 20000;
+      const until = Date.now() + (cmd === 'slowwaitgone' ? 180000 : 20000);
       let gone = false;
       while (Date.now() < until) {
         gone = await evaluate(`![...document.querySelectorAll(${JSON.stringify(css)})]
