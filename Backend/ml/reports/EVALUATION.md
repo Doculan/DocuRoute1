@@ -3,15 +3,24 @@
 What the four-layer pipeline scores, how it was measured, and what the numbers
 do and do not support.
 
-Reproduce everything here from a checkout with the fold predictions in place:
+Reproduce everything here from a clean clone. The fold predictions are
+committed, and the manifest proves they are the bytes the figures came from.
+**Use the project venv**: the fusion figure depends on the scikit-learn
+version (§6), and the figures here were measured with scikit-learn 1.9.0
+and numpy 2.5.2.
 
 ```bash
-py ml/revision_pipeline/scripts/evaluate_folds.py \
+cd Backend
+(cd ml/datasets/context_v2/folds_from_drive && sha256sum -c MANIFEST.sha256)
+../venv/Scripts/python.exe ml/revision_pipeline/scripts/evaluate_folds.py \
     --predictions-dir ml/datasets/context_v2/folds_from_drive --out-dir ml/reports
-py ml/revision_pipeline/scripts/report_per_label.py \
+../venv/Scripts/python.exe ml/revision_pipeline/scripts/report_per_label.py \
     --predictions-dir ml/datasets/context_v2/folds_from_drive \
     --out ml/reports/per_label_issue_f1.md
 ```
+
+`evaluate_folds.py` takes about half an hour on CPU, almost all of it
+Layer 1 over every row.
 
 ---
 
@@ -19,10 +28,16 @@ py ml/revision_pipeline/scripts/report_per_label.py \
 
 | | |
 |---|---|
-| **Verdict accuracy** | **0.978** |
-| **Issue micro-F1** | **0.854** |
+| **Verdict accuracy** | **0.978** (scikit-learn 1.9.0); **0.975** with scikit-learn 1.6.0 |
+| **Issue micro-F1** | **0.854** under either |
 
 Both are the **mean of five per-fold scores**, and that is the basis to quote.
+
+**The verdict figure depends on the scikit-learn version**, not on the data:
+the same committed fold predictions give 0.978 with 1.9.0 (the project venv,
+which the app runs on) and 0.975 with 1.6.0. Nothing else moves. §6 has the
+trace. Quote 0.978 with its version, or the range 0.975-0.978; the
+difference is about seven test rows out of 2,762.
 It is what `evaluate_folds.py` reports, what `fold_evaluation.md` records, and
 what every other document in this project uses.
 
@@ -92,6 +107,53 @@ more trust than a model trained on generated edits has earned. The concerns
 underneath carry the useful part - what changed and where - and the note can
 say plainly when the rules looked for the same thing and found nothing. So
 the note is what is shown, and the verdict stays where it is measured.
+
+### Finding: overconfident on realistic harmless edits
+
+**The model is overconfident on realistic harmless edits.** Three of the ten
+edits above are harmless, and each was judged against as confidently as a
+real removal:
+
+| harmless edit | verdict | confidence | the issue behind it (model only) |
+|---|---|---:|---|
+| a duplicated word removed ("the said the accountability") | needs_revision | 0.95 | `key_term_deleted` 0.98 |
+| "in a timely manner" → "promptly" | reject | 0.997 | `negation_changed` 0.91 |
+| a clarifying sentence added | reject | 0.9997 | `out_of_scope_content` 0.96 |
+
+In all three the rules looked for what the model reported and found nothing:
+no listed term gone, no negation word moved. The third label is one the rules
+never raise.
+
+**The cause is the dataset: it has no realistic benign rewording.** Its
+harmless edits are mechanical. `typo_fix` (453 rows) restores a word from a
+fixed misspelling list, so a duplicated word is never removed.
+`equivalent_synonym` (19 rows) swaps glossary pairs only, so free rewording
+is not represented. Of the generators that add a sentence, only
+`cross_reference_addition` (166, approve) is harmless. Every other added
+sentence is `foreign_insertion` (265, reject, `out_of_scope_content`). So
+the model has only ever seen an added sentence that is not a cross-reference
+labelled reject, and has never seen a short phrase replaced by a plainer one
+that means the same.
+
+This is the §1 caveat measured on real text: the figures describe agreement
+on the kinds of change the generators make, and these three kinds are not
+among them. It is also why no screen shows the verdict (above).
+
+**Roadmap.** Nothing here changes the model now; each step needs a GPU run
+and every figure in this document re-measured.
+
+1. **A generator of realistic harmless rewording and clarifying additions**,
+   labelled approve: plain-language rewording of a phrase ("in a timely
+   manner" → "promptly"), duplicated or stray words removed, and a sentence
+   added that explains without adding an obligation, a figure or a role.
+   It needs a check that the rewrite really is harmless: no modal, negation,
+   figure or role changes, which Layer 1 can already verify.
+2. **Retraining**: Layer 2 on the enlarged set, per-fold thresholds
+   re-derived, the fusion model retrained, and all figures re-measured.
+3. **A calibration check**: reliability of the verdict's and each issue's
+   confidence, per fold (expected calibration error and a reliability table),
+   plus these ten edits kept as a fixed regression set. A confidence of 0.997
+   should mean right 997 times in 1,000; on these edits it does not.
 
 ---
 
@@ -541,15 +603,40 @@ Pinning to boosting gives up 0.0012 against the selected variant and removes
 the ambiguity entirely. **0.978 is the figure, it is reproducible, and it is
 the one quoted everywhere in this project.**
 
-> **Open, 2026-09-29: re-running `evaluate_folds.py` on the development
-> machine gives fusion 0.975 / 0.854**, not 0.978. Rules-only, model-only and
-> every issue figure match; only fusion's verdict moves. It is not the
-> scikit-learn version - 1.6.0 and 1.8.0 give identical results fold by
-> fold, and Layer 3 is seeded - and no pipeline code has changed since the
-> figure was recorded. The difference lies in inputs git does not hold, most
-> likely the untracked fold predictions in `folds_from_drive/`. Until it is
-> traced, 0.978 stands as the recorded figure and 0.975 is what this checkout
-> reproduces.
+**Pinning removed the estimator choice, but not the library.** Boosting
+alone still moves with the scikit-learn version. Traced 2026-09-29, on the
+same fold predictions, with the same code and seed:
+
+| environment | fold 0 | fold 1 | fold 2 | fold 3 | fold 4 | mean |
+|---|---:|---:|---:|---:|---:|---:|
+| scikit-learn 1.9.0, numpy 2.5.2 (project venv) | 0.981 | 0.986 | 0.965 | 0.977 | 0.981 | **0.978** |
+| scikit-learn 1.6.0, numpy 2.2.0 (system Python) | 0.979 | 0.985 | 0.969 | 0.979 | 0.965 | **0.975** |
+
+- **The inputs are not the cause.** The fold predictions in the repository
+  and the second copy on this machine (`Documents/MANUALS/folds`) are
+  byte-identical by SHA-256, and are now committed with a manifest. Both
+  environments above read the same files. (The copy on the other machine,
+  where 0.978 was first recorded, was not available to compare; its
+  `sha256sum -c MANIFEST.sha256` would settle it.)
+- **Threads are not the cause.** 1, 2, 4 and 8 OpenMP threads give identical
+  results.
+- **The pinned estimator is in use**: `HistGradientBoostingClassifier(random_state=42)`,
+  100 iterations, no early stopping, in both environments.
+- A full `evaluate_folds.py` run in the project venv reproduces the committed
+  `fold_evaluation.md` exactly. Rules-only, model-only and every issue
+  figure are identical under both versions; only fusion's verdict moves.
+
+The 0.975 re-run earlier the same day came from the system Python (1.6.0),
+which is what this document's reproduce command used to invoke (`py`). That
+note also said scikit-learn 1.8.0 gave 0.975. The 1.8.0 environment no longer
+exists, so that was not re-checked.
+
+**Which is correct:** both are correct measurements of the same system under
+different scikit-learn versions. **0.978 is the figure for the environment
+the app runs on**, and it is the one to quote, with its version. The
+0.003 spread is the size of the library effect, well inside the fold-to-fold
+variation in §2. `requirements.txt` does not pin scikit-learn, so a clean
+clone reproduces 0.978 only if it installs 1.9.0.
 
 The shipped `fusion.pkl` is trained on all folds' validation predictions, on
 CPU, locally. It is 0.8 MB and is the one model component not trained on a GPU.
@@ -813,6 +900,14 @@ generator will.
    features, not the model.
 14. **The assessment is advisory.** It never changes a revision's status. Every
     figure in this document describes advice to a human reviewer who decides.
+15. **Overconfident on realistic harmless edits.** §1. A duplicated word
+    removed scored needs_revision at 0.95; "in a timely manner" → "promptly"
+    reject at 0.997; a clarifying sentence reject at 0.9997, each through a
+    model-only issue the rules found no trace of. The dataset has no
+    realistic benign rewording, and every harmless-looking added sentence
+    in it except a cross-reference is labelled reject. The confidences are
+    not calibrated for edits outside the generators. The fix is a benign
+    rewording generator, retraining and a calibration check (§1, roadmap).
 
 ---
 
@@ -826,7 +921,8 @@ generator will.
 | Issue detection is uneven by kind of judgement | lexical labels 0.95-1.00, judgement labels 0.70-0.78 (§3, pooled) |
 | A good label score can still hide a narrow label | `non_equivalent_term` F1 0.952 on 83% one pattern (§3) |
 | The issue policy was chosen on substance | `agree` scored higher and was rejected for silencing two labels |
-| The reported figure is stable | fusion pinned to boosting; 0.979/0.975 ambiguity removed - but a 2026-09-29 re-run reproduces 0.975, cause open (§6) |
+| The reported figure is reproducible | fold predictions committed with a manifest; 0.978 with scikit-learn 1.9.0, 0.975 with 1.6.0 on the same predictions (§6) |
+| Harmless realistic edits are judged confidently wrong | typo 0.95, near-synonym 0.997, clarifying sentence 0.9997 (§1) |
 | Labels were checked against a human | 44/50 verdicts, 47/50 issue sets; six disagreements fixed |
 | Fusion's overrides of a confident Layer 2 were right | 6 of 6 on the fold rows (§8b) |
 | The rule layer is scored without the clause 6.3 check | 0.791; with it, 0.730 on synthetic reasons (§2) |
