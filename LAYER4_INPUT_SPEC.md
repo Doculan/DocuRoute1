@@ -107,7 +107,7 @@ Layer 1 does not hand over a structured diff. Today's Layer 4 builds one from `o
 |---|---|---|---|
 | `hunks[]` | list | one per changed run; edits a word or two apart on one line are merged | reliable |
 | `hunks[].tag` | str | `replace`, `delete`, `insert` | reliable |
-| `hunks[].old`, `.new` | str | `"365 days or 1 year"` → `"180 days or 6 months"` | exact text |
+| `hunks[].old`, `.new` | str | `"365 days or 1 year"` → `"180 days or 6 months"` | exact for edits within a line. A hunk spanning whole lines is cut at word tokens, so it can start or end mid-number and carry pipes and line breaks ("4 Credentials … fees.\n3." in case 10). For whole lines, use `removed_lines` / `added_lines`. |
 | `hunks[].old_ctx`, `.new_ctx` | str | the same plus up to two unchanged words each side, stopping at a table cell or line break | reliable |
 | `hunks[].removed`, `.added` | int | words (punctuation not counted) | reliable |
 | `hunks[].punctuation_only` | bool | `true` for a comma | reliable |
