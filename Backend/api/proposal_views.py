@@ -152,7 +152,13 @@ def _coordinated_advisory(change, all_changes):
     if not change.assessment_id:
         return None
     assessment = change.assessment
-    if 'contradicts_manual' not in (assessment.issues or []):
+    # Stored issues are dicts, as Layer 3 returns them. Testing the label
+    # against the list itself matched nothing, so this never fired.
+    labels = {
+        i.get('label') if isinstance(i, dict) else i
+        for i in (assessment.issues or [])
+    }
+    if 'contradicts_manual' not in labels:
         return None
 
     retrieved = set(assessment.retrieved_section_ids or [])

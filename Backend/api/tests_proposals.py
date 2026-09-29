@@ -516,6 +516,26 @@ class PerSectionCheckTests(ProposalFixture):
         row = next(s for s in data['sections'] if s['section_id'] == self.s2.id)
         self.assertIn('4.0 PROCEDURES', row['assessment']['coordinated_change'])
 
+    def test_the_coordinated_advisory_reads_issues_as_they_are_stored(self):
+        """Layer 3 stores each issue as a dict. The tests above store bare
+        labels, which is how this check came to match nothing in real use."""
+        self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
+        self.edit(self.proposal_id, self.s3, "The Accounting Staff may verify.")
+        self.check(self.s2)
+        self.check(self.s3)
+
+        change = SectionChange.objects.get(section=self.s2)
+        RevisionPreAssessment.objects.filter(pk=change.assessment_id).update(
+            issues=[{'label': 'contradicts_manual', 'source': 'model',
+                     'confidence': 0.9, 'severity': 'high', 'clause': '7.5.3',
+                     'evidence': ''}],
+            retrieved_section_ids=[self.s3.id],
+        )
+
+        data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
+        row = next(s for s in data['sections'] if s['section_id'] == self.s2.id)
+        self.assertIn('4.0 PROCEDURES', row['assessment']['coordinated_change'])
+
     def test_no_advisory_when_the_other_section_is_not_being_changed(self):
         self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
         self.check(self.s2)
