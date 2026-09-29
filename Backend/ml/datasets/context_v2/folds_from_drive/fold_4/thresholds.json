@@ -1,0 +1,12 @@
+{
+  "excessive_deletion": 0.8,
+  "key_term_deleted": 0.9,
+  "modal_weakened": 0.95,
+  "negation_changed": 0.8,
+  "numeric_changed": 0.9,
+  "responsibility_changed": 0.85,
+  "requirement_removed": 0.75,
+  "non_equivalent_term": 0.95,
+  "contradicts_manual": 0.95,
+  "out_of_scope_content": 0.8
+}

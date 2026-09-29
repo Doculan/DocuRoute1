@@ -1,0 +1,4 @@
+epoch,peak_rss_mb,seconds,train_loss,val_issues_micro_f1,val_verdict_accuracy,val_verdict_macro_f1
+1,1547,65.6,1.5817,0.5178,0.8837,0.8789
+2,1895,64.3,0.5048,0.6813,0.8977,0.8947
+3,2112,64.8,0.2448,0.8967,0.9488,0.9467

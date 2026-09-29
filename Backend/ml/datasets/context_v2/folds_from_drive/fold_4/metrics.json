@@ -1,0 +1,48 @@
+{
+  "fold": "4",
+  "best_epoch": 3,
+  "train_examples": 1866,
+  "val_examples": 466,
+  "thresholds": {
+    "excessive_deletion": 0.8,
+    "key_term_deleted": 0.9,
+    "modal_weakened": 0.95,
+    "negation_changed": 0.8,
+    "numeric_changed": 0.9,
+    "responsibility_changed": 0.85,
+    "requirement_removed": 0.75,
+    "non_equivalent_term": 0.95,
+    "contradicts_manual": 0.95,
+    "out_of_scope_content": 0.8
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "train_loss": 1.582,
+      "seconds": 66.6,
+      "peak_rss_mb": 1545,
+      "val_verdict_macro_f1": 0.8654,
+      "val_verdict_accuracy": 0.8734,
+      "val_issues_micro_f1": 0.5206
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.5253,
+      "seconds": 64.8,
+      "peak_rss_mb": 1893,
+      "val_verdict_macro_f1": 0.9728,
+      "val_verdict_accuracy": 0.9742,
+      "val_issues_micro_f1": 0.7341
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.241,
+      "seconds": 64.8,
+      "peak_rss_mb": 2110,
+      "val_verdict_macro_f1": 0.9774,
+      "val_verdict_accuracy": 0.9785,
+      "val_issues_micro_f1": 0.8866
+    }
+  ],
+  "pipeline_fingerprint": "15ba1054ec4bc534"
+}

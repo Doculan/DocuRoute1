@@ -1,0 +1,4 @@
+# The fold predictions are checked against MANIFEST.sha256, so their bytes
+# must survive a checkout exactly. Without this, core.autocrlf on Windows
+# rewrites their line endings and every checksum fails.
+Backend/ml/datasets/context_v2/folds_from_drive/** -text
