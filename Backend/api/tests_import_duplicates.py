@@ -11,6 +11,7 @@ import shutil
 import tempfile
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -20,9 +21,19 @@ from api.models import CustomUser, Manual
 
 TEMP_MEDIA = tempfile.mkdtemp(prefix="docuroute-import-tests-")
 
-# A real PDF is not needed: the guard compares bytes, and the extraction
-# that follows is allowed to find nothing. Using a minimal file keeps the
-# test fast and independent of the OCR stack.
+# A real PDF is not needed: the guard compares bytes. The extraction that
+# follows is stubbed with a small sectioned text, because the importer
+# refuses a file that yields no sections - an empty extraction used to be
+# allowed, and these tests relied on it. Stubbing keeps them fast and
+# independent of the OCR stack.
+EXTRACTED = (
+    "1.0 OBJECTIVES\n"
+    "1.1 To control and monitor accounts receivable of the University.\n"
+    "2.0 SCOPE\n"
+    "These procedures apply to all accounts receivable arising from the "
+    "official transactions of the University.\n"
+)
+
 PDF_A = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n%%EOF\n"
 PDF_B = b"%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nendobj\ntrailer\n%%EOF\n"
 
@@ -31,6 +42,13 @@ PDF_B = b"%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nendobj\ntrailer\n%%EOF\n"
 class ImportDuplicateTests(TestCase):
 
     def setUp(self):
+        extraction = mock.patch(
+            "api.management.commands.import_mastercopies.extract_text",
+            return_value=EXTRACTED,
+        )
+        extraction.start()
+        self.addCleanup(extraction.stop)
+
         self.source = Path(TEMP_MEDIA) / "mastercopies"
         if self.source.exists():
             shutil.rmtree(self.source)
