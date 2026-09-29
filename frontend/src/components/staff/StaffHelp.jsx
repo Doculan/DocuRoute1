@@ -13,39 +13,44 @@ export default function StaffHelp() {
         <div>
           <h1 className="page-title">Help</h1>
           <p className="page-subtitle">
-            How a revision travels from your edit to an approved document, and
-            what the AI check is for.
+            How a proposed change travels from your edit to an effective
+            document, and what the AI check is for.
           </p>
         </div>
       </header>
 
       <section>
-        <h2 className="section-title">How a revision travels</h2>
+        <h2 className="section-title">How a change travels</h2>
         <ol className="help-steps">
           <li>
-            <strong>You edit a section.</strong> Open a manual from My Manuals,
-            or find the section directly from Sections, and propose a change —
-            edited text, an uploaded file, or a merge of two sections.
+            <strong>You propose changes.</strong> Open a document from My
+            Manuals, or find a section from Sections, and choose Propose
+            changes. One proposal covers the whole document; edit each section
+            that needs it.
           </li>
           <li>
             <strong>You give a reason.</strong> A sentence saying what changed
-            and why. This is required before anything else happens.
+            and why. It is required before the proposal can be submitted.
           </li>
           <li>
-            <strong>You run the AI check</strong> and read what it says. This
-            is required too — but only running it is required, not agreeing
-            with it.
+            <strong>You run the AI check</strong> on each changed section and
+            read what it says. Running it is required; agreeing with it is not.
           </li>
           <li>
-            <strong>You submit.</strong> Whatever the check said. The result is
-            stored with your revision, so the reviewer reads exactly what you
-            read.
+            <strong>Your Head submits it for concurrence.</strong> Each check
+            is stored with its section, so the offices reviewing read exactly
+            what you read.
           </li>
           <li>
-            <strong>A reviewer decides.</strong> Approved, or sent back with a
-            note explaining what to change. You will see it in My Revisions,
-            and the tab shows a count when there is feedback you have not
-            opened.
+            <strong>The other offices concur</strong>, or return it with
+            feedback. A return makes a new version, which every office agrees
+            to again. Follow it in Proposals.
+          </li>
+          <li>
+            <strong>It is signed and decided.</strong> Once every office has
+            concurred, the text is locked and the DCR is generated for signing
+            on paper. The IMR accepts or denies it, and the Document Custodian
+            makes it effective.
           </li>
         </ol>
       </section>
@@ -123,8 +128,8 @@ export default function StaffHelp() {
         <h2 className="section-title">Why a reason for change is required</h2>
         <p>
           ISO 9001 clause 6.3 expects changes to a controlled document to be
-          planned, and the record of that plan is your reason. It is what a
-          reviewer reads first and what an auditor looks for later, which is
+          planned, and the record of that plan is your reason. It is what the
+          offices reviewing your proposal read first and what an auditor looks for later, which is
           why a placeholder like &ldquo;update&rdquo; is refused: it records
           that something happened without recording what or why.
         </p>
