@@ -60,6 +60,39 @@ change it was built to recognise, on documents it has not seen.** It does not
 say 97.8% of real revisions will be judged correctly. The blind audit in §7 is
 the closest thing here to a check against human judgement, and it is small.
 
+### The verdict is internal
+
+**No screen shows the verdict, or its confidence** (since 2026-09-29). The
+pipeline still computes and stores both, unchanged, and the verdict is what
+every figure in this document measures. What people read is Layer 4's note:
+what changed, what to look at and why, the ISO clause each concern touches,
+what looks fine, and what the check cannot tell. Layer 4 uses the verdict
+only to decide emphasis: how much detail each concern gets, and how the note
+reads when no specific concern passed its threshold.
+
+The reason is the caveat above, seen on real text. Ten edits to FAM 6.02
+through the live check:
+
+| edit | verdict | confidence | what drove it |
+|---|---|---:|---|
+| a duplicated word removed (typo) | needs_revision | 0.95 | `key_term_deleted`, model only - the rules found no term missing |
+| a comma added | approve | 1.00 | cosmetic |
+| "in a timely manner" → "promptly" | **reject** | 0.997 | `negation_changed`, model only - the rules found no negation |
+| "shall" → "may" | needs_revision | 1.00 | `modal_weakened`, rules and model |
+| a clarifying sentence added | **reject** | 0.9997 | `out_of_scope_content`, model only |
+| 365 days → 180 days | reject | 0.83 | `numeric_changed`, rules and model |
+| "not" removed | reject | 1.00 | `negation_changed`, rules and model |
+| a step reassigned | reject | 1.00 | `responsibility_changed`, rules and model |
+| two approval steps removed | reject | 1.00 | `requirement_removed`, rules and model |
+| two policies deleted | reject | 1.00 | `requirement_removed`, rules and model |
+
+Where the change matters, the verdict is reasonable. On harmless edits it is
+just as confident and wrong, and a label with a confidence of 0.997 invites
+more trust than a model trained on generated edits has earned. The concerns
+underneath carry the useful part - what changed and where - and the note can
+say plainly when the rules looked for the same thing and found nothing. So
+the note is what is shown, and the verdict stays where it is measured.
+
 ---
 
 ## 2. Ablation — what each layer adds
@@ -358,8 +391,8 @@ precise = [modal_weakened, non_equivalent_term]
 ```
 
 The verdict survives — `rules_only_verdict` reads the rule flags directly — but
-the reviewer loses the evidence, and the explanation degrades to "Please check
-these points" with no points to check.
+the reviewer loses the evidence, and the note is left with nothing to point
+at.
 
 **+0.0006 micro-F1 is not worth that.** It is roughly one prediction in 1,600,
 far below the fold-to-fold variation in §2, and it is paid for by a real
@@ -507,6 +540,16 @@ accuracy that moves when a library is upgraded is not a reported accuracy.
 Pinning to boosting gives up 0.0012 against the selected variant and removes
 the ambiguity entirely. **0.978 is the figure, it is reproducible, and it is
 the one quoted everywhere in this project.**
+
+> **Open, 2026-09-29: re-running `evaluate_folds.py` on the development
+> machine gives fusion 0.975 / 0.854**, not 0.978. Rules-only, model-only and
+> every issue figure match; only fusion's verdict moves. It is not the
+> scikit-learn version - 1.6.0 and 1.8.0 give identical results fold by
+> fold, and Layer 3 is seeded - and no pipeline code has changed since the
+> figure was recorded. The difference lies in inputs git does not hold, most
+> likely the untracked fold predictions in `folds_from_drive/`. Until it is
+> traced, 0.978 stands as the recorded figure and 0.975 is what this checkout
+> reproduces.
 
 The shipped `fusion.pkl` is trained on all folds' validation predictions, on
 CPU, locally. It is 0.8 MB and is the one model component not trained on a GPU.
@@ -783,7 +826,7 @@ generator will.
 | Issue detection is uneven by kind of judgement | lexical labels 0.95-1.00, judgement labels 0.70-0.78 (§3, pooled) |
 | A good label score can still hide a narrow label | `non_equivalent_term` F1 0.952 on 83% one pattern (§3) |
 | The issue policy was chosen on substance | `agree` scored higher and was rejected for silencing two labels |
-| The reported figure is stable | fusion pinned to boosting; 0.979/0.975 ambiguity removed |
+| The reported figure is stable | fusion pinned to boosting; 0.979/0.975 ambiguity removed - but a 2026-09-29 re-run reproduces 0.975, cause open (§6) |
 | Labels were checked against a human | 44/50 verdicts, 47/50 issue sets; six disagreements fixed |
 | Fusion's overrides of a confident Layer 2 were right | 6 of 6 on the fold rows (§8b) |
 | The rule layer is scored without the clause 6.3 check | 0.791; with it, 0.730 on synthetic reasons (§2) |

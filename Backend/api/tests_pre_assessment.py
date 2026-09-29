@@ -70,8 +70,10 @@ class BoundToItsTextTests(CheckFixture):
     def test_checking_identical_content_twice_reads_identically(self):
         first = self.check().data['assessment']
         second = self.check().data['assessment']
-        self.assertEqual(first['verdict'], second['verdict'])
         self.assertEqual(first['explanation'], second['explanation'])
+        self.assertEqual(first['explanation_reviewer'], second['explanation_reviewer'])
+        stored = RevisionPreAssessment.objects.filter(pk__in=[first['id'], second['id']])
+        self.assertEqual(len({row.verdict for row in stored}), 1)
 
     def test_whitespace_alone_does_not_invalidate_a_check(self):
         self.check()
@@ -91,7 +93,8 @@ class BoundToItsTextTests(CheckFixture):
             {'verdict': 'approve', 'issues': []}, format='json',
         )
         stored = self.change().assessment
-        self.assertEqual(response.data['assessment']['verdict'], stored.verdict)
+        self.assertNotIn('verdict', response.data['assessment'])
+        self.assertTrue(stored.verdict)
         self.assertEqual(stored.content_hash, pre_assessment.content_hash(
             self.s2.id, self.s2.content, NEW_TEXT,
             'Consolidated after the 2026 management review.'))

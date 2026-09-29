@@ -158,17 +158,18 @@ def assess_texts(
         thresholds=bundle.get("thresholds"),
     )
 
-    # Both audiences, rendered from the one set of findings and the one seed,
-    # so the submitter who read this before submitting and the reviewer who
-    # reads it afterwards are looking at the same assessment in different
-    # words - not at two runs that might disagree.
+    # Both audiences, rendered from the one set of findings, so the drafting
+    # office and the offices reviewing the change are looking at the same
+    # assessment in different words - not at two runs that might disagree.
+    # The texts go to Layer 4 only, so the note can say where the change is
+    # and quote it; nothing before Layer 4 sees anything new.
     explanation = explain(
         layer3, layer1, section_label=section_label, revision_id=revision_id,
-        seed=seed, audience=REVIEWER,
+        seed=seed, audience=REVIEWER, old_text=old_text, new_text=new_text,
     )
     explanation_staff = explain(
         layer3, layer1, section_label=section_label, revision_id=revision_id,
-        seed=seed, audience=SUBMITTER,
+        seed=seed, audience=SUBMITTER, old_text=old_text, new_text=new_text,
     )
 
     trace = {

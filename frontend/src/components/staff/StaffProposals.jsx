@@ -8,6 +8,7 @@ import { STATUS_LABEL, WITH_PACKAGE, statusTone } from "../proposalStatus";
 // change, marked the way a person with a red pen would mark it.
 // DiffView is the reviewer's technical diff.
 import DocDiff from "../DocDiff";
+import AiNote from "../AiNote";
 
 const BASE_URL = "";
 
@@ -18,12 +19,6 @@ const getAuth = () => ({
 const confirmed = (token) => ({
   headers: { ...getAuth().headers, ...reauthHeader(token) },
 });
-
-const VERDICT_WORDS = {
-  approve: "no concerns",
-  needs_revision: "needs revision",
-  reject: "serious concerns",
-};
 
 function when(value) {
   if (!value) return "";
@@ -547,10 +542,7 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
                     <>
                       <span className="badge badge-info">changed</span>
                       {change.check_is_current ? (
-                        <span className="subtle text-xs">
-                          checked — {VERDICT_WORDS[change.assessment?.verdict]
-                            || change.assessment?.verdict}
-                        </span>
+                        <span className="subtle text-xs">checked</span>
                       ) : (
                         <span className="badge badge-warning">needs a check</span>
                       )}
@@ -599,6 +591,7 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
                       <Assessment
                         assessment={change.assessment}
                         stale={!change.check_is_current}
+                        forReviewers={data.viewer_is_initiator === false}
                       />
                     )}
                   </div>
@@ -612,15 +605,19 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
   );
 }
 
-/** The one place on these screens where substance beats brevity. */
-function Assessment({ assessment, stale }) {
+/**
+ * The AI check's note on one section. No verdict: the note says what
+ * changed, what to look at and why, in words. The drafting office reads it
+ * addressed to them; everyone else reads it addressed to reviewers.
+ */
+function Assessment({ assessment, stale, forReviewers }) {
+  const text = forReviewers
+    ? assessment.explanation_reviewer || assessment.explanation
+    : assessment.explanation;
   return (
     <div className="card card-pad" style={{ marginTop: "0.8rem" }}>
-      <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "baseline" }}>
-        <span className="label">Check</span>
-        <span className="strong">
-          {VERDICT_WORDS[assessment.verdict] || assessment.verdict}
-        </span>
+      <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "baseline", marginBottom: "0.6rem" }}>
+        <span className="label">AI check</span>
         {stale && (
           <span className="badge badge-warning">
             this section changed since
@@ -628,24 +625,12 @@ function Assessment({ assessment, stale }) {
         )}
       </div>
 
-      {assessment.explanation && (
-        <p className="text-sm" style={{ marginTop: "0.5rem", color: "var(--n-700)" }}>
-          {assessment.explanation}
-        </p>
-      )}
+      <AiNote text={text} />
 
       {assessment.coordinated_change && (
-        <p className="subtle text-sm" style={{ marginTop: "0.5rem" }}>
+        <p className="subtle text-sm" style={{ marginTop: "0.6rem" }}>
           {assessment.coordinated_change}
         </p>
-      )}
-
-      {assessment.hard_fails?.length > 0 && (
-        <ul className="text-sm" style={{ marginTop: "0.5rem", paddingLeft: "1.1rem" }}>
-          {assessment.hard_fails.map((f, i) => (
-            <li key={i}>{f.evidence || f.label}</li>
-          ))}
-        </ul>
       )}
     </div>
   );

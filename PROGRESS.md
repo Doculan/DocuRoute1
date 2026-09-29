@@ -2219,6 +2219,102 @@ kept untestable.
 
 ---
 
+## Layer 4 as an assistive note; verdicts no longer shown (2026-09-29, awaiting review)
+
+No model change. Layers 1-3, the fingerprint (`6a6a5c667a3c4d11`) and every
+stored field are as they were; only Layer 4's text and the screens changed.
+
+### Why: what the verdict said about small edits
+
+Ten real edits to FAM 6.02 through the proposal check, on a scratch copy.
+Where the change matters the verdict was reasonable; on harmless ones it was
+just as confident and wrong - a typo fix `needs_revision` 0.95, "in a timely
+manner" → "promptly" `reject` 0.997 (a model-only `negation_changed` the
+rules found no trace of), an added clarifying sentence `reject` 0.9997. The
+table is in EVALUATION.md §1, "The verdict is internal".
+
+### What changed
+
+- **Layer 4 writes a note in four parts** - what changed (kind, size, where,
+  exact words when short), what to look at (per concern: what, where, why it
+  matters, the likely question, what to check, the ISO clause), what looks
+  fine, and what the check can't tell. Deterministic templates; nothing the
+  earlier layers or the two texts do not contain. `explain()` now receives
+  the old and new text, so it can place and quote the change; nothing before
+  Layer 4 sees anything new.
+- **Firmness through wording.** A rule finding is stated plainly. A
+  model-only one is attributed to the model and hedged by confidence, and
+  where the rules looked for the same thing and found none, the note says
+  so and calls it a possible false lead - no question, checklist or
+  can't-tell line for it.
+- **The verdict decides emphasis only**: `reject`/`needs_revision` give every
+  concern its question and check, `approve` only the first; and with no
+  concern above threshold, a non-approve verdict is said in words ("less
+  settled than that suggests") without the label.
+- **`iso_relevance.json`**: the clause per concern and the paraphrase per
+  clause, in one file for the QMS office to review. The note says "this
+  touches clause X, which asks that...", never "violates". The clause for
+  each trained issue must match `config.ISSUE_CLAUSE` (which stamps stored
+  issues); a test enforces it. `config.ISO_CLAUSES` is unused and was left
+  untouched rather than edit `config.py`.
+- **No screen shows a verdict or confidence.** The API no longer sends
+  either (per section) or the proposal's overall verdict; both stay stored.
+  The staff screen's "checked — serious concerns" is now "checked"; the
+  admin list's "check: reject" is now "checked"; the panel's verdict line
+  and separate hard-fail list are gone (hard fails are in the note). Help's
+  "What the verdicts mean" is now "Reading the note". The admin dashboard's
+  "assessment said reject" marker had already gone at v4.1.0.
+- **Each reader gets their rendering**: the `/full/` view adds
+  `viewer_is_initiator`; the drafting office reads "What you changed /
+  Expect to be asked", everyone else "What changed / Worth asking the
+  drafting office".
+- **Stored notes written before this format** lose their exact old verdict
+  sentences on the way out of the API (`without_legacy_verdict`). The stored
+  text is never rewritten - snapshots are never re-run. 15 snapshots on the
+  live database, 3 attached to proposals.
+- The List of Forms message no longer says "admin review" or "verdict".
+
+### Found on the way
+
+- **The coordinated-change advisory never fired.** It tested
+  `'contradicts_manual' in assessment.issues`, but stored issues are dicts;
+  the tests stored bare strings, so they passed. Fixed, with a test on the
+  real shape, shown to fail without the fix.
+- **The run-docuroute drives waited for "checked —"**, the verdict suffix.
+  They now wait for "needs a check" to go (`slowwaitgone`, added to
+  `cdp.mjs`).
+- **0.978 does not reproduce on this machine: `evaluate_folds.py` gives
+  0.975 / 0.854**, before any of this work and after it, identical fold by
+  fold. Not scikit-learn: 1.6.0 (installed) and 1.8.0 (the pickles' version,
+  in a scratch venv) agree exactly, and Layer 3 is seeded. No pipeline code
+  has changed since `3fec92f`, whose message records 0.978 measured after
+  its own changes. Rules-only (0.791), model-only (0.951) and every issue
+  figure match; only fusion moves (fold 4: 0.981 → 0.965). The cause is in
+  inputs git does not hold - `folds_from_drive/` is untracked - alongside
+  the v4.1.0 finding that the dataset cannot be rebuilt byte-for-byte.
+  **Open; not investigated further.** The published figures are unchanged.
+- Help's opening steps still describe the v3 flow ("My Revisions", "a
+  reviewer decides"), and DEPLOYMENT.md's scaling section describes v3
+  revision fields. Neither is about the verdict; left for a docs pass.
+- `MODEL_EXPLAINED.md` and `QMS_CDMS_GUIDE.md` were asked to be updated;
+  neither exists in the repository or its history.
+
+### Test state
+
+Pipeline: **287 passed** (Layer 4's tests rewritten: 70). API: **535 run,
+530 passed**, with three verdict-reading tests changed to assert the verdict
+is stored and not sent. The 5 failures are all `tests_import_duplicates` and
+**fail identically on the committed code** (checked with these changes
+stashed): the tests write PDFs to a temporary folder the importer does not
+read ("no PDFs in ..."). Open, unrelated to this work. `evaluate_folds.py`
+before and after this work: byte-identical output. Frontend builds; no
+new lint findings. Seen in the real app on a scratch copy of the demo data:
+drafted, checked and submitted FAM 6.02 3.0 POLICIES; the drafter and the
+Budget Head each read their rendering; no verdict on either page; no console
+errors.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

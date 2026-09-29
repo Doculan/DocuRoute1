@@ -53,67 +53,69 @@ export default function StaffHelp() {
       <section>
         <h2 className="section-title">What the AI check is</h2>
         <p>
-          It reads your change against the rest of the document and points at
-          things a reviewer is likely to ask about — an obligation that became
-          optional, a figure that moved, a role that changed, wording that
-          conflicts with another section.
+          It reads each changed section against the rest of the document and
+          writes a short note: what you changed, what the offices reviewing
+          it are likely to look at, and why.
         </p>
         <p>
           <strong>It is advice, not a decision.</strong> Three things follow
-          from that, and they are worth being precise about:
+          from that:
         </p>
         <ul className="help-list">
           <li>
-            <strong>Running it is required; passing it is not.</strong> The
-            submit button stays locked until you have run the check, and then
-            unlocks whatever the verdict was. You can submit a change the
-            check would reject.
+            <strong>Running it is required; what it says is not.</strong> Each
+            changed section needs a current check before the proposal can be
+            submitted. Nothing in the note stops you submitting.
           </li>
           <li>
-            <strong>It never changes anything.</strong> It does not approve,
-            reject, or alter your revision. A person decides.
+            <strong>It never changes anything.</strong> People decide: the
+            concurring offices, the IMR and the approving authority.
           </li>
           <li>
-            <strong>The reviewer sees the same result you did.</strong> It is
-            saved at the moment you submit and never re-run afterwards, so
-            there is only ever one assessment of a revision — no second
-            opinion appearing behind you.
+            <strong>Everyone reads the same check.</strong> It is saved when it
+            runs and never re-run, so the offices reviewing your proposal read
+            the findings you read, addressed to them.
           </li>
         </ul>
         <p>
-          If you edit after checking, the result no longer describes what you
-          are submitting, so you will be asked to check again. That is the
-          only reason it ever blocks you.
+          If you edit a section after checking it, check it again: the old
+          note no longer describes the text.
         </p>
       </section>
 
       <section>
-        <h2 className="section-title">What the verdicts mean</h2>
+        <h2 className="section-title">Reading the note</h2>
         <dl className="help-defs">
-          <dt>Looks fine</dt>
+          <dt>What you changed</dt>
           <dd>
-            Nothing stood out. Submit it. This is not a guarantee of approval —
-            the reviewer may know something the check cannot.
+            The edit itself: where it is, how large, and the exact words when
+            they are short.
           </dd>
 
-          <dt>Would likely need changes</dt>
+          <dt>What to look at</dt>
           <dd>
-            Something in the change is the kind of thing reviewers usually send
-            back. Worth a second look before you submit, but if you are
-            confident, submit and say why in your reason.
+            Each concern, most significant first: what changed, why it matters
+            to the people who use the document, what you are likely to be
+            asked, and the ISO 9001 clause it touches. A concern the check&rsquo;s
+            own rules could not confirm says so, and may be a false lead.
           </dd>
 
-          <dt>Would likely be rejected</dt>
+          <dt>What looks fine</dt>
           <dd>
-            The change looks like it removes or weakens something the document
-            relies on. Read the concerns before deciding. You can still submit.
+            What the check counted and found unchanged, such as the figures or
+            the roles named.
+          </dd>
+
+          <dt>What this check can&rsquo;t tell you</dt>
+          <dd>
+            The questions only people can answer, such as whether a new figure
+            matches its memorandum, or whether an office has agreed to take on
+            a step.
           </dd>
         </dl>
         <p>
-          Each concern names a clause and quotes the words it is about. Treat a
-          concern as <strong>a pointer to check</strong>, not a ruling — it is
-          telling you where to look, and it can be pointing at the wrong thing.
-          The verdict is more reliable than the label attached to it.
+          There is no pass or fail. Treat each concern as <strong>a pointer to
+          check</strong>, not a ruling; the wording says how firm it is.
         </p>
       </section>
 
@@ -133,7 +135,7 @@ export default function StaffHelp() {
         <p className="subtle">
           The reason is never given to the AI check as evidence. It judges the
           text of your change and the document around it, so a well-written
-          reason cannot talk it into approving a change — and a plain one
+          reason cannot talk it out of a concern — and a plain one
           cannot count against you.
         </p>
       </section>

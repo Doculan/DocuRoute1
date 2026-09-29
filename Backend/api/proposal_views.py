@@ -23,6 +23,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+# Standard library only underneath - no model is loaded by this import.
+from ml.revision_pipeline.layer4_explain import without_legacy_verdict
+
 from . import access, pre_assessment
 from .models import (
     AuditEvent, Manual, ManualSection, Office, OfficeLink, Position,
@@ -91,33 +94,12 @@ def _proposal_payload(proposal, detail=False):
         'version': version.number if version else None,
         'overall_reason': version.overall_reason if version else '',
         'changed_sections': len(changed),
-        # The strictest of the changed sections, which is what the DCR
-        # carries - but each section's own result stays visible, so a
-        # reviewer can see *which* section is the problem.
-        'verdict': _overall_verdict(changed),
         'ready_to_submit': _submission_blockers(proposal, version, changed) == [],
         'blockers': _submission_blockers(proposal, version, changed),
     }
     if detail:
         data['sections'] = [_change_payload(c, changes) for c in changes]
     return data
-
-
-# Strictest first. The overall verdict is the worst of the changed
-# sections, because a document is not approvable while any part of it is
-# not.
-_VERDICT_ORDER = ['reject', 'needs_revision', 'approve']
-
-
-def _overall_verdict(changes):
-    verdicts = {
-        c.assessment.verdict for c in changes
-        if c.assessment_id and c.assessment.verdict
-    }
-    for verdict in _VERDICT_ORDER:
-        if verdict in verdicts:
-            return verdict
-    return None
 
 
 def _submission_blockers(proposal, version, changed):
@@ -199,15 +181,23 @@ def _change_payload(change, all_changes=None):
         'assessment': None,
     }
     if assessment is not None:
+        # No verdict and no confidence: both are stored, and the published
+        # figures measure the verdict, but no screen shows either. The note
+        # carries what the check found, addressed to the drafting office
+        # ('explanation') or to everyone reviewing ('explanation_reviewer');
+        # the screen picks by who is reading. Notes stored before the note
+        # format lose their verdict sentences on the way out - the stored
+        # text is left exactly as it was.
         data['assessment'] = {
             'id': str(assessment.id),
-            'verdict': assessment.verdict,
-            'confidence': assessment.confidence,
             'change_type': assessment.change_type,
             'issues': assessment.issues,
             'hard_fails': assessment.hard_fails,
             'advisories': assessment.advisories,
-            'explanation': assessment.explanation_staff,
+            'explanation': without_legacy_verdict(assessment.explanation_staff),
+            'explanation_reviewer': without_legacy_verdict(
+                assessment.explanation_reviewer or assessment.explanation_staff
+            ),
             'assessed_at': assessment.assessed_at,
             'stale': not change.check_is_current,
         }

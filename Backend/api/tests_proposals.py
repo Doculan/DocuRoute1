@@ -473,22 +473,61 @@ class PerSectionCheckTests(ProposalFixture):
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
         self.assertTrue(data['ready_to_submit'], data['blockers'])
 
-    def test_the_overall_verdict_is_the_strictest_section(self):
+    def test_no_verdict_or_confidence_reaches_the_screen(self):
+        """Computed and stored - the published figures measure it - but
+        never sent, so no screen can show it."""
         self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
-        self.edit(self.proposal_id, self.s3, "The Accounting Staff may verify.")
         self.check(self.s2)
-        self.check(self.s3)
-
-        changes = SectionChange.objects.filter(section__in=[self.s2, self.s3])
-        RevisionPreAssessment.objects.filter(
-            section_change=changes.get(section=self.s2)
-        ).update(verdict='approve')
-        RevisionPreAssessment.objects.filter(
-            section_change=changes.get(section=self.s3)
-        ).update(verdict='reject')
-
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
-        self.assertEqual(data['verdict'], 'reject')
+        self.assertNotIn('verdict', data)
+        row = next(s for s in data['sections'] if s['section_id'] == self.s2.id)
+        self.assertNotIn('verdict', row['assessment'])
+        self.assertNotIn('confidence', row['assessment'])
+        self.assertTrue(RevisionPreAssessment.objects.get().verdict)
+
+    def test_a_note_stored_before_the_note_format_loses_its_verdict_sentences(self):
+        """On the way out only: the stored snapshot is never rewritten."""
+        self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
+        self.check(self.s2)
+        change = SectionChange.objects.get(section=self.s2)
+        legacy = ("This would likely be rejected as written. The word “not” "
+                  "was removed. You can still submit - the reviewer decides, not "
+                  "this check.")
+        RevisionPreAssessment.objects.filter(pk=change.assessment_id).update(
+            explanation_staff=legacy,
+            explanation_reviewer=("This revision should not be approved as written. "
+                                  "The word “not” was removed. Please check "
+                                  "these points before deciding."),
+        )
+        data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
+        row = next(s for s in data['sections'] if s['section_id'] == self.s2.id)
+        self.assertEqual(row['assessment']['explanation'],
+                         "The word “not” was removed.")
+        self.assertEqual(row['assessment']['explanation_reviewer'],
+                         "The word “not” was removed.")
+        self.assertEqual(
+            RevisionPreAssessment.objects.get(pk=change.assessment_id).explanation_staff,
+            legacy,
+        )
+
+    def test_the_note_is_addressed_to_whoever_is_reading(self):
+        self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
+        self.check(self.s2)
+        mine = self.client.get(f'/api/proposals/{self.proposal_id}/full/').data
+        self.assertTrue(mine['viewer_is_initiator'])
+
+        qms = CustomUser.objects.create_user(
+            username='qms', password=PASSWORD, is_approved=True,
+            system_role=CustomUser.QMS_STAFF,
+        )
+        client = APIClient()
+        client.force_authenticate(user=qms)
+        theirs = client.get(f'/api/proposals/{self.proposal_id}/full/').data
+        self.assertFalse(theirs['viewer_is_initiator'])
+        row = next(s for s in theirs['sections'] if s['section_id'] == self.s2.id)
+        self.assertTrue(row['assessment']['explanation'].startswith('What you changed'))
+        self.assertTrue(
+            row['assessment']['explanation_reviewer'].startswith('What changed'))
 
     def test_the_retrieval_context_is_stored_with_the_check(self):
         """The advisory reads stored output. The pipeline's trace does not

@@ -207,8 +207,7 @@ export function ProposalDetail({
                 <span className="doc-ref">{s.subtitle}</span>
                 {s.assessment && (
                   <span className="subtle text-xs">
-                    check: {s.assessment.verdict}
-                    {s.assessment.stale && " — section changed since" }
+                    {s.assessment.stale ? "checked — section changed since" : "checked"}
                   </span>
                 )}
               </div>

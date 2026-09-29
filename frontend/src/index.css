@@ -3188,6 +3188,40 @@ a:hover { color: var(--brand-500); }
   }
 }
 
+/* ─── The AI check's note ───
+   The one place on these screens where substance beats brevity, so it
+   reads as prose: headings small, items with room between them, and the
+   question, the check and the clause set back under each concern. */
+
+.ai-note { display: flex; flex-direction: column; gap: 0.85rem; }
+
+.ai-note-heading {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.ai-note-para,
+.ai-note-items li {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--n-700);
+}
+.ai-note-para { margin: 0 0 0.2rem; }
+
+.ai-note-items { margin: 0; padding-left: 1.1rem; }
+.ai-note-items li { margin-bottom: 0.6rem; }
+.ai-note-items li:last-child { margin-bottom: 0; }
+
+.ai-note-detail {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 /* ─── Proposal package: documents to print, signed copies back ─── */
 
 .package-row {

@@ -179,9 +179,12 @@ the system routes, records, generates the documents to sign, and stores the
 signed scans.
 
 1. **Draft** (`ACC_Juan`): open a document, choose **Propose changes**, edit a
-   section, write the reason, **Run the check** - the concerns with clause and
-   evidence, and an explanation of why they matter. Edit one word and the check
-   clears: what everyone reads is always about the text submitted.
+   section, write the reason, **Run the check** - a note on what changed,
+   what to look at and why it matters, the ISO clause each concern touches,
+   and what the check cannot tell. There is no verdict on screen: it is
+   computed and stored, and only decides the note's emphasis. Edit one word
+   and the check clears: what everyone reads is always about the text
+   submitted.
 2. **Submit** (`ACC_Maria`, the Head): **Submit for concurrence**, with the
    password.
 3. **Concurrence** (`BUD_Jose`, `CMO_Carlo`): each reads the change on

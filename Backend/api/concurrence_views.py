@@ -597,6 +597,12 @@ def proposal_full(request, proposal_id):
         return Response({'error': 'Access denied'}, status=403)
 
     data = _full_payload(proposal)
+    # Which rendering of each section's AI note to show: the one addressed
+    # to the drafting office, or the one addressed to those reviewing it.
+    data['viewer_is_initiator'] = any(
+        o.pk == proposal.initiating_office_id
+        for o in access.current_offices(request.user)
+    )
     # Offered only to an office still to decide on this version. It used
     # to stay after the office had concurred, so the page looked as if the
     # concurrence had not been recorded, and a second click logged it twice.

@@ -1,0 +1,41 @@
+{
+  "_about": [
+    "Which ISO 9001:2015 clause each concern in the AI note relates to, and how the note paraphrases that clause.",
+    "Read by Layer 4 only (layer4_explain.py). Nothing here reaches Layers 1-3, the trained model or the published figures.",
+    "Paraphrases are our own words. Never paste text from the standard: it is copyrighted. Refer to clause numbers only.",
+    "The note prints: 'This touches ISO 9001:2015 clause <clause>, which asks that <asks_that>.' - so each asks_that must complete that sentence.",
+    "The clause for each trained issue label must also match config.ISSUE_CLAUSE, which stamps the clause onto each stored issue. A test enforces it.",
+    "Status: DRAFT - to be confirmed with the QMS office. Only 6.3, 7.5.3 and 5.3 are used, per PROGRESS.md decision 7."
+  ],
+  "standard": "ISO 9001:2015",
+  "clauses": {
+    "5.3": {
+      "asks_that": "each role's responsibilities and authority are given to someone specific and made known to the people who work with them"
+    },
+    "6.3": {
+      "asks_that": "changes to how the organisation works are made on purpose, with their reasons and their knock-on effects thought through before they take effect"
+    },
+    "7.5.3": {
+      "asks_that": "the documents people work from stay correct, usable and protected, and that changes to them are controlled so everyone works from the right version"
+    }
+  },
+  "concerns": {
+    "excessive_deletion": "7.5.3",
+    "key_term_deleted": "7.5.3",
+    "modal_weakened": "7.5.3",
+    "negation_changed": "7.5.3",
+    "numeric_changed": "7.5.3",
+    "responsibility_changed": "5.3",
+    "requirement_removed": "7.5.3",
+    "non_equivalent_term": "7.5.3",
+    "contradicts_manual": "7.5.3",
+    "out_of_scope_content": "7.5.3",
+
+    "no_change_reason": "6.3",
+    "vague_change_reason": "6.3",
+    "empty_revision": "7.5.3",
+    "no_change": "7.5.3",
+    "malformed_citation": "7.5.3",
+    "malformed_text": "7.5.3"
+  }
+}
