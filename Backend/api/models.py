@@ -1020,6 +1020,12 @@ class ProposalVersion(models.Model):
     )
     submitted_at = models.DateTimeField(null=True, blank=True)
 
+    # The proposal-level AI note: composed once, at submission, from the
+    # stored section checks - never by running a check - and frozen with
+    # this version. {"drafter": text, "reader": text, "choices": {...}};
+    # empty until the version is submitted.
+    proposal_note = models.JSONField(default=dict, blank=True)
+
     class Meta:
         ordering = ['proposal', 'number']
         constraints = [
@@ -1719,6 +1725,11 @@ class RevisionPreAssessment(models.Model):
     advisories = models.JSONField(default=list, blank=True)
     explanation_reviewer = models.TextField(blank=True)
     explanation_staff = models.TextField(blank=True)
+    # Which plan and which wording variant Layer 4 chose for each note, per
+    # audience. Later notes rotate away from these, so the choices are part
+    # of the record; the note text itself is never regenerated. Empty for
+    # notes written before the wording file.
+    note_choices = models.JSONField(default=dict, blank=True)
     trace = models.JSONField(default=dict, blank=True)
 
     model_fingerprint = models.CharField(max_length=64, blank=True)
