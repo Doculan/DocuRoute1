@@ -495,6 +495,7 @@ class PerSectionCheckTests(ProposalFixture):
                   "this check.")
         RevisionPreAssessment.objects.filter(pk=change.assessment_id).update(
             explanation_staff=legacy,
+            note_choices={},       # a row from before the wording file
             explanation_reviewer=("This revision should not be approved as written. "
                                   "The word “not” was removed. Please check "
                                   "these points before deciding."),
@@ -525,9 +526,36 @@ class PerSectionCheckTests(ProposalFixture):
         theirs = client.get(f'/api/proposals/{self.proposal_id}/full/').data
         self.assertFalse(theirs['viewer_is_initiator'])
         row = next(s for s in theirs['sections'] if s['section_id'] == self.s2.id)
-        self.assertTrue(row['assessment']['explanation'].startswith('What you changed'))
-        self.assertTrue(
-            row['assessment']['explanation_reviewer'].startswith('What changed'))
+        assessment = row['assessment']
+        self.assertEqual(assessment['note_format'], 'prose')
+        self.assertNotEqual(assessment['explanation'], assessment['explanation_reviewer'])
+        for text in (assessment['explanation'], assessment['explanation_reviewer']):
+            self.assertTrue(text)
+            self.assertNotIn('What you changed', text)
+            self.assertNotIn('\n- ', text)
+
+    def test_the_wording_choices_are_stored_with_the_note(self):
+        """Later notes rotate away from them; the note is never regenerated."""
+        self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
+        self.check(self.s2)
+        choices = RevisionPreAssessment.objects.get().note_choices
+        for voice in ('drafter', 'reader'):
+            self.assertIn(choices[voice]['tier'], (
+                'blocking', 'serious', 'notable', 'tentative', 'minor', 'trivial',
+                'unclear', 'plain'))
+            self.assertTrue(choices[voice]['plan'])
+            self.assertTrue(choices[voice]['pools'])
+
+    def test_a_later_section_reads_the_earlier_ones_choices_as_history(self):
+        from . import ai_notes
+        self.edit(self.proposal_id, self.s2, "The Cashier may release it.")
+        self.edit(self.proposal_id, self.s3, "The Accounting Staff may verify.")
+        self.check(self.s2)
+        first = RevisionPreAssessment.objects.get().note_choices
+        version = SectionChange.objects.get(section=self.s2).version
+        rotation = ai_notes.rotation_for(self.drafter, version, self.s3)
+        self.assertEqual(rotation['drafter']['history'][0], first['drafter'])
+        self.assertEqual(rotation['reader']['history'][0], first['reader'])
 
     def test_the_retrieval_context_is_stored_with_the_check(self):
         """The advisory reads stored output. The pipeline's trace does not
@@ -549,6 +577,7 @@ class PerSectionCheckTests(ProposalFixture):
         RevisionPreAssessment.objects.filter(pk=change.assessment_id).update(
             issues=['contradicts_manual'],
             retrieved_section_ids=[self.s3.id],
+            note_choices={},       # the display-time line is for older notes
         )
 
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
@@ -569,6 +598,7 @@ class PerSectionCheckTests(ProposalFixture):
                      'confidence': 0.9, 'severity': 'high', 'clause': '7.5.3',
                      'evidence': ''}],
             retrieved_section_ids=[self.s3.id],
+            note_choices={},
         )
 
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
@@ -583,6 +613,7 @@ class PerSectionCheckTests(ProposalFixture):
         RevisionPreAssessment.objects.filter(pk=change.assessment_id).update(
             issues=['contradicts_manual'],
             retrieved_section_ids=[self.s1.id],
+            note_choices={},
         )
 
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data
@@ -600,6 +631,7 @@ class PerSectionCheckTests(ProposalFixture):
         RevisionPreAssessment.objects.filter(pk=change.assessment_id).update(
             issues=['weakened_obligation'],
             retrieved_section_ids=[self.s3.id],
+            note_choices={},
         )
 
         data = self.client.get(f'/api/proposals/{self.proposal_id}/').data

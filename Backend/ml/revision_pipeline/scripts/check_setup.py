@@ -40,6 +40,8 @@ def main() -> int:
         ("sklearn", "Layer 3"),
         ("joblib", "loading the fusion model"),
         ("django", "the app itself"),
+        ("yaml", "Layer 4 reads its wording from layer4_wording.yaml"),
+        ("spellchecker", "the unknown_word advisory's English word list"),
     ):
         try:
             importlib.import_module(module)
@@ -58,6 +60,10 @@ def main() -> int:
          "run scripts/build_entities_draft.py then clean_entities.py"),
         (Path(config.__file__).parent / "glossary.txt", "glossary",
          "it is committed; the checkout may be incomplete"),
+        (Path(config.__file__).parent / "layer4_wording.yaml", "Layer 4 wording",
+         "it is committed; the checkout may be incomplete"),
+        (Path(config.__file__).parent / "manual_vocabulary.txt", "manuals' vocabulary",
+         "run scripts/build_manual_vocabulary.py, review, commit"),
         (config.DATASET_DIR / "all.jsonl", "dataset",
          "run scripts/build_dataset.py"),
     ):

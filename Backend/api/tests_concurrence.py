@@ -175,6 +175,20 @@ class SubmissionTests(ConcurrenceFixture):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['status'], Proposal.CONCURRENCE)
 
+    def test_submitting_composes_the_proposal_note_and_freezes_it(self):
+        """Composed once, from the stored section checks, in both voices."""
+        from .models import ProposalVersion
+        proposal_id = self.a_draft()
+        self.assertEqual(self.submit(proposal_id).status_code, 200)
+        version = ProposalVersion.objects.get(proposal_id=proposal_id)
+        note = version.proposal_note
+        self.assertTrue(note['drafter'] and note['reader'])
+        self.assertIn('3.0 POLICIES', note['drafter'])
+        self.assertIn('3.0 POLICIES', note['reader'])
+        data = self.as_(self.acc_head).get(f'/api/proposals/{proposal_id}/full/').data
+        self.assertEqual(data['proposal_note']['drafter'], note['drafter'])
+        self.assertEqual(data['proposal_note']['reader'], note['reader'])
+
     def test_an_unchecked_section_stops_submission(self):
         proposal_id = self.a_draft()
         self.client.put(

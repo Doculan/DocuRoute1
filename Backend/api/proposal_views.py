@@ -26,7 +26,7 @@ from rest_framework.response import Response
 # Standard library only underneath - no model is loaded by this import.
 from ml.revision_pipeline.layer4_explain import without_legacy_verdict
 
-from . import access, pre_assessment
+from . import access, ai_notes, pre_assessment
 from .models import (
     AuditEvent, Manual, ManualSection, Office, OfficeLink, Position,
     PositionAssignment, Proposal, ProposalVersion, RevisionPreAssessment,
@@ -99,6 +99,12 @@ def _proposal_payload(proposal, detail=False):
     }
     if detail:
         data['sections'] = [_change_payload(c, changes) for c in changes]
+        # Composed at submission from the stored section checks; frozen.
+        note = (version.proposal_note or {}) if version else {}
+        data['proposal_note'] = (
+            {'drafter': note.get('drafter', ''), 'reader': note.get('reader', '')}
+            if note else None
+        )
     return data
 
 
@@ -188,20 +194,28 @@ def _change_payload(change, all_changes=None):
         # the screen picks by who is reading. Notes stored before the note
         # format lose their verdict sentences on the way out - the stored
         # text is left exactly as it was.
+        # A note written from the wording file (it has stored choices) is
+        # prose, and passes through exactly as stored. Older notes lose their
+        # verdict sentences on the way out.
+        prose = bool(assessment.note_choices)
+        tidy = (lambda text: text or '') if prose else without_legacy_verdict
         data['assessment'] = {
             'id': str(assessment.id),
             'change_type': assessment.change_type,
             'issues': assessment.issues,
             'hard_fails': assessment.hard_fails,
             'advisories': assessment.advisories,
-            'explanation': without_legacy_verdict(assessment.explanation_staff),
-            'explanation_reviewer': without_legacy_verdict(
+            'explanation': tidy(assessment.explanation_staff),
+            'explanation_reviewer': tidy(
                 assessment.explanation_reviewer or assessment.explanation_staff
             ),
+            'note_format': 'prose' if prose else 'legacy',
             'assessed_at': assessment.assessed_at,
             'stale': not change.check_is_current,
         }
-        advisory = _coordinated_advisory(change, all_changes or [change])
+        # A prose note says this itself (context.coordinated in the wording
+        # file); the display-time line is kept for notes written before it.
+        advisory = None if prose else _coordinated_advisory(change, all_changes or [change])
         if advisory:
             data['assessment']['coordinated_change'] = advisory
     return data
@@ -520,7 +534,15 @@ def check_section(request, proposal_id, section_id):
 
     section = change.section
     reason = version.overall_reason or change.note or ''
-    result = _assess_unsaved(section, change.new_text, reason, seed=proposal.id)
+    result = _assess_unsaved(
+        section, change.new_text, reason, seed=proposal.id,
+        rotation=ai_notes.rotation_for(
+            request.user, version, section,
+            pre_assessment.content_hash(section.id, section.content or '',
+                                        change.new_text, reason),
+        ),
+        proposal_sections=ai_notes.proposal_sections_for(version, section),
+    )
 
     with transaction.atomic():
         snapshot = RevisionPreAssessment.objects.create(
@@ -542,6 +564,7 @@ def check_section(request, proposal_id, section_id):
             advisories=result.get('advisories', []),
             explanation_reviewer=result.get('explanation', ''),
             explanation_staff=result.get('explanation_staff', ''),
+            note_choices=result.get('note_choices', {}),
             trace=result.get('trace', {}),
             model_fingerprint=result.get('trace', {}).get('fingerprint', ''),
             pipeline_version=result.get('trace', {}).get('pipeline_version', ''),
@@ -630,8 +653,14 @@ def _retrieved_section_ids(section, proposed_content):
         return []
 
 
-def _assess_unsaved(section, proposed_content, change_reason, seed):
-    """Run the pipeline over text that has not been saved yet."""
+def _assess_unsaved(section, proposed_content, change_reason, seed,
+                    rotation=None, proposal_sections=None):
+    """Run the pipeline over text that has not been saved yet.
+
+    ``rotation`` and ``proposal_sections`` go to Layer 4 only, with the
+    retrieved sections' labels and the document title; Layers 1-3 receive
+    exactly what they always did.
+    """
     from ml.revision_pipeline.pipeline import assess_texts
     from ml.revision_pipeline.retrieval import (
         format_context, related_texts, sections_for_manual,
@@ -658,4 +687,8 @@ def _assess_unsaved(section, proposed_content, change_reason, seed):
         # are word-for-word the same, and re-checking identical content
         # produces an identical result rather than a reworded one.
         seed=seed,
+        related_sections=[(s.subtitle, s.content) for s in sections if s.content in related],
+        proposal_sections=proposal_sections,
+        document_title=section.manual.title,
+        rotation=rotation,
     )

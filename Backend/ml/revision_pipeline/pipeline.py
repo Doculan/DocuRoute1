@@ -19,7 +19,7 @@ from . import config
 from .diffing import marked_text
 from .layer1_rules import run_layer1
 from .layer3_fusion import FusionModel, run_layer3
-from .layer4_explain import REVIEWER, SUBMITTER, explain, not_assessed_message
+from .layer4_explain import REVIEWER, SUBMITTER, compose_note, not_assessed_message
 from .retrieval import (
     Section, format_context, is_forms_section, related_texts, sections_for_manual,
 )
@@ -117,6 +117,11 @@ def assess_texts(
     seed=None,
     model_dir=None,
     device: str = "cpu",
+    # Layer 4 only - nothing before Layer 4 sees any of these.
+    related_sections: list = None,     # [(label, text)] of the retrieved sections
+    proposal_sections: list = None,    # other sections changed in the same proposal
+    document_title: str = "",
+    rotation: dict = None,             # per voice: {"history": [...], "adjacent_plans": [...]}
 ) -> dict:
     """Assess a change given as plain text."""
     section_label = " ".join(p for p in (section_number, section_title) if p).strip()
@@ -134,6 +139,7 @@ def assess_texts(
             "advisories": [],
             "explanation": not_assessed_message(section_label),
             "explanation_staff": not_assessed_message(section_label),
+            "note_choices": {},
             "trace": {"skipped": "forms_section"},
         }
 
@@ -161,16 +167,22 @@ def assess_texts(
     # Both audiences, rendered from the one set of findings, so the drafting
     # office and the offices reviewing the change are looking at the same
     # assessment in different words - not at two runs that might disagree.
-    # The texts go to Layer 4 only, so the note can say where the change is
-    # and quote it; nothing before Layer 4 sees anything new.
-    explanation = explain(
-        layer3, layer1, section_label=section_label, revision_id=revision_id,
-        seed=seed, audience=REVIEWER, old_text=old_text, new_text=new_text,
-    )
-    explanation_staff = explain(
-        layer3, layer1, section_label=section_label, revision_id=revision_id,
-        seed=seed, audience=SUBMITTER, old_text=old_text, new_text=new_text,
-    )
+    # The texts, the reason, the retrieved sections' labels, the proposal's
+    # other changed sections and the rotation history go to Layer 4 only;
+    # nothing before Layer 4 sees anything new.
+    rotation = rotation or {}
+    notes, note_choices = {}, {}
+    for audience, voice in ((REVIEWER, "reader"), (SUBMITTER, "drafter")):
+        state = rotation.get(voice) or {}
+        notes[audience], note_choices[voice] = compose_note(
+            layer3, layer1, section_label=section_label, audience=audience,
+            old_text=old_text, new_text=new_text, change_reason=change_reason,
+            related_sections=related_sections, proposal_sections=proposal_sections,
+            document_title=document_title, history=state.get("history"),
+            adjacent_plans=state.get("adjacent_plans"),
+            content_key=f"{seed}|{section_label}|{old_text}|{new_text}",
+        )
+    explanation, explanation_staff = notes[REVIEWER], notes[SUBMITTER]
 
     trace = {
         "layer1": layer1.to_dict(),
@@ -208,6 +220,7 @@ def assess_texts(
         "advisories": layer3.advisories,
         "explanation": explanation,
         "explanation_staff": explanation_staff,
+        "note_choices": note_choices,
         "trace": trace,
     }
 

@@ -28,6 +28,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import access, documents
+from .ai_notes import compose_version_note
 from .generation.common import position_title
 from .models import (
     AuditEvent, Concurrence, OfficeLink, Position, Proposal,
@@ -256,7 +257,11 @@ def submit(request, proposal_id):
 
         version.submitted_by = request.user
         version.submitted_at = timezone.now()
-        version.save(update_fields=['submitted_by', 'submitted_at'])
+        # The proposal-level note: composed once, from the stored section
+        # checks, and frozen with this version. It never re-runs a check,
+        # and a failure to write it never blocks the submission.
+        version.proposal_note = compose_version_note(version)
+        version.save(update_fields=['submitted_by', 'submitted_at', 'proposal_note'])
 
         if concurring:
             proposal.status = Proposal.CONCURRENCE

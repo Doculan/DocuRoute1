@@ -1,56 +1,55 @@
-"""Layer 4 - the assistive note.
+"""Layer 4 - the assistive note, written from layer4_wording.yaml.
 
-Templates, not a generative model. What Layers 1-3 found is written up as a
-note in four parts:
+Every sentence comes from the wording file; this module only chooses and
+fills. What it may say is limited to what Layers 1-3 found, the two texts,
+and the context the caller passes (the change reason, the retrieved
+sections, the other sections changed in the same proposal). It never runs
+a check and never changes anything upstream.
 
-    What you changed          the change itself: kind, size, where, and the
-                              exact words when they are short
-    What to look at           each concern - what changed, where, why it
-                              matters, what is likely to be asked, what to
-                              check, and the ISO clause it touches
-    What looks fine           what the rules checked and found unchanged
-    What this check can't     the questions only people can answer about
-    tell you                  this particular change
+How a note is built (the file's `selection` section):
 
-Properties that matter more than fluency:
+    significance tier -> plan -> blocks -> paragraphs
 
-* **Deterministic.** Phrasing is fixed, so the same change always produces the
-  same note. The drafter and every reviewer read the same findings.
-* **Grounded.** Only issues, advisories, words, figures and roles present in
-  the Layer 1 and Layer 3 output, or in the two texts themselves, are
-  mentioned. Nothing is invented, and "what looks fine" only repeats what the
-  rules actually counted.
-* **Firmness through wording.** A rule-sourced finding is a detected fact and
-  is stated plainly. A model-only finding is attributed to the model, hedged
-  by its confidence, and - where the rules looked for the same thing and
-  found none - says so.
-* **No verdict.** The verdict is computed, stored and measured, but never
-  written here. It is used only to decide how much detail each concern gets,
-  and how the note reads when no specific concern passed its threshold.
+* **Tier**: one per note, first match wins (blocking ... plain).
+* **Firmness** per concern: stated (a rule found it), suggested (the model
+  did, and the rules have nothing to say against it), quiet (the model did,
+  and the rules looked for the same thing and found none).
+* **Plan**: an ordered list of paragraphs, each a list of blocks (OPEN,
+  LEAD1, WHY1, ISO, FINE, CLOSE, ...). Blocks with nothing to say are
+  dropped; a paragraph left empty is dropped.
+* **Rotation**: every pool of interchangeable wording is rotated, never
+  sampled. The least recently used variant wins, looking first at the other
+  sections of the same proposal and then at the same user's recent notes;
+  ties break on a hash of the content. The choices are returned with the
+  note, stored with it, and read back as the history for later notes. Same
+  inputs and same history give the same note.
 
-ISO clause relevance comes from ``iso_relevance.json``: one file, so the
-clause mapping and its paraphrases can be reviewed with the QMS office
-without reading code.
-
-**The note's text format** is read by the frontend. Parts are separated by a
-blank line; a part's first line is its heading (one of ``NOTE_HEADINGS``);
-a line starting ``- `` opens an item; a line starting with two spaces
-continues the item above it; any other line is a paragraph.
+The note is plain prose: paragraphs separated by one blank line, nothing
+else. Notes stored in the earlier heading format are still recognised by
+``is_note``; notes older than that lose their verdict sentences on the way
+out through ``without_legacy_verdict``.
 """
 
 from __future__ import annotations
 
 import difflib
-import json
+import hashlib
+import math
 import re
 from functools import lru_cache
+from pathlib import Path
 
 from . import config
 from .diffing import _WORD_RE
 
 REVIEWER = "reviewer"
 SUBMITTER = "submitter"
+_VOICE = {SUBMITTER: "drafter", REVIEWER: "reader"}
 
+WORDING_FILE = Path(__file__).parent / "layer4_wording.yaml"
+
+# Headings of the previous note format. Notes stored in it are never
+# rewritten, so the screen and ``is_note`` still recognise them.
 CHANGED_YOU = "What you changed"
 CHANGED = "What changed"
 LOOK_AT = "What to look at"
@@ -58,96 +57,97 @@ LOOKS_FINE = "What looks fine"
 CANNOT_TELL = "What this check can't tell you"
 NOTE_HEADINGS = (CHANGED_YOU, CHANGED, LOOK_AT, LOOKS_FINE, CANNOT_TELL)
 
-# Past this many concerns the rest are named in one line rather than written
-# out. A note that runs to a dozen paragraphs is not read.
-MAX_CONCERNS = 5
-# Kept for callers that still pass it; the note is capped by MAX_CONCERNS.
-MAX_SENTENCES = MAX_CONCERNS
+MAX_CONCERNS = 4            # selection.emphasis: at most four written in full
+MAX_SENTENCES = MAX_CONCERNS  # accepted from older callers
+HISTORY_LIMIT = 20          # selection.rotation: the same user's last 20 notes
+
+TIERS = ("blocking", "serious", "notable", "tentative", "minor", "trivial",
+         "unclear", "plain")
+_CLOSING_WEIGHT = {"trivial": "light", "plain": "light", "minor": "light",
+                   "unclear": "moderate", "tentative": "moderate", "notable": "moderate",
+                   "serious": "strong", "blocking": "strong"}
+
+# Variants the file marks "# drafter" / "# drafter only" in comments, which a
+# YAML parser cannot see. Kept here by pool and exact text; a test checks
+# each still exists in the file, so an edit there cannot silently orphan it.
+DRAFTER_ONLY = {
+    ("change.added_sentence", "{at_item_cap}, you've added “{added_sentence}”"),
+    ("limits.lead_in", "That still leaves {limit}, which is for your office and the reviewers."),
+}
+# The reader is never addressed as the one who made the change.
+_SECOND_PERSON_RE = re.compile(r"\byou(?:'ve|'ll|r)?\b", re.IGNORECASE)
+
+# Slots that may legitimately be empty; every other slot must be filled or
+# the variant is not eligible.
+_OPTIONAL_SLOTS = {"at_item", "at_item_tail", "share_clause", "s"}
+_SLOT_RE = re.compile(r"\{(\w+)\}")
 
 _WS_RE = re.compile(r"\s+")
 _WORDLIKE_RE = re.compile(r"\w")
 _ITEM_RE = re.compile(r"^\s*(\d+(?:\.\d+)+)(?=[\s.)]|$)")
 _STEP_RE = re.compile(r"\|\s*(\d+)\.\s")
 _STRAIGHT_QUOTED_RE = re.compile(r'"([^"]*)"')
+_ROW_RE = re.compile(r"^\|.*\|$")
+_SEP_RE = re.compile(r"^\|?\s*:?-{2,}")
 
-_SHORT_WORDS = 12          # a change this short is quoted word for word
-_QUOTABLE_LINE_WORDS = 30  # a whole line this short is quoted in full
-_CONTEXT_TOKENS = 2        # unchanged words either side of a quoted edit
+_SHORT_WORDS = 12
+_QUOTABLE_LINE_WORDS = 30
+_CONTEXT_WORDS = 2
+_NUMBER_WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven",
+                 "eight", "nine", "ten")
 
-_NUMBER_WORDS = ("no", "one", "two", "three", "four", "five", "six",
-                 "seven", "eight", "nine", "ten")
-
-
-# -- ISO relevance -----------------------------------------------
 
 @lru_cache(maxsize=1)
-def _iso() -> dict:
-    with open(config.PIPELINE_DIR / "iso_relevance.json", encoding="utf-8") as fh:
-        return json.load(fh)
+def wording() -> dict:
+    import yaml
+    with open(WORDING_FILE, encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
 
 
 def clause_for(label: str) -> str:
-    """The clause a concern relates to, from iso_relevance.json."""
-    return _iso()["concerns"].get(label, "")
+    """The ISO clause a concern or advisory relates to (iso.concern_clause)."""
+    return str(wording()["iso"]["concern_clause"].get(label, ""))
 
 
-def _clause_line(label: str, seen: set) -> str:
-    """The relevance line. In full the first time a clause comes up in a
-    note; after that, by number, so three concerns under 7.5.3 do not repeat
-    the same sentence three times."""
-    clause = clause_for(label)
-    asks = _iso()["clauses"].get(clause, {}).get("asks_that", "")
-    if not (clause and asks):
-        return ""
-    if clause in seen:
-        return f"This also touches clause {clause}."
-    seen.add(clause)
-    return (f"This touches {_iso()['standard']} clause {clause}, "
-            f"which asks that {asks}.")
-
-
-# -- small text helpers --------------------------------------------
-
-def _word_count(tokens) -> int:
-    return sum(1 for t in tokens if _WORDLIKE_RE.search(t))
-
+# -- small text helpers -----------------------------------------------------
 
 def _number_word(count: int) -> str:
     return _NUMBER_WORDS[count] if 0 <= count < len(_NUMBER_WORDS) else str(count)
-
-
-def _plural(count: int, word: str, plural: str = "") -> str:
-    return f"{_number_word(count)} {word if count == 1 else (plural or word + 's')}"
-
-
-def _join(items) -> str:
-    items = [i for i in items if i]
-    if len(items) <= 1:
-        return "".join(items)
-    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def _quote(text: str) -> str:
     return f"“{text}”"
 
 
-def _curly(text: str) -> str:
-    """Layer 1 quotes its evidence with straight quotes; the note uses curly."""
-    return _STRAIGHT_QUOTED_RE.sub(lambda m: _quote(m.group(1)), text or "")
+def _join(items) -> str:
+    """list_rule: "a, b and c"; past max_before_others, "a, b, c and two others"."""
+    items = [i for i in items if i]
+    limit = int(wording()["list_rule"].get("max_before_others", 3))
+    if len(items) > limit + 1:
+        rest = len(items) - limit
+        items = items[:limit] + [f"{_number_word(rest)} others"]
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def _end(sentence: str) -> str:
-    """Close a sentence once: a quote that already ends in a full stop gets
-    no second one after the closing mark."""
-    s = (sentence or "").rstrip()
-    if s.endswith(("”", '"')) and len(s) >= 2 and s[-2] in ".!?…":
-        return s
-    return s if s.endswith((".", "!", "?", "…")) else s + "."
+def _join_or(items) -> str:
+    items = [i for i in items if i]
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " or " + items[-1]
+
+
+def _quoted_list(values) -> str:
+    return _join([_quote(v) for v in values if v])
 
 
 def _cap(text: str) -> str:
-    """Capitalise, leaving a sentence that opens on a quotation mark alone."""
-    return text[:1].upper() + text[1:] if text else text
+    return text[:1].upper() + text[1:] if text and text[:1].isalpha() else text
+
+
+def _uncap(text: str) -> str:
+    return text[:1].lower() + text[1:] if text and text[:1].isalpha() else text
 
 
 def _clip(text: str, limit: int = 160) -> str:
@@ -157,22 +157,19 @@ def _clip(text: str, limit: int = 160) -> str:
     return text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
 
-def _tidy_line(line: str) -> str:
-    """A table row reads as "Role — step", not as pipes and empty cells."""
-    line = (line or "").strip()
-    if "|" not in line:
-        return _WS_RE.sub(" ", line)
-    cells = [c.strip() for c in line.strip("|").split("|")]
-    return " — ".join(c for c in cells if c)
+def _find_ci(needle: str, text: str) -> str:
+    if not needle:
+        return ""
+    m = re.search(re.escape(needle), text or "", flags=re.IGNORECASE)
+    return m.group(0) if m else ""
 
 
 def _item_of(line: str) -> str:
-    """"3.1" for a numbered policy, "step 6" for a table row, else ""."""
-    match = _ITEM_RE.match(line or "")
-    if match:
-        return match.group(1)
-    match = _STEP_RE.search(line or "")
-    return f"step {match.group(1)}" if match else ""
+    m = _ITEM_RE.match(line or "")
+    if m:
+        return m.group(1)
+    m = _STEP_RE.search(line or "")
+    return f"step {m.group(1)}" if m else ""
 
 
 def _line_at(text: str, pos: int) -> str:
@@ -181,15 +178,37 @@ def _line_at(text: str, pos: int) -> str:
     return text[start:] if end == -1 else text[start:end]
 
 
-def _find_ci(needle: str, text: str) -> str:
-    """The needle as the text spells it, or "" when it is not there."""
-    if not needle:
-        return ""
-    match = re.search(re.escape(needle), text or "", flags=re.IGNORECASE)
-    return match.group(0) if match else ""
+def _tidy_row(line: str, text: str = "") -> str:
+    """A table row as "Role — step". A continuation row, whose role cell is
+    empty, takes the role from the nearest row above it that names one."""
+    line = (line or "").strip()
+    if "|" not in line:
+        return _WS_RE.sub(" ", line)
+    cells = [c.strip() for c in line.strip("|").split("|")]
+    role, rest = (cells[0], cells[1:]) if len(cells) > 1 else ("", cells)
+    if not role and text:
+        rows = [ln.strip() for ln in text.splitlines()]
+        if line in rows:
+            for above in reversed(rows[:rows.index(line)]):
+                if not _ROW_RE.match(above) or _SEP_RE.match(above):
+                    continue
+                first = above.strip("|").split("|")[0].strip()
+                if first and first.lower() != "responsibility":
+                    role = first
+                    break
+    body = " ".join(c for c in rest if c)
+    return f"{role} — {body}" if role else body
 
 
-# -- what the two texts say changed --------------------------------
+def _straight_to_items(text: str) -> list:
+    return _STRAIGHT_QUOTED_RE.findall(text or "") or ([text] if text else [])
+
+
+def _stable_hash(*parts) -> int:
+    return int(hashlib.sha256("\x1f".join(str(p) for p in parts).encode("utf-8")).hexdigest()[:12], 16)
+
+
+# -- what the two texts say changed ------------------------------------------------
 
 class _Change:
     """The edit read straight from the two texts: hunks, lines, places."""
@@ -200,9 +219,7 @@ class _Change:
         b = [(m.group(0), m.start(), m.end()) for m in _WORD_RE.finditer(self.new)]
         self._a, self._b = a, b
         matcher = difflib.SequenceMatcher(
-            a=[t[0].lower() for t in a], b=[t[0].lower() for t in b],
-            autojunk=False,
-        )
+            a=[t[0].lower() for t in a], b=[t[0].lower() for t in b], autojunk=False)
         groups = self._group(matcher.get_opcodes())
         self.hunks = [self._hunk(g, groups[k - 1] if k else None,
                                  groups[k + 1] if k + 1 < len(groups) else None)
@@ -216,9 +233,7 @@ class _Change:
         self._lines()
 
     def _group(self, opcodes):
-        """Changed runs, with edits a word or two apart on one line merged:
-        "365 days or 1 year" -> "180 days or 6 months" is one change to a
-        reader, not two."""
+        """Changed runs, with edits a word or two apart on one line merged."""
         groups = []
         for index, (tag, i1, i2, j1, j2) in enumerate(opcodes):
             if tag == "equal":
@@ -235,48 +250,50 @@ class _Change:
                     previous["i2"], previous["j2"] = i2, j2
                     previous["members"].append(member)
                     continue
-            groups.append({"i1": i1, "i2": i2, "j1": j1, "j2": j2,
-                           "members": [member]})
+            groups.append({"i1": i1, "i2": i2, "j1": j1, "j2": j2, "members": [member]})
         return groups
 
-    # The context either side of an edit stops at a table cell, a line break
-    # or the next edit, so a quoted change never drags in the neighbouring row.
-    def _context(self, group, neighbour, forward):
-        if forward:
-            limit = neighbour["i1"] if neighbour else len(self._a)
-            run = range(group["i2"], limit)
-        else:
-            limit = neighbour["i2"] if neighbour else 0
-            run = range(group["i1"] - 1, limit - 1, -1)
+    def _context(self, tokens, text, lo, hi, limit_lo, limit_hi, forward):
+        """How many unchanged tokens to take on one side: up to two, stopping
+        at a table cell, a line break or the next edit."""
         taken = 0
+        run = range(hi, limit_hi) if forward else range(lo - 1, limit_lo - 1, -1)
         for k in run:
-            if self._a[k][0] == "|":
+            if tokens[k][0] == "|":
                 break
-            # The gap between this token and the one on the edit's side of it.
             if forward:
-                gap = self.old[self._a[k - 1][2] if k else 0:self._a[k][1]]
+                gap = text[tokens[k - 1][2] if k else 0:tokens[k][1]]
             else:
-                end = self._a[k + 1][1] if k + 1 < len(self._a) else len(self.old)
-                gap = self.old[self._a[k][2]:end]
+                end = tokens[k + 1][1] if k + 1 < len(tokens) else len(text)
+                gap = text[tokens[k][2]:end]
             if "\n" in gap:
                 break
             taken += 1
-            if taken >= _CONTEXT_TOKENS:
+            if taken >= _CONTEXT_WORDS:
                 break
         return taken
 
-    def _span(self, tokens, text, lo, hi):
-        if lo >= hi:
+    @staticmethod
+    def _snap(text: str, start: int, end: int) -> str:
+        """The span, widened to whole whitespace-delimited chunks without
+        crossing a line break or a table cell - so an item number is never
+        cut, and "1.1" is never quoted as ".1"."""
+        while start > 0 and not text[start - 1].isspace() and text[start - 1] != "|":
+            start -= 1
+        while end < len(text) and not text[end].isspace() and text[end] != "|":
+            end += 1
+        return _WS_RE.sub(" ", text[start:end]).strip()
+
+    def _side(self, tokens, text, lo, hi, before, after):
+        a, b = max(0, lo - before), min(len(tokens), hi + after)
+        if a >= b:
             return ""
-        return text[tokens[lo][1]:tokens[hi - 1][2]]
+        return self._snap(text, tokens[a][1], tokens[b - 1][2])
 
     def _hunk(self, group, before_group, after_group):
         i1, i2, j1, j2 = group["i1"], group["i2"], group["j1"], group["j2"]
         tags = {m[0] for m in group["members"]}
         tag = tags.pop() if len(tags) == 1 else "replace"
-        before = self._context(group, before_group, False)
-        after = self._context(group, after_group, True)
-        # Where it happened: the new text's line, unless nothing is left there.
         if j2 > j1:
             line = _line_at(self.new, self._b[j1][1])
         elif i2 > i1:
@@ -285,29 +302,31 @@ class _Change:
             line = ""
         changed_old = [t for m in group["members"] for t in self._a[m[1]:m[2]]]
         changed_new = [t for m in group["members"] for t in self._b[m[3]:m[4]]]
+        # Context is counted on the old side and taken equally on both, so
+        # the two quotes line up word for word.
+        before = self._context(self._a, self.old, i1, i2,
+                               before_group["i2"] if before_group else 0, None, False)
+        after = self._context(self._a, self.old, i1, i2, None,
+                              after_group["i1"] if after_group else len(self._a), True)
         return {
             "tag": tag,
-            "old": self._span(self._a, self.old, i1, i2),
-            "new": self._span(self._b, self.new, j1, j2),
-            "old_ctx": self._span(self._a, self.old, i1 - before, i2 + after),
-            "new_ctx": self._span(self._b, self.new, j1 - before, j2 + after),
-            "removed": _word_count(t[0] for t in changed_old),
-            "added": _word_count(t[0] for t in changed_new),
+            "old": self.old[self._a[i1][1]:self._a[i2 - 1][2]] if i2 > i1 else "",
+            "new": self.new[self._b[j1][1]:self._b[j2 - 1][2]] if j2 > j1 else "",
+            "old_ctx": self._side(self._a, self.old, i1, i2, before, after),
+            "new_ctx": self._side(self._b, self.new, j1, j2, before, after),
+            "removed": sum(1 for t in changed_old if _WORDLIKE_RE.search(t[0])),
+            "added": sum(1 for t in changed_new if _WORDLIKE_RE.search(t[0])),
             "punctuation_only": not any(
-                _WORDLIKE_RE.search(t[0]) for t in changed_old + changed_new
-            ),
+                _WORDLIKE_RE.search(t[0]) for t in changed_old + changed_new),
             "item": _item_of(line),
         }
 
     def _lines(self):
-        """Whole lines removed or added - how a table row or policy goes."""
         old_lines = [ln for ln in self.old.splitlines() if ln.strip()]
         new_lines = [ln for ln in self.new.splitlines() if ln.strip()]
         norm = lambda ln: _WS_RE.sub(" ", ln).strip().lower()  # noqa: E731
         matcher = difflib.SequenceMatcher(
-            a=[norm(ln) for ln in old_lines], b=[norm(ln) for ln in new_lines],
-            autojunk=False,
-        )
+            a=[norm(ln) for ln in old_lines], b=[norm(ln) for ln in new_lines], autojunk=False)
         self.removed_lines, self.added_lines = [], []
         self.only_whole_lines = True
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -319,19 +338,15 @@ class _Change:
                 self.only_whole_lines = False
         if not (self.removed_lines or self.added_lines):
             self.only_whole_lines = False
-        # Whether "What changed" quotes the lines in full - in which case a
-        # concern about them points back up rather than quoting them again.
         lines = self.removed_lines + self.added_lines
         self.lines_quotable = self.only_whole_lines and len(lines) <= 3 and all(
-            len(_tidy_line(ln).split()) <= _QUOTABLE_LINE_WORDS for ln in lines
-        )
+            len(_tidy_row(ln).split()) <= _QUOTABLE_LINE_WORDS for ln in lines)
 
     @property
     def single_item(self) -> str:
         return self.items[0] if len(self.items) == 1 else ""
 
     def item_of_text(self, needle: str) -> str:
-        """The numbered item a quoted word sits in, where it can be found."""
         for text in (self.new, self.old):
             spelled = _find_ci(needle, text)
             if spelled:
@@ -339,574 +354,900 @@ class _Change:
         return ""
 
 
-def _where(section_label: str, items) -> str:
-    section = (section_label or "").strip() or "this section"
-    return f"{section}, at {_join(items)}" if items else section
+# -- rotation -------------------------------------------------------------------------
+
+class _Picker:
+    """Chooses from pools by rotation, and records what it chose.
+
+    ``history`` is a list of earlier choice records, most relevant first:
+    the other sections of the same proposal, then the user's recent notes.
+    A variant never used anywhere in it beats one used long ago, which beats
+    one used recently; ties break on a hash of the content key.
+    """
+
+    def __init__(self, history, key: str, voice: str):
+        self.history = [h for h in (history or []) if isinstance(h, dict)]
+        self.key = key
+        self.voice = voice
+        self.chosen: dict = {}
+
+    def _last_used(self, pool: str, index: int) -> float:
+        if index in self.chosen.get(pool, []):
+            return -1.0
+        for position, record in enumerate(self.history):
+            if index in (record.get("pools") or {}).get(pool, []):
+                return float(position)
+        return math.inf
+
+    def pick(self, pool: str, candidates: list):
+        """``candidates``: [(index, rendered text)]. Returns the text."""
+        if not candidates:
+            return None
+        best = max(candidates, key=lambda c: (self._last_used(pool, c[0]),
+                                              -_stable_hash(self.key, pool, c[0])))
+        self.chosen.setdefault(pool, []).append(best[0])
+        return best[1]
 
 
-def _describe_change(change: _Change, layer1_result, section_label: str,
-                     features: dict) -> str:
-    """One or two sentences: what kind of edit, how big, where, which words."""
-    where = _where(section_label, change.items)
+# -- filling templates ---------------------------------------------------------------
 
-    if not change.hunks:
-        return f"A formatting change to {_where(section_label, [])}: only spacing or line breaks moved."
+def _tidy_sentence(text: str) -> str:
+    text = _WS_RE.sub(" ", text).strip()
+    text = text.replace(" ,", ",").replace(" .", ".").replace(" :", ":").replace(" ;", ";")
+    for mark in (".", "?", "!"):
+        text = text.replace(f"{mark}”.", f"{mark}”")
+    text = re.sub(r"(?<!\.)\.\.(?!\.)", ".", text)
+    return text
 
-    if change.only_whole_lines:
-        parts = []
-        for verb, lines in (("Removed", change.removed_lines),
-                            ("Added", change.added_lines)):
-            if not lines:
+
+def _fill(template: str, slots: dict):
+    """The template with its slots filled, or None when a required slot is
+    missing - that variant is then not eligible."""
+    missing = []
+
+    def repl(m):
+        name = m.group(1)
+        value = slots.get(name)
+        if value is None or (value == "" and name not in _OPTIONAL_SLOTS):
+            missing.append(name)
+            return ""
+        return str(value)
+
+    out = _SLOT_RE.sub(repl, template)
+    return None if missing else _tidy_sentence(out)
+
+
+class _Writer:
+    """Picks and fills from one pool at a time, for one voice."""
+
+    def __init__(self, picker: _Picker, voice: str):
+        self.picker, self.voice = picker, voice
+        self.unfilled: set = set()     # pools with no fillable variant, for reporting
+
+    def say(self, pool: str, variants, slots: dict, allow=None):
+        if isinstance(variants, str):
+            variants = [variants]
+        candidates = []
+        for index, template in enumerate(variants or []):
+            if self.voice == "reader":
+                if (pool, template) in DRAFTER_ONLY:
+                    continue
+            if allow is not None and not allow(index, template):
                 continue
-            count = _plural(len(lines), "line")
-            items = [i for i in (_item_of(ln) for ln in lines) if i]
-            preposition = "from" if verb == "Removed" else "to"
-            if change.lines_quotable:
-                quoted = "; ".join(_quote(_tidy_line(ln)) for ln in lines)
-                parts.append(f"{verb} {count} {preposition} "
-                             f"{_where(section_label, [])}: {quoted}")
-            else:
-                parts.append(f"{verb} {count} {preposition} "
-                             f"{_where(section_label, items)}")
-        return " ".join(_end(p) for p in parts)
+            text = _fill(template, slots)
+            if text is not None:
+                candidates.append((index, text))
+        if self.voice == "reader":
+            neutral = [c for c in candidates if not _SECOND_PERSON_RE.search(c[1])]
+            candidates = neutral or candidates
+        if not candidates and variants:
+            self.unfilled.add(pool)
+        return self.picker.pick(pool, candidates)
 
-    total = change.words_removed + change.words_added
-    lone = change.hunks[0] if len(change.hunks) == 1 else None
+
+# -- the note for one section -----------------------------------------------------------
+
+class _Section:
+    """Everything the note may draw on, for one section, with the slots
+    common to all of it."""
+
+    def __init__(self, fusion_result, layer1_result, section_label, old_text, new_text,
+                 change_reason, related_sections, proposal_sections, document_title):
+        self.fusion, self.layer1 = fusion_result, layer1_result
+        self.features = dict(getattr(layer1_result, "features", {}) or {})
+        self.flags = list(getattr(layer1_result, "flags", []) or [])
+        self.hard_fails = list(getattr(layer1_result, "hard_fails", []) or [])
+        self.advisories = list(getattr(fusion_result, "advisories", None)
+                               or getattr(layer1_result, "advisories", []) or [])
+        self.change_type = getattr(layer1_result, "change_type", "substantive")
+        self.verdict = getattr(fusion_result, "verdict", None)
+        self.section = (section_label or "").strip() or "this section"
+        self.change = _Change(old_text or "", new_text or "")
+        self.reason = change_reason or ""
+        self.related = [(str(label), text or "") for label, text in (related_sections or [])]
+        self.proposal = [dict(p) for p in (proposal_sections or [])]
+        self.document = (document_title or "").strip()
+
+    # places -----------------------------------------------------------------
+    def place(self, item: str) -> dict:
+        item = item or ""
+        at = f"at {item}" if item else ""
+        return {"section": self.section, "doc": self.document, "item": item,
+                "at_item": at, "at_item_cap": _cap(at), "at_item_tail": f" {at}" if at else "",
+                "where": f"{item} of {self.section}" if item else self.section}
+
+    def flag(self, label: str):
+        return next((f for f in self.flags if f.get("label") == label), None)
+
+    def other_with(self, value: str):
+        """The retrieved section that still states ``value``, if any."""
+        needle = _WS_RE.sub(" ", str(value)).strip().lower()
+        for label, text in self.related:
+            if needle and needle in _WS_RE.sub(" ", text).lower():
+                return label
+        return ""
+
+    def changed_in_proposal(self, label: str):
+        return next((p for p in self.proposal if p.get("label") == label), None)
+
+
+def _firmness(issue: dict, features: dict) -> str:
+    if issue.get("source") in ("rule", "both"):
+        return "stated"
+    label = issue.get("label")
+    counterpart = wording()["selection"]["firmness"]["rule_counterpart"].get(label)
+    if not counterpart:
+        return "suggested"
+    value = float(features.get(counterpart, 0) or 0)
+    if label == "excessive_deletion":
+        return "quiet" if value < config.THRESHOLDS["excessive_deletion_word_ratio"] else "suggested"
+    return "quiet" if value == 0 else "suggested"
+
+
+_SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _ordered_concerns(ctx: _Section):
+    """stated high -> stated medium -> suggested; quiet ones apart."""
+    full, quiet = [], []
+    for issue in list(getattr(ctx.fusion, "issues", None) or []):
+        if issue.get("label") not in wording()["concerns"]:
+            continue
+        firm = _firmness(issue, ctx.features)
+        (quiet if firm == "quiet" else full).append((firm, issue))
+    full.sort(key=lambda c: (c[0] != "stated", _SEVERITY_ORDER.get(c[1].get("severity"), 3)))
+    return full, quiet
+
+
+_MINOR_ADVISORIES = {"unknown_word", "inconsistent_terms", "unfinished_sentence",
+                     "malformed_citation", "malformed_text", "vague_change_reason"}
+
+
+def significance(ctx: _Section, full, quiet) -> str:
+    labels = {a.get("label") for a in ctx.advisories}
+    stated = [i for f, i in full if f == "stated"]
+    if ctx.hard_fails:
+        return "blocking"
+    if any(i.get("severity") == "high" for i in stated) or (ctx.verdict == "reject" and stated):
+        return "serious"
+    if stated or "adds_requirement" in labels:
+        return "notable"
+    if full:
+        return "tentative"
+    if labels & _MINOR_ADVISORIES or quiet:
+        return "minor"
+    if ctx.change_type in ("cosmetic", "terminology_equivalent"):
+        return "trivial"
+    return "plain" if ctx.verdict == "approve" else "unclear"
+
+
+# -- the change description ---------------------------------------------------------------
+
+def _shape(ctx: _Section) -> str:
+    ch = ctx.change
+    if not ch.hunks:
+        return "formatting_only"
+    if ctx.change_type == "cosmetic":
+        return "punctuation" if all(h["punctuation_only"] for h in ch.hunks) else "spelling"
+    if ctx.change_type == "terminology_equivalent" and ctx.layer1.equivalent_swaps:
+        return "equivalent_terms"
+    lone = ch.hunks[0] if len(ch.hunks) == 1 else None
     if (lone and lone["tag"] == "insert" and 5 <= lone["added"] <= _QUOTABLE_LINE_WORDS
             and lone["new"].rstrip().endswith((".", "!", "?"))):
-        return _end(f"An added sentence in {where}: {_quote(lone['new'].strip())}")
-
-    short = (len(change.hunks) <= 3
-             and all(h["removed"] <= _SHORT_WORDS and h["added"] <= _SHORT_WORDS
-                     for h in change.hunks))
-
-    if short:
-        if layer1_result.change_type == "cosmetic":
-            kind = ("A punctuation fix" if all(h["punctuation_only"] for h in change.hunks)
-                    else "A spelling or formatting fix")
-        elif layer1_result.change_type == "terminology_equivalent":
-            kind = "A change of terms"
-        else:
-            kind = "A small wording edit"
-        edits = []
-        for hunk in change.hunks:
-            shown = f"{_quote(hunk['old_ctx'])} → {_quote(hunk['new_ctx'])}"
-            if len(change.items) > 1 and hunk["item"]:
-                shown += f" ({hunk['item']})"
-            edits.append(shown)
-        return _end(f"{kind} to {where}: {'; '.join(edits)}")
-
-    counts = _join([
-        f"{_plural(change.words_removed, 'word')} removed" if change.words_removed else "",
-        f"{_plural(change.words_added, 'word')} added" if change.words_added else "",
-    ])
-    removed_share = float(features.get("deleted_word_ratio", 0) or 0)
-    added_share = float(features.get("inserted_word_ratio", 0) or 0)
-    large = (removed_share >= 0.3 or added_share >= 0.3 or total > 60)
-    size = "A large change" if large else "A moderate change"
-    sentence = f"{size} to {where}: {counts}"
-    if large and removed_share >= 0.3:
-        sentence += f", about {removed_share:.0%} of the section's wording"
-    return sentence + "."
+        return "added_sentence"
+    if ch.only_whole_lines:
+        if ch.lines_quotable and ch.removed_lines and not ch.added_lines:
+            return "lines_removed_quoted"
+        if ch.lines_quotable and ch.added_lines and not ch.removed_lines:
+            return "lines_added_quoted"
+        if not (ch.removed_lines and ch.added_lines):
+            return "lines_unquotable"
+    if len(ch.hunks) <= 3 and all(h["removed"] <= _SHORT_WORDS and h["added"] <= _SHORT_WORDS
+                                  for h in ch.hunks):
+        return "small_edit"
+    return "larger_edit"
 
 
-# -- concerns ------------------------------------------------------
-
-# Why each kind of concern matters to the document and to the people who use
-# it. Deliberately about consequences, not about the rule that fired.
-_WHY = {
-    "excessive_deletion": (
-        "Readers lose guidance they relied on, and whatever the removed text "
-        "required stops being required unless it is stated somewhere else."
-    ),
-    "key_term_deleted": (
-        "Other sections, forms and audits may refer to it; without it, readers "
-        "may not know which form, office or rule applies."
-    ),
-    "modal_weakened": (
-        "People following the section may now treat the step as optional, and "
-        "an auditor can no longer hold the office to it."
-    ),
-    "negation_changed": (
-        "The section now allows what it prohibited, or the reverse, so the "
-        "people applying it will act the opposite way."
-    ),
-    "numeric_changed": (
-        "Offices schedule and measure their work against this figure, and "
-        "forms, systems and other sections that repeat it may now disagree."
-    ),
-    "responsibility_changed": (
-        "The office now named takes on the work and the accountability for "
-        "it; if it has not agreed, the step may go undone."
-    ),
-    "requirement_removed": (
-        "Whatever the removed text required is no longer required by this "
-        "document, and an auditor will no longer look for it."
-    ),
-    "non_equivalent_term": (
-        "Readers may apply the new term differently from how the rest of the "
-        "manual uses it, so the same rule could be read two ways."
-    ),
-    "contradicts_manual": (
-        "Readers following one section will act differently from those "
-        "following the other, and an auditor will ask which one applies."
-    ),
-    "out_of_scope_content": (
-        "Readers looking for this rule may not find it where it belongs, and "
-        "the same point may end up stated in two places."
-    ),
-}
-
-# What a concurring office or the IMR is likely to ask.
-_ASK = {
-    "excessive_deletion": "Is everything that was removed covered somewhere else?",
-    "key_term_deleted": "Is it still needed, or has something replaced it?",
-    "modal_weakened": "Is this step meant to become optional, and who decides when it is skipped?",
-    "negation_changed": "Is the reversal intended, and does the law or policy behind this section allow it?",
-    "numeric_changed": "Where does the new figure come from: a memorandum, a policy or a law?",
-    "responsibility_changed": "Has the office now named agreed to take this on?",
-    "requirement_removed": "Why is this no longer required, and is it covered somewhere else?",
-    "non_equivalent_term": "Is the new term meant to change what is being asked?",
-    "contradicts_manual": "Which statement is correct, and will the other section change to match?",
-    "out_of_scope_content": "Does this belong in this section, or in another one?",
-}
-
-_CHECK = {
-    "excessive_deletion": "Compare the two versions and note where each removed requirement now lives.",
-    "key_term_deleted": "Search the document and its forms for other references to it.",
-    "modal_weakened": "Read the sentence as someone who would rather skip the step, and see whether it still holds.",
-    "negation_changed": "Read the sentence before and after, and confirm the new meaning is the one intended.",
-    "numeric_changed": "Look for other sections, forms and systems that use the same figure.",
-    "responsibility_changed": "Confirm with the office now named, and look for other sections that assign the same step.",
-    "requirement_removed": "Say where the requirement now lives, or state in the reason that it is being dropped.",
-    "non_equivalent_term": "See how this manual uses both terms elsewhere.",
-    "contradicts_manual": "Open the other section and decide which statement stands; if it is also being changed in this proposal, say so.",
-    "out_of_scope_content": "See whether another section already covers it.",
-}
-
-# The questions only people can answer, per kind of concern.
-_CANNOT_TELL = {
-    "excessive_deletion": "Whether what was removed is covered by another manual, a memorandum or a form.",
-    "requirement_removed": "Whether what was removed is covered by another manual, a memorandum or a form.",
-    "key_term_deleted": "Whether the dropped term is still in use elsewhere, such as on a form or in a system.",
-    "modal_weakened": "Whether the law or policy this section rests on allows the change.",
-    "negation_changed": "Whether the law or policy this section rests on allows the change.",
-    "numeric_changed": "Whether the new figure matches the memorandum, policy or law it comes from.",
-    "responsibility_changed": "Whether the office now named has agreed, and has the people to do the work.",
-    "contradicts_manual": "Which of the two statements the university actually follows.",
-    "non_equivalent_term": "What the new wording is meant to change: the check reads words, not intent.",
-    "out_of_scope_content": "Whether the added wording is accurate, and where readers expect to find it.",
-}
-
-# How a model-only finding is described when there are no words to quote.
-_MODEL_ONLY = {
-    "excessive_deletion": "that a large part of the section was removed",
-    "key_term_deleted": "that a term the section depends on — a defined term, a form name or a legal reference — was dropped",
-    "modal_weakened": "that an obligation was softened into a permission",
-    "negation_changed": "that a negation changed, reversing what the section requires",
-    "numeric_changed": "that a figure, deadline or amount changed",
-    "responsibility_changed": "that the party responsible for a step changed",
-    "requirement_removed": "that a required step was removed",
-    "non_equivalent_term": "that a term was replaced with one that means something different in this manual",
-    "contradicts_manual": "that the change conflicts with another section of this document",
-    "out_of_scope_content": "that the added wording goes beyond what this section covers",
-}
-
-# Where the rules look for the same thing the model reports. When they looked
-# and found nothing, that is worth saying: it is a finding too.
-_RULE_COUNTERPART = {
-    "negation_changed": ("negation_changed",
-                         "no “not”, “no” or “never” was added or removed"),
-    "numeric_changed": ("numeric_changed_count", "no figure changed"),
-    "modal_weakened": ("modal_weakened_count",
-                       "no “shall”, “must” or “should” gave way to “may” or “can”"),
-    "key_term_deleted": ("key_terms_deleted_count",
-                         "no listed term, form name or legal reference is missing from the new text"),
-    "responsibility_changed": ("role_terms_changed_count",
-                               "no named role was added or removed"),
-    "requirement_removed": ("sentences_removed",
-                            "no sentence of the old text is missing from the new one"),
-}
-
-# How the leftover concerns are named when MAX_CONCERNS is reached.
-_SHORT_NAME = {
-    "excessive_deletion": "a large removal",
-    "key_term_deleted": "a dropped term",
-    "modal_weakened": "a softened obligation",
-    "negation_changed": "a changed negation",
-    "numeric_changed": "a changed figure",
-    "responsibility_changed": "a change of responsibility",
-    "requirement_removed": "a removed requirement",
-    "non_equivalent_term": "a non-equivalent term",
-    "contradicts_manual": "a conflict with another section",
-    "out_of_scope_content": "content outside the section's scope",
-}
+def _share(ratio: float) -> str:
+    """Share of the wording, bare so that "About {share}" reads right:
+    "a third", "half", or "55%"."""
+    named = ((0.25, "a quarter"), (1 / 3, "a third"), (0.5, "half"),
+             (2 / 3, "two thirds"), (0.75, "three quarters"))
+    for value, words in named:
+        if abs(ratio - value) <= 0.03:
+            return words
+    return f"{ratio:.0%}"
 
 
-def _model_strength(confidence: float) -> str:
-    if confidence > 0.85:
-        return "The check's model strongly suspects"
-    if confidence > 0.65:
-        return "The check's model suspects"
-    return "The check's model sees a possibility"
+def _lines_slot(lines, text) -> str:
+    return _join([_quote(_tidy_row(ln, text)) for ln in lines])
 
 
-def _doubt(issue: dict, features: dict) -> str:
-    """For a model-only concern the rules looked for and did not find."""
-    if issue.get("source") != "model":
-        return ""
+def _change_slots(ctx: _Section) -> dict:
+    ch = ctx.change
+    slots = ctx.place(ch.single_item)
+    removed_share = float(ctx.features.get("deleted_word_ratio", 0) or 0)
+    added_share = float(ctx.features.get("inserted_word_ratio", 0) or 0)
+    slots.update({
+        "n_lines": _number_word(len(ch.removed_lines or ch.added_lines)),
+        "s": "" if len(ch.removed_lines or ch.added_lines) == 1 else "s",
+        "lines_removed": _lines_slot(ch.removed_lines, ch.old),
+        "lines_added": _lines_slot(ch.added_lines, ch.new),
+        "removed_or_added": "removed" if ch.removed_lines else "added",
+        "at_items": f"at {_join(ch.items)}" if ch.items else "",
+        "words_removed": _number_word(ch.words_removed),
+        "words_added": _number_word(ch.words_added),
+        "share": _share(removed_share),
+        "share_clause": "",
+    })
+    if ch.hunks:
+        first = ch.hunks[0]
+        slots.update({"old_ctx": first["old_ctx"], "new_ctx": first["new_ctx"],
+                      "added_sentence": first["new"].strip()})
+    if ctx.layer1.equivalent_swaps:
+        a, b = ctx.layer1.equivalent_swaps[0]
+        slots.update({"a": a, "b": b})
+    slots["_large"] = removed_share >= 0.3 or added_share >= 0.3 or (
+        ch.words_removed + ch.words_added) > 60
+    return slots
+
+
+def _describe_change(ctx: _Section, writer: _Writer) -> str:
+    shape = _shape(ctx)
+    block = wording()["change"][shape]
+    slots = _change_slots(ctx)
+    ch = ctx.change
+    if shape == "small_edit" and len(ch.hunks) > 1:
+        parts = []
+        for hunk in ch.hunks:
+            piece = f"{_quote(hunk['old_ctx'])} → {_quote(hunk['new_ctx'])}"
+            if hunk["item"] and len(ch.items) > 1:
+                piece += f" ({hunk['item']})"
+            parts.append(piece)
+        slots["hunk_list"] = "; ".join(parts)
+        text = writer.say("change.small_edit.several_places", block["several_places"], slots)
+    else:
+        allow = None
+        if shape == "larger_edit":
+            large = slots["_large"]
+
+            def allow(index, template):
+                if "sizeable" in template:
+                    return large
+                if "moderate" in template:
+                    return not large
+                return True
+        text = writer.say(f"change.{shape}", block["variants"], slots, allow=allow)
+    return text or ""
+
+
+# -- concerns ---------------------------------------------------------------------------------
+
+def _values(flag, issue, side):
+    """(from|to) values: the flag's lists when present, else parsed from text."""
+    if flag and flag.get(f"{side}_values") is not None:
+        return list(flag.get(f"{side}_values") or [])
+    return _straight_to_items(issue.get(f"{side}_text") or "")
+
+
+def _concern(ctx: _Section, firm: str, issue: dict, writer: _Writer, *, opened_lines: bool) -> dict:
+    """Lead, why, ask, check, limit and clause for one concern; each already
+    written, or None where the file has nothing fillable."""
     label = issue["label"]
-    if label == "excessive_deletion":
-        share = float(features.get("net_deleted_word_ratio", 0) or 0)
-        if share < config.THRESHOLDS["excessive_deletion_word_ratio"]:
-            return (f"The rule check measured {share:.0%} of the wording as removed, "
-                    "so this may be a false lead.")
-        return ""
-    counterpart = _RULE_COUNTERPART.get(label)
-    if counterpart and not features.get(counterpart[0]):
-        return f"The rule check found that {counterpart[1]}, so this may be a false lead."
-    return ""
+    words = wording()["concerns"][label]
+    ch = ctx.change
+    slots = ctx.place(ch.single_item)
+    flag = ctx.flag(label)
+    lead_pool = None
+    why_pool = "why"
 
-
-def _placed(item: str, clause: str) -> str:
-    """"At 3.1, <clause>." - the place first, so a sentence never has to open
-    on a lower-case quotation."""
-    if item:
-        return _end(f"At {item}, {clause}")
-    if clause.startswith("“"):
-        return _end(f"In this section, {clause}")
-    return _end(_cap(clause))
-
-
-def _removed_requirements(issue: dict, change: _Change):
-    """(count, quotes) for a removed requirement.
-
-    Whole removed lines are used when Layer 1's sentence split left something
-    unreadable - a table row reaches it as "| | 4." - and their count
-    replaces the sentence count, which a table row inflates. When "What
-    changed" already quotes those lines, nothing is quoted twice.
-    """
-    evidence = (issue.get("evidence") or "").strip()
-    if change.removed_lines and (
-            _word_count(_WORD_RE.findall(evidence)) < 3 or change.only_whole_lines):
-        quotes = ([] if change.lines_quotable
-                  else [_clip(_tidy_line(ln), 140) for ln in change.removed_lines[:2]])
-        return len(change.removed_lines), quotes
-    # Layer 1 cuts its evidence at 160 characters; finish it from the text.
-    full = next((ln for ln in change.old.splitlines()
-                 if evidence[:40] and evidence[:40] in ln), "")
-    text = _tidy_line(full) if full and len(evidence) >= 160 else evidence
-    return int(issue.get("count") or 1), [_clip(text)] if text else []
-
-
-def _lead(issue: dict, change: _Change) -> str:
-    """What changed and where, from the evidence Layer 1 recorded."""
-    label = issue["label"]
-    if issue.get("source") == "model":
-        return (f"{_model_strength(float(issue.get('confidence', 0.5)))} "
-                f"{_MODEL_ONLY[label]}, though it found no specific words to point to.")
-
-    evidence = _curly(issue.get("evidence") or "")
-    item = change.single_item
-
-    if label == "excessive_deletion":
-        ratio = issue.get("ratio")
-        share = f"{float(ratio):.0%}" if isinstance(ratio, (int, float)) else "A large part"
-        return f"{share} of the section's wording was removed."
-
-    if label == "key_term_deleted":
-        terms = issue.get("terms") or [issue.get("evidence")]
-        named = _join([_quote(t) for t in terms[:3] if t])
-        verb = "no longer appears" if len(terms) == 1 else "no longer appear"
-        return _placed("", f"{named} {verb} in the section")
-
-    if label == "modal_weakened":
+    if firm == "suggested":
+        lead_pool = "lead_suggested"
+    elif label == "modal_weakened":
         pairs = issue.get("pairs") or []
         if pairs:
-            said = _join([f"{_quote(a)} became {_quote(b)}" for a, b in pairs[:3]])
-            item = change.item_of_text(pairs[0][1]) or item
+            slots.update({"a": pairs[0][0], "b": pairs[0][1]})
+            slots.update(ctx.place(ch.item_of_text(pairs[0][1]) or ch.single_item))
+            lead_pool = "lead_stated"
         else:
-            said = evidence or "an obligation became a permission"
-        return _placed(item, f"{said}, so a requirement becomes a permission")
-
-    if label == "negation_changed":
+            lead_pool = "lead_stated_no_pairs"
+    elif label == "negation_changed":
         action = issue.get("action")
+        reversals = (flag or {}).get("reversals") or []
         if action in ("added", "removed"):
-            words = issue.get(action) or []
-            named = _join([_quote(w) for w in words[:3]]) or evidence
-            verb = "was" if len(words) <= 1 else "were"
-            item = (change.item_of_text(words[0]) if words else "") or item
-            return _placed(item, f"{named} {verb} {action}, which reverses "
-                                 "what the sentence requires")
-        said = evidence or "a negation changed"
-        return _placed(item, f"{said}, which reverses the sense of the requirement")
-
-    if label == "numeric_changed":
-        from_text = _curly(issue.get("from_text") or "")
-        to_text = _curly(issue.get("to_text") or "")
-        direction = issue.get("direction")
-        if from_text and to_text:
-            return _placed(item, f"a figure changed: {from_text} became {to_text}")
-        if direction == "added" and to_text:
-            return _placed(item, f"a figure was added: {to_text}")
-        if direction == "removed" and from_text:
-            return _placed(item, f"a figure was removed: {from_text}")
-        return _placed(item, f"a figure changed: {evidence}")
-
-    if label == "responsibility_changed":
+            word = (issue.get(action) or [""])[0]
+            slots.update({"neg_word": word, "added_or_removed": action})
+            removed_whole = action == "removed" and any(
+                re.search(rf"\b{re.escape(word)}\b", ln, re.I) for ln in ch.removed_lines)
+            if removed_whole:
+                lead_pool = "lead_stated_deleted_sentence"
+            else:
+                slots.update(ctx.place(ch.item_of_text(word) or ch.single_item))
+                lead_pool = "lead_stated_added_removed"
+        elif reversals:
+            a, b = reversals[0]
+            slots["reversal"] = f"{_quote(a)} became {_quote(b)}"
+            lead_pool = "lead_stated_reversal"
+        else:
+            words_used = (issue.get("added") or []) + (issue.get("removed") or [])
+            slots.update({"neg_word": _join(words_used), "added_or_removed": "changed"})
+            lead_pool = "lead_stated_added_removed"
+    elif label == "numeric_changed":
+        before, after = _values(flag, issue, "from"), _values(flag, issue, "to")
+        slots.update({"from_text": _quoted_list(before), "to_text": _quoted_list(after)})
+        from .layer1_rules import _FREQUENCY_WORDS
+        if all(v.lower() in _FREQUENCY_WORDS for v in before + after):
+            lead_pool = "lead_stated_frequency"
+        elif before and after:
+            lead_pool = "lead_stated_changed"
+        elif after:
+            lead_pool = "lead_stated_added"
+        else:
+            lead_pool = "lead_stated_removed"
+    elif label == "responsibility_changed":
         roles = issue.get("roles") or [r.strip() for r in (issue.get("evidence") or "").split(",")]
         gone, came = [], []
         for role in roles:
-            in_old, in_new = _find_ci(role, change.old), _find_ci(role, change.new)
+            in_old, in_new = _find_ci(role, ch.old), _find_ci(role, ch.new)
             if in_old and not in_new:
                 gone.append(in_old)
             elif in_new and not in_old:
                 came.append(in_new)
-        if gone and came:
-            return _placed(item, f"{_join(gone)} is no longer named; "
-                                 f"{_join(came)} is named instead")
-        if gone:
-            return _placed(item, f"{_join(gone)} is no longer named")
-        if came:
-            return _placed(item, f"{_join(came)} is now named")
-        named = _join([_quote(r) for r in roles[:3]])
-        return _placed(item, f"a step changed hands ({named})")
-
-    if label == "requirement_removed":
-        count, quotes = _removed_requirements(issue, change)
-        head = ("A requirement no longer appears" if count == 1
-                else _cap(_plural(count, "requirement")) + " no longer appear")
-        if quotes:
-            return _end(f"{head}: {'; '.join(_quote(q) for q in quotes)}")
-        if change.lines_quotable and change.removed_lines:
-            return f"{head}: {'it is' if count == 1 else 'they are'} the "\
-                   f"{'line' if count == 1 else 'lines'} removed above."
-        return f"{head} in the section."
-
-    if label == "non_equivalent_term":
-        swaps = issue.get("swaps") or []
-        said = (_join([f"{_quote(a)} became {_quote(b)}" for a, b in swaps[:3]])
-                if swaps else evidence)
-        return _placed(item, f"{said}; this manual does not treat them as "
-                             "meaning the same")
-
-    if label == "contradicts_manual":
-        conflicts = issue.get("conflicts") or []
-        values = _join([_quote(str(c.get("value"))) for c in conflicts[:3]]) or evidence
-        return (f"Another section of this document still uses {values}, which this "
-                "change replaces here.")
-
-    if label == "out_of_scope_content":
-        return _placed(item, "the added wording may go beyond what this section covers")
-
-    return _end(evidence)
-
-
-def _concern_item(issue: dict, change: _Change, features: dict, full: bool,
-                  to_submitter: bool, seen: set) -> list:
-    """One item under "What to look at": a lead line and its detail lines."""
-    label = issue["label"]
-    doubt = _doubt(issue, features)
-    first = _lead(issue, change)
-    if doubt:
-        first = f"{first} {doubt}"
-    else:
-        first = f"{first} {_WHY[label]}"
-
-    lines = [first]
-    if full and not doubt:
-        prefix = "Expect to be asked: " if to_submitter else "Worth asking the drafting office: "
-        lines.append(prefix + _ASK[label])
-        lines.append("To check: " + _CHECK[label])
-    clause = _clause_line(label, seen)
-    if clause:
-        lines.append(clause)
-    return lines
-
-
-def _hard_fail_item(fail: dict, seen: set) -> list:
-    detail = (fail.get("detail") or "").strip()
-    lines = [detail if detail.endswith(".") else detail + "."]
-    if fail.get("reason") == "no_change_reason":
-        lines[0] += (" The reason is the record that the change was planned, and the "
-                     "first thing a reviewer or auditor reads.")
-    clause = _clause_line(fail.get("reason", ""), seen)
-    if clause:
-        lines.append(clause)
-    return lines
-
-
-def _advisory_item(advisory: dict, seen: set) -> list:
-    label = advisory.get("label", "")
-    evidence = _curly(advisory.get("evidence") or "")
-    if label == "vague_change_reason":
-        lead = ("The reason given is too general to show what prompted the change "
-                "or what it is meant to achieve.")
-        if evidence:
-            lead += f" {evidence.rstrip('.')}."
-    elif label == "malformed_citation":
-        lead = f"A legal reference looks broken after the edit: {_clip(evidence, 120)}."
-    elif label == "malformed_text":
-        lead = f"The edit left text that looks broken: {_clip(evidence, 120)}."
-    else:
-        return []
-    lines = [lead]
-    clause = _clause_line(label, seen)
-    if clause:
-        lines.append(clause)
-    return lines
-
-
-def _ordered(issues: list, features: dict) -> list:
-    """Layer 3's order - most severe, then most confident - with model-only
-    concerns the rules could not corroborate moved to the end."""
-    firm = [i for i in issues if not _doubt(i, features)]
-    doubtful = [i for i in issues if _doubt(i, features)]
-    return firm + doubtful
-
-
-# -- what looks fine and what cannot be told ---------------------------
-
-_UNCHANGED = (
-    # (feature, concern labels that would contradict it, wording)
-    ("numeric_changed_count", {"numeric_changed", "contradicts_manual"}, "figure"),
-    ("modal_weakened_count", {"modal_weakened"}, "obligation"),
-    ("role_terms_changed_count", {"responsibility_changed", "contradicts_manual"}, "named role"),
-)
-
-
-def _looks_fine(layer1_result, labels: set, change: _Change, features: dict,
-                no_concerns: bool) -> list:
-    lines = []
-    if no_concerns:
-        lines.append("No specific concern passed its threshold.")
-
-    if layer1_result.change_type == "cosmetic":
-        lines.append("Nothing the section requires has changed; the edit touches "
-                     "spelling, punctuation or layout only.")
-        return lines
-    if layer1_result.change_type == "terminology_equivalent":
-        swaps = getattr(layer1_result, "equivalent_swaps", None) or []
-        if swaps:
-            named = _join([f"{_quote(a)} and {_quote(b)}" for a, b in swaps[:3]])
-            lines.append(f"{named} mean the same thing in this manual, so the "
-                         "requirement is unchanged.")
+        slots.update({"gone": _join(gone), "came": _join(came),
+                      "roles": _join([_quote(r) for r in roles[:3]]),
+                      "came_or_the_new_office": _join(came) or "the new office"})
+        lead_pool = ("lead_stated_swap" if gone and came else "lead_stated_gone" if gone
+                     else "lead_stated_came" if came else "lead_stated_roles_only")
+    elif label == "requirement_removed":
+        if opened_lines:
+            lead_pool = "lead_stated_already_quoted"
         else:
-            lines.append("The terms swapped mean the same thing in this manual, so "
-                         "the requirement is unchanged.")
-        return lines
+            count = len(ch.removed_lines) or int(issue.get("count") or 1)
+            if count == 1:
+                evidence = (issue.get("evidence") or "").strip()
+                line = ch.removed_lines[0] if ch.removed_lines else next(
+                    (ln for ln in ch.old.splitlines() if evidence[:40] and evidence[:40] in ln), "")
+                slots["req_text"] = _tidy_row(line, ch.old) if line else ""
+                lead_pool = "lead_stated_one"
+            else:
+                slots.update({"req_count": _number_word(count),
+                              "req_count_cap": _cap(_number_word(count))})
+                lead_pool = "lead_stated_many"
+    elif label == "excessive_deletion":
+        ratio = issue.get("ratio", ctx.features.get("net_deleted_word_ratio", 0))
+        slots["share"] = _share(float(ratio or 0))
+        lead_pool = "lead_stated"
+    elif label == "key_term_deleted":
+        from .layer1_rules import _LEGAL_REF_RE
+        terms = issue.get("terms") or [issue.get("evidence")]
+        spelled = [_find_ci(t, ch.old) or t for t in terms if t]
+        slots.update({"terms": _quoted_list(spelled[:3]), "terms_cap": _quoted_list(spelled[:3]),
+                      "s": "s" if len(spelled[:3]) == 1 else ""})
+        legal = any(_LEGAL_REF_RE.search(t) for t in spelled)
+        lead_pool = "lead_stated_legal" if legal else "lead_stated"
+        why_pool = "why_legal" if legal else "why"
+    elif label == "non_equivalent_term":
+        swaps = issue.get("swaps") or []
+        if swaps:
+            slots.update({"a": swaps[0][0], "b": swaps[0][1]})
+            slots.update(ctx.place(ch.item_of_text(swaps[0][1]) or ch.single_item))
+        lead_pool = "lead_stated"
+    elif label == "contradicts_manual":
+        value = str(((issue.get("conflicts") or [{}])[0]).get("value") or issue.get("evidence") or "")
+        other = ctx.other_with(value)
+        slots.update({"value": value, "other_section": other,
+                      "other_section_or_the_other_section": other or "the other section"})
+        changed = ctx.changed_in_proposal(other) if other else None
+        if changed and value.lower() not in (changed.get("new_text") or "").lower():
+            lead_pool = "lead_stated_coordinated"
+        else:
+            lead_pool = "lead_stated_named" if other else "lead_stated"
+    elif label == "out_of_scope_content":
+        lead_pool = "lead_suggested"
 
-    unchanged = [word for feature, contradicting, word in _UNCHANGED
-                 if not features.get(feature) and not (labels & contradicting)]
-    if unchanged:
-        lines.append(f"No {_join(unchanged).replace(' and ', ' or ')} changed.")
-    if (not change.words_removed and not features.get("sentences_removed")
+    if label == "contradicts_manual" and firm == "suggested":
+        slots.setdefault("other_section_or_the_other_section", "the other section")
+    if label == "requirement_removed" and firm == "suggested":
+        slots.setdefault("req_text", "")
+
+    key = f"concerns.{label}"
+    lead = writer.say(f"{key}.{lead_pool}", words.get(lead_pool), slots) if lead_pool else None
+    return {
+        "label": label, "firmness": firm, "slots": slots,
+        "lead": lead,
+        "why": writer.say(f"{key}.{why_pool}", words.get(why_pool), slots),
+        "ask": writer.say(f"{key}.ask.{writer.voice}", (words.get("ask") or {}).get(writer.voice), slots),
+        "check": writer.say(f"{key}.check", words.get("check"), slots),
+        "limit": (words.get("limit") or [""])[0],
+        "clause": clause_for(label) if firm == "stated" else "",
+        "short_name": wording()["grouping"]["short_names"].get(label, label.replace("_", " ")),
+    }
+
+
+def _quiet_line(ctx: _Section, issue: dict, writer: _Writer):
+    label = issue["label"]
+    slots = {"share": _share(float(ctx.features.get("net_deleted_word_ratio", 0) or 0))}
+    return writer.say(f"quiet_lines.{label}", wording()["quiet_lines"].get(label), slots)
+
+
+# -- advisories ----------------------------------------------------------------------------------
+
+def _advisory_sentences(ctx: _Section, writer: _Writer) -> list:
+    """The ADVISORIES block, in a fixed order: the new requirement first."""
+    words = wording()["advisories"]
+    by_label = {}
+    for adv in ctx.advisories:
+        by_label.setdefault(adv.get("label"), adv)
+    out = []
+    unknown = by_label.get("unknown_word")
+    unknown_words = (unknown or {}).get("words") or []
+    unfinished = by_label.get("unfinished_sentence")
+    consumed_unknown, consumed_unfinished = set(), set()
+
+    adds = by_label.get("adds_requirement")
+    if adds:
+        req = (adds.get("requirements") or [{}])[0]
+        slots = ctx.place(req.get("item", ""))
+        slots.update({"req_word": req.get("word", ""), "was": req.get("was") or ""})
+        partner = next((w for w in unknown_words
+                        if w.get("item") == req.get("item") and not w.get("suggestion")), None)
+        if partner and req.get("item"):
+            slots["word"] = partner["word"]
+            pool = wording()["combined"]["new_requirement_unclear"]
+            variants = pool["variants"] if writer.voice == "drafter" else pool["reader"]
+            text = writer.say(f"combined.new_requirement_unclear.{writer.voice}", variants, slots)
+            if text:
+                out.append(text)
+                consumed_unknown.add(partner["word"])
+                consumed_unfinished.add(req.get("item"))
+        else:
+            kind = req.get("kind", "added_sentence")
+
+            def modal_only(index, template):
+                # "something “{req_word}” now happen" reads only with a modal.
+                return "now happen" not in template or req.get("word") in ("must", "shall", "should")
+            text = writer.say(f"advisories.adds_requirement.{kind}",
+                              words["adds_requirement"].get(kind), slots, allow=modal_only)
+            if text:
+                out.append(text)
+        why = writer.say("advisories.adds_requirement.why", words["adds_requirement"]["why"], slots)
+        ask = writer.say(f"advisories.adds_requirement.ask.{writer.voice}",
+                         words["adds_requirement"]["ask"][writer.voice], slots)
+        out += [s for s in (why, ask) if s]
+
+    left = [w for w in unknown_words if w["word"] not in consumed_unknown]
+    if len(left) > 1:
+        text = writer.say("advisories.unknown_word.several", words["unknown_word"]["several"],
+                          {"word_list": _quoted_list(w["word"] for w in left)})
+        if text:
+            out.append(text + (words["unknown_word"]["reader_suffix"] if writer.voice == "reader" else ""))
+    elif left:
+        w = left[0]
+        slots = ctx.place(w.get("item", ""))
+        slots.update({"word": w["word"], "suggestion": w.get("suggestion") or ""})
+        pool = "with_suggestion" if w.get("suggestion") else "no_suggestion"
+        text = writer.say(f"advisories.unknown_word.{pool}", words["unknown_word"][pool], slots)
+        if text:
+            out.append(text + (words["unknown_word"]["reader_suffix"] if writer.voice == "reader" else ""))
+
+    terms = by_label.get("inconsistent_terms")
+    if terms:
+        group = (terms.get("groups") or [{}])[0]
+        slots = ctx.place((group.get("items") or [""])[0])
+        slots.update({"kept": group.get("kept", ""),
+                      "introduced": _quoted_list(group.get("introduced") or [])})
+        for part in ("variants", "why", "tip"):
+            text = writer.say(f"advisories.inconsistent_terms.{part}",
+                              words["inconsistent_terms"][part], slots)
+            if text:
+                out.append(text)
+
+    if unfinished:
+        for line in (unfinished.get("lines") or [])[:2]:
+            if line.get("item") in consumed_unfinished:
+                continue
+            slots = ctx.place(line.get("item", ""))
+            slots.update({"first_word": line.get("first_word", ""), "was": line.get("was") or ""})
+            kind = line.get("kind")
+            text = writer.say(f"advisories.unfinished_sentence.{kind}",
+                              words["unfinished_sentence"].get(kind), slots)
+            if text:
+                out.append(text)
+
+    if "vague_change_reason" in by_label:
+        text = writer.say(f"advisories.vague_change_reason.{writer.voice}",
+                          words["vague_change_reason"][writer.voice], {})
+        if text:
+            out.append(text)
+
+    for label in ("malformed_citation", "malformed_text"):
+        adv = by_label.get(label)
+        if adv:
+            slots = ctx.place(_item_of(adv.get("evidence", "")))
+            slots["evidence"] = _clip(adv.get("evidence", ""), 120)
+            text = writer.say(f"advisories.{label}", words[label], slots)
+            if text:
+                out.append(text)
+    return out
+
+
+# -- context, fine, limits ------------------------------------------------------------------------
+
+def _context_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
+    words = wording()["context"]
+    out = []
+    issue_labels = {c["label"] for c in concerns}
+    all_issue_labels = {i.get("label") for i in (getattr(ctx.fusion, "issues", None) or [])}
+
+    # A conflict the rules found and the issue policy dropped.
+    flag = ctx.flag("contradicts_manual")
+    if flag and "contradicts_manual" not in all_issue_labels:
+        value = str(((flag.get("conflicts") or [{}])[0]).get("value") or "")
+        other = ctx.other_with(value)
+        if other:
+            changed = ctx.changed_in_proposal(other)
+            slots = {"other_section": other, "value": value}
+            kind = ((flag.get("conflicts") or [{}])[0]).get("kind")
+
+            def about_figures(index, template):
+                # One variant speaks of "this figure"; not for a role.
+                return kind == "numeric" or "figure" not in template
+            if changed and value.lower() not in (changed.get("new_text") or "").lower():
+                text = writer.say("context.coordinated.consistent", words["coordinated"]["consistent"], slots)
+            else:
+                text = writer.say("context.dropped_rule_findings.contradicts_manual",
+                                  words["dropped_rule_findings"]["contradicts_manual"], slots,
+                                  allow=about_figures)
+            if text:
+                out.append(text)
+
+    # A timing word the rules counted as a figure, dropped by the policy.
+    flag = ctx.flag("numeric_changed")
+    if flag and "numeric_changed" not in all_issue_labels:
+        from .layer1_rules import _FREQUENCY_WORDS
+        values = (flag.get("from_values") or []) + (flag.get("to_values") or [])
+        if values and all(v.lower() in _FREQUENCY_WORDS for v in values):
+            text = writer.say("context.dropped_rule_findings.numeric_changed_frequency",
+                              words["dropped_rule_findings"]["numeric_changed_frequency"],
+                              {"from_text": _quoted_list(flag.get("from_values") or values)})
+            if text:
+                out.append(text)
+
+    # A model-only conflict, where a retrieved section is being changed too.
+    model_conflict = any(c["label"] == "contradicts_manual" and c["firmness"] == "suggested"
+                         for c in concerns)
+    if model_conflict:
+        for label, _ in ctx.related:
+            if ctx.changed_in_proposal(label):
+                text = writer.say("context.coordinated.conflict_in_proposal",
+                                  words["coordinated"]["conflict_in_proposal"], {"other_section": label})
+                if text:
+                    out.append(text)
+                break
+
+    # The reason does not mention the main change.
+    linked = {"numeric_changed", "modal_weakened", "requirement_removed", "responsibility_changed"}
+    stated = [c for c in concerns if c["firmness"] == "stated" and c["label"] in linked]
+    adds = next((a for a in ctx.advisories if a.get("label") == "adds_requirement"), None)
+    if ctx.reason and (stated or adds):
+        terms = []
+        for c in stated:
+            s = c["slots"]
+            terms += [s.get(k, "") for k in ("gone", "came", "a", "b", "item")]
+            terms += _STRAIGHT_QUOTED_RE.findall(s.get("from_text", "").replace("“", '"').replace("”", '"'))
+            terms += _STRAIGHT_QUOTED_RE.findall(s.get("to_text", "").replace("“", '"').replace("”", '"'))
+        if adds:
+            req = (adds.get("requirements") or [{}])[0]
+            terms += [req.get("word", ""), req.get("item", "")]
+        reason = ctx.reason.lower()
+        terms = [t for t in terms if t and len(t) > 1]
+        if terms and not any(t.lower() in reason for t in terms):
+            text = writer.say(f"context.reason_link.{writer.voice}",
+                              words["reason_link"][writer.voice], {})
+            if text:
+                out.append(text)
+    return out
+
+
+def _fine_sentences(ctx: _Section, concerns: list, quiet: list, writer: _Writer) -> list:
+    words = wording()["fine"]
+    if ctx.change_type == "cosmetic":
+        return [s for s in [writer.say("fine.cosmetic", words["cosmetic"], {})] if s]
+    if ctx.change_type == "terminology_equivalent":
+        return [s for s in [writer.say("fine.equivalent", words["equivalent"], {})] if s]
+    labels = {c["label"] for c in concerns} | {i["label"] for _, i in quiet}
+    adv = {a.get("label") for a in ctx.advisories}
+    things = []
+    if not ctx.features.get("numeric_changed_count") and not labels & {"numeric_changed", "contradicts_manual"}:
+        things.append("figure")
+    if (not ctx.features.get("modal_weakened_count") and "modal_weakened" not in labels
+            and "adds_requirement" not in adv):
+        things.append("obligation")
+    if not ctx.features.get("role_terms_changed_count") and not labels & {"responsibility_changed", "contradicts_manual"}:
+        things.append("named office")
+    out = []
+    if len(things) == 3:
+        text = writer.say("fine.untouched", words["untouched"]["variants"], {})
+    elif things:
+        text = writer.say("fine.untouched.partial", words["untouched"]["partial"],
+                          {"things": _join_or(things)})
+    else:
+        text = None
+    if text:
+        out.append(text)
+    if (not ctx.change.words_removed and not ctx.features.get("sentences_removed")
             and not labels & {"requirement_removed", "excessive_deletion"}):
-        lines.append("Nothing was removed.")
-    return lines
+        text = writer.say("fine.nothing_removed", words["nothing_removed"], {})
+        if text:
+            out.append(text)
+    return out
 
 
-def _cannot_tell(labels: list, change: _Change, layer1_result) -> list:
-    lines = []
-    for label in labels:
-        line = _CANNOT_TELL.get(label)
-        if line and line not in lines:
-            lines.append(line)
-    if (not lines and change.words_added
-            and layer1_result.change_type not in ("cosmetic", "terminology_equivalent")):
-        what = "added" if not change.words_removed else "new"
-        lines.append(f"Whether the {what} wording is accurate: the check compares "
-                     "wording, not facts.")
-    return lines[:3]
+def _limit_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
+    words = wording()["limits"]
+    limits = []
+    for c in concerns:
+        if c["limit"] and c["limit"] not in limits:
+            limits.append(c["limit"])
+    out = []
+    for limit in limits[:2]:
+        text = writer.say("limits.lead_in", words["lead_in"], {"limit": limit})
+        if text:
+            out.append(text)
+    if (not out and ctx.change.words_added
+            and ctx.change_type not in ("cosmetic", "terminology_equivalent")):
+        text = writer.say("limits.added_wording", words["added_wording"], {})
+        if text:
+            out.append(text)
+    return out
 
 
-# -- main entry point ------------------------------------------------
+def _iso_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
+    """iso.iso_rules: only stated concerns, adds_requirement, hard fails and
+    the vague reason; at most two clause mentions per note."""
+    clauses = []
+    for fail in ctx.hard_fails:
+        clauses.append(clause_for(fail.get("reason", "")))
+    for c in concerns:
+        if c["firmness"] == "stated":
+            clauses.append(c["clause"])
+    for adv in ctx.advisories:
+        if adv.get("label") in ("adds_requirement", "vague_change_reason"):
+            clauses.append(clause_for(adv["label"]))
+    seen, out = [], []
+    iso = wording()["iso"]
+    for clause in clauses:
+        if not clause or clause in seen or len(seen) == 2:
+            continue
+        seen.append(clause)
+        asks = writer.say(f"iso.asks_that.{clause}", iso["asks_that"].get(clause), {})
+        text = writer.say("iso.relevance_first", iso["relevance_first"],
+                          {"clause": clause, "asks_that": asks or ""})
+        if text:
+            out.append(text)
+    return out
+
+
+# -- plans and paragraphs --------------------------------------------------------------------------
+
+def _with_transition(writer: _Writer, pool: str, sentence: str, lower_ok: bool) -> str:
+    connector = writer.say(f"transitions.{pool}", wording()["transitions"][pool], {})
+    if not connector:
+        return sentence
+    body = _uncap(sentence) if lower_ok and not connector.endswith(":") else sentence
+    return f"{connector} {body}"
+
+
+def _starts_lowerable(sentence: str, protected: list) -> bool:
+    """A sentence may take a lower-case first letter after a connector unless
+    it opens with a name (a section, a role, a document)."""
+    return not any(p and sentence.startswith(p) for p in protected)
+
+
+def _plan_blocks(plan: dict) -> list:
+    return [b for para in plan["paragraphs"] for b in para]
+
+
+def _choose_plan(tier: str, needed: set, n_full: int, picker: _Picker, avoid: set):
+    plans = wording()["selection"]["plans"][tier]
+
+    def missing(plan):
+        blocks = set(_plan_blocks(plan))
+        gaps = {b for b in needed if b not in blocks}
+        leads = sum(1 for b in blocks if b.startswith("LEAD"))
+        if n_full > leads and "ALSO" not in blocks:
+            gaps.add("ALSO")
+        return gaps
+
+    scored = [(i, p, missing(p)) for i, p in enumerate(plans)]
+    fewest = min(len(g) for _, _, g in scored)
+    eligible = [(i, p) for i, p, g in scored if len(g) == fewest]
+    not_adjacent = [(i, p) for i, p in eligible if p["id"] not in avoid]
+    candidates = not_adjacent or eligible
+    chosen_id = picker.pick(f"plans.{tier}", [(i, p["id"]) for i, p in candidates])
+    plan = next(p for p in plans if p["id"] == chosen_id)
+    return plan, missing(plan)
+
+
+def _split_to(paragraphs: list, minimum: int) -> list:
+    """Split the longest paragraph until there are enough: at a block
+    boundary first, at a sentence boundary if a single block is all there is."""
+    while len(paragraphs) < minimum:
+        index = max(range(len(paragraphs)), key=lambda k: sum(len(s) for s in paragraphs[k]))
+        para = paragraphs[index]
+        if len(para) < 2:
+            break
+        cut = len(para) // 2
+        paragraphs[index:index + 1] = [para[:cut], para[cut:]]
+    return paragraphs
+
+
+def compose_note(fusion_result, layer1_result, *, section_label: str = "",
+                 audience: str = REVIEWER, old_text: str = None, new_text: str = None,
+                 change_reason: str = "", related_sections=None, proposal_sections=None,
+                 document_title: str = "", history=None, adjacent_plans=None,
+                 content_key: str = ""):
+    """The note for one section, and the choices made writing it.
+
+    ``history``: earlier choice records for this voice, most relevant first
+    (other sections of the proposal, then the user's recent notes).
+    ``adjacent_plans``: plan ids of the neighbouring changed sections, which
+    this note avoids when another plan is eligible.
+    Returns (text, choices).
+    """
+    voice = _VOICE.get(audience, "reader")
+    if old_text is None and new_text is None:
+        old_text, new_text = _texts_from_marked(getattr(layer1_result, "marked", ""))
+    ctx = _Section(fusion_result, layer1_result, section_label, old_text, new_text,
+                   change_reason, related_sections, proposal_sections, document_title)
+    key = content_key or f"{old_text}\x1f{new_text}"
+    picker = _Picker(history, key, voice)
+    writer = _Writer(picker, voice)
+    W = wording()
+
+    full, quiet = _ordered_concerns(ctx)
+    tier = significance(ctx, full, quiet)
+    shape = _shape(ctx)
+
+    blocks: dict = {}
+    change = _describe_change(ctx, writer)
+    opened_lines = shape == "lines_removed_quoted"
+    concerns = [_concern(ctx, firm, issue, writer, opened_lines=opened_lines)
+                for firm, issue in full[:MAX_CONCERNS]]
+    extra = [c for c in full[MAX_CONCERNS:]]
+
+    opening = None
+    if change:
+        # Prefer an opening that neither stacks a second colon before a
+        # change that has one, nor names the section the change already names.
+        colon = ":" in change
+        named = ctx.section in change
+
+        def fits(index, template):
+            return not ((colon and ": {change" in template)
+                        or (named and "{section}" in template))
+        slots = {"change": _uncap(change), "change_cap": _cap(change), "section": ctx.section}
+        pool = W["openings"][voice][tier]
+        if any(fits(i, v) for i, v in enumerate(pool)):
+            opening = writer.say(f"openings.{voice}.{tier}", pool, slots, allow=fits)
+        if opening is None:
+            opening = writer.say(f"openings.{voice}.{tier}", pool, slots)
+    blocks["OPEN"] = [opening] if opening else []
+    blocks["CHANGE"] = [_tidy_sentence(_cap(change) + ".")] if change else []
+
+    # Leads, why, ask, check - per concern, as far as the plan has room.
+    for n, c in enumerate(concerns, start=1):
+        blocks[f"LEAD{n}"] = [c["lead"]] if c["lead"] else []
+        blocks[f"WHY{n}"] = [c["why"]] if c["why"] else []
+        blocks[f"ASK{n}"] = [c["ask"]] if c["ask"] else []
+        blocks[f"CHECK{n}"] = [c["check"]] if c["check"] else []
+
+    quiet_lines = [q for q in (_quiet_line(ctx, i, writer) for _, i in quiet) if q]
+    blocks["QUIET"] = quiet_lines
+    blocks["HARD_FAIL"] = [s for s in (writer.say(f"hard_fails.{f.get('reason')}",
+                                                  W["hard_fails"].get(f.get("reason")), {})
+                                       for f in ctx.hard_fails) if s]
+    blocks["ADVISORIES"] = _advisory_sentences(ctx, writer)
+    blocks["CONTEXT"] = _context_sentences(ctx, concerns, writer)
+    blocks["FINE"] = _fine_sentences(ctx, concerns, quiet, writer)
+    blocks["LIMITS"] = _limit_sentences(ctx, concerns, writer)
+    blocks["ISO"] = _iso_sentences(ctx, concerns, writer)
+    blocks["UNCLEAR"] = ([writer.say(f"unclear.{voice}", W["unclear"][voice], {})]
+                         if tier == "unclear" else [])
+    blocks["CLOSE"] = [s for s in [writer.say(f"closings.{voice}.{_CLOSING_WEIGHT[tier]}",
+                                              W["closings"][voice][_CLOSING_WEIGHT[tier]], {})] if s]
+
+    needed = {b for b in ("HARD_FAIL", "ADVISORIES", "CONTEXT") if blocks[b]}
+    needed |= {f"LEAD{n}" for n in range(1, min(len(concerns), 2) + 1) if blocks.get(f"LEAD{n}")}
+    plan, gaps = _choose_plan(tier, needed, len(concerns), picker, set(adjacent_plans or []))
+    leads_in_plan = sum(1 for b in _plan_blocks(plan) if b.startswith("LEAD"))
+    also = [c["short_name"] for c in concerns[leads_in_plan:]] + [
+        W["grouping"]["short_names"].get(i["label"], i["label"]) for _, i in extra]
+    blocks["ALSO"] = ([writer.say("grouping.also_noted", W["grouping"]["also_noted"],
+                                  {"short_names": _join(also)})] if also else [])
+    blocks["ALSO"] = [s for s in blocks["ALSO"] if s]
+
+    # Quiet lines go in the looks-fine or closing paragraph when the plan
+    # has no QUIET block of its own (selection.firmness.quiet).
+    plan_blocks = _plan_blocks(plan)
+    if blocks["QUIET"] and "QUIET" not in plan_blocks:
+        target = "FINE" if "FINE" in plan_blocks else "CLOSE"
+        blocks[target] = blocks["QUIET"] + blocks[target]
+        blocks["QUIET"] = []
+
+    protected = [ctx.section, ctx.document] + [c["slots"].get(k, "") for c in concerns
+                                               for k in ("gone", "came", "other_section", "section")]
+    paragraphs = []
+    for para in plan["paragraphs"]:
+        sentences = []
+        for block in para:
+            content = list(blocks.get(block, []))
+            if not content:
+                continue
+            if block == "LEAD2":
+                content[0] = _with_transition(writer, "second_concern", content[0],
+                                              _starts_lowerable(content[0], protected))
+            elif block == "ADVISORIES" and sentences:
+                content[0] = _with_transition(writer, "add", content[0],
+                                              _starts_lowerable(content[0], protected))
+            elif block == "FINE" and sentences and (concerns or blocks["ADVISORIES"]):
+                content[0] = _with_transition(writer, "contrast", content[0],
+                                              _starts_lowerable(content[0], protected))
+            sentences += content
+        if sentences:
+            paragraphs.append(sentences)
+
+    # Blocks the chosen plan has no place for go before the closing line.
+    unplaced = [b for b in ("HARD_FAIL", "ADVISORIES", "CONTEXT", "ALSO") if b in gaps and blocks[b]]
+    if unplaced and paragraphs:
+        extra_sentences = [s for b in unplaced for s in blocks[b]]
+        last = paragraphs[-1]
+        close = blocks["CLOSE"][0] if blocks["CLOSE"] and last and last[-1] == blocks["CLOSE"][0] else None
+        if close:
+            last[-1:-1] = extra_sentences
+        else:
+            last.extend(extra_sentences)
+
+    low, _high = W["selection"]["length"][tier]
+    paragraphs = _split_to(paragraphs, low)
+    text = "\n\n".join(" ".join(p) for p in paragraphs)
+    choices = {"tier": tier, "plan": plan["id"], "voice": voice, "pools": picker.chosen,
+               "unfilled": sorted(writer.unfilled)}
+    return text, choices
+
 
 def explain(fusion_result, layer1_result, section_label: str = "",
             revision_id=None, max_sentences: int = MAX_SENTENCES,
             seed=None, audience: str = REVIEWER,
-            old_text: str = None, new_text: str = None) -> str:
-    """The assistive note for one change.
-
-    ``audience`` selects who is addressed: the drafting office (SUBMITTER)
-    or the offices and QMS staff reviewing it (REVIEWER). The findings, their
-    evidence and their clauses are identical either way.
-
-    ``old_text`` and ``new_text`` let the note say where the change is and
-    quote it. Without them it still renders, from the marked text alone.
-
-    ``revision_id``, ``seed`` and ``max_sentences`` are accepted for older
-    callers. The phrasing is fixed, so there is nothing left to seed.
-    """
-    to_submitter = audience == SUBMITTER
-    features = dict(getattr(layer1_result, "features", {}) or {})
-    if old_text is None and new_text is None:
-        old_text, new_text = _texts_from_marked(getattr(layer1_result, "marked", ""))
-    change = _Change(old_text or "", new_text or "")
-
-    verdict = fusion_result.verdict
-    issues = _ordered(list(fusion_result.issues or []), features)
-    labels = {i["label"] for i in issues}
-    # The verdict decides emphasis only: when the fused reading is that the
-    # change needs work, every concern gets its question and what to check;
-    # otherwise only the first does.
-    full_detail = verdict in ("reject", "needs_revision")
-
-    items, seen = [], set()
-    for fail in getattr(layer1_result, "hard_fails", []) or []:
-        items.append(_hard_fail_item(fail, seen))
-    shown, rest = issues[:MAX_CONCERNS], issues[MAX_CONCERNS:]
-    for index, issue in enumerate(shown):
-        if issue.get("label") not in _WHY:
-            continue
-        items.append(_concern_item(
-            issue, change, features, full=full_detail or index == 0,
-            to_submitter=to_submitter, seen=seen,
-        ))
-    if rest:
-        named = _join([_SHORT_NAME.get(i["label"], i["label"].replace("_", " "))
-                       for i in rest[:3]])
-        items.append([f"Also noted: {named}."])
-    for advisory in getattr(fusion_result, "advisories", None) or []:
-        item = _advisory_item(advisory, seen)
-        if item:
-            items.append(item)
-
-    parts = [[CHANGED_YOU if to_submitter else CHANGED,
-              _describe_change(change, layer1_result, section_label, features)]]
-
-    no_concerns = not items
-    if items:
-        block = [LOOK_AT]
-        for item in items:
-            block.append("- " + item[0])
-            block.extend("  " + line for line in item[1:])
-        parts.append(block)
-    elif verdict != "approve":
-        # Nothing passed a threshold, yet the fused reading was not settled.
-        # Said once, in words, without the label.
-        parts.append([LOOK_AT,
-                      "No specific concern passed its threshold, but the check's "
-                      "overall reading of this change was less settled than that "
-                      "suggests. It is worth reading once more against what the "
-                      "section is for."])
-        no_concerns = False
-
-    fine = _looks_fine(layer1_result, labels, change, features, no_concerns)
-    if fine:
-        parts.append([LOOKS_FINE] + fine)
-
-    cannot = _cannot_tell([i["label"] for i in shown if not _doubt(i, features)],
-                          change, layer1_result)
-    if cannot:
-        parts.append([CANNOT_TELL] + ["- " + line for line in cannot])
-
-    return "\n\n".join("\n".join(part) for part in parts)
+            old_text: str = None, new_text: str = None, **context) -> str:
+    """The note alone, for callers that do not keep the choices."""
+    text, _ = compose_note(fusion_result, layer1_result, section_label=section_label,
+                           audience=audience, old_text=old_text, new_text=new_text,
+                           content_key=str(seed or ""), **context)
+    return text
 
 
 def _texts_from_marked(marked: str):
-    """Rebuild approximate old and new texts from Layer 1's marked text, for
-    callers that do not pass the originals."""
     old, new, mode = [], [], None
     for token in (marked or "").split():
         if token in ("[DEL]", "[INS]"):
@@ -924,18 +1265,107 @@ def _texts_from_marked(marked: str):
 
 
 def not_assessed_message(section_label: str = "") -> str:
-    """Decision 9: List of Forms sections are not assessed by the model."""
-    what = section_label or "This section"
-    return (f"Not checked: {what} is a list of forms rather than a requirement, "
-            "so the check does not assess it.")
+    """List of Forms sections are not assessed by the model."""
+    return _fill(wording()["not_checked"]["list_of_forms"],
+                 {"section": section_label or "This section"}) or ""
 
 
-# -- notes written before this format -------------------------------------
+# -- the proposal note ----------------------------------------------------------------------------
 
-# The openings and closings the previous Layer 4 wrote. Stored snapshots are
-# never re-run, so notes saved before this format still carry them; the API
-# removes them on the way out, so no screen shows a verdict. The stored text
-# itself is left as it was.
+_CONCERN_TIERS = {"blocking", "serious", "notable", "tentative"}
+_TIER_RANK = {t: i for i, t in enumerate(TIERS)}
+
+
+def compose_proposal_note(sections: list, *, audience: str = REVIEWER, history=None,
+                          content_key: str = ""):
+    """The proposal-level note, composed from the stored section checks.
+
+    ``sections``: one dict per changed section, in document order, with
+    ``label``, ``old_text``, ``new_text``, ``tier`` (from the stored
+    choices), ``issues``, ``advisories``, ``flags`` (Layer 1's, from the
+    stored trace) and ``related`` [(label, current text)] of the sections its
+    check retrieved. Nothing is re-run. Returns (text, choices).
+    """
+    voice = _VOICE.get(audience, "reader")
+    picker = _Picker(history, content_key or "|".join(s.get("label", "") for s in sections), voice)
+    writer = _Writer(picker, voice)
+    words = wording()["proposal_note"]
+    labels = [s["label"] for s in sections]
+    with_concerns = [s["label"] for s in sections if s.get("tier") in _CONCERN_TIERS]
+    kind = "none" if not with_concerns else "all" if len(with_concerns) == len(sections) else "some"
+    concern_sentence = _fill(words["scope"]["concern_sections_sentence"][kind],
+                             {"concern_sections": _join(with_concerns)}) or ""
+    scope = writer.say(f"proposal_note.scope.{voice}", words["scope"][voice], {
+        "n_sections": _number_word(len(sections)), "s": "" if len(sections) == 1 else "s",
+        "sections_list": _join(labels), "concern_sections_sentence": concern_sentence})
+    paragraphs = [[scope]] if scope else []
+
+    # Cross-section: the same figure changed consistently; a conflict with a
+    # section left out of the proposal.
+    cross = []
+    moves = {}
+    for s in sections:
+        flag = next((f for f in s.get("flags") or [] if f.get("label") == "numeric_changed"), None)
+        if flag:
+            for value in flag.get("from_values") or []:
+                moves.setdefault(value, []).append((s, list(flag.get("to_values") or [])))
+    for value, hits in moves.items():
+        if len(hits) < 2:
+            continue
+        pairs = [to for _, to in hits if len(to) == 1]
+        target = pairs[0][0] if pairs else ""
+        if target and all(target in to and value.lower() not in (s["new_text"] or "").lower()
+                          for s, to in hits):
+            text = writer.say("proposal_note.cross_section.consistent_figure",
+                              words["cross_section"]["consistent_figure"],
+                              {"sections_list": _join([s["label"] for s, _ in hits]),
+                               "from_text": _quote(value), "to_text": _quote(target)})
+            if text:
+                cross.append(text)
+            break
+    changed = set(labels)
+    for s in sections:
+        flags = [f for f in s.get("flags") or [] if f.get("label") == "contradicts_manual"]
+        for f in flags:
+            value = str(((f.get("conflicts") or [{}])[0]).get("value") or "")
+            for label, text_ in s.get("related") or []:
+                if (label not in changed and value
+                        and value.lower() in _WS_RE.sub(" ", text_ or "").lower()):
+                    text = writer.say("proposal_note.cross_section.unchanged_conflict",
+                                      words["cross_section"]["unchanged_conflict"],
+                                      {"other_section": label, "value": value})
+                    if text and text not in cross:
+                        cross.append(text)
+    if cross:
+        paragraphs.append(cross)
+
+    # The reason advisory once, and the strongest single point.
+    last = []
+    if any(a.get("label") == "vague_change_reason" for s in sections for a in s.get("advisories") or []):
+        text = writer.say(f"advisories.vague_change_reason.{voice}",
+                          wording()["advisories"]["vague_change_reason"][voice], {})
+        if text:
+            last.append(text)
+    ranked = sorted((s for s in sections if s.get("tier") in _CONCERN_TIERS),
+                    key=lambda s: _TIER_RANK.get(s.get("tier"), 99))
+    if ranked:
+        top = ranked[0]
+        first = next((i for i in top.get("issues") or []
+                      if i.get("label") in wording()["grouping"]["short_names"]), None)
+        if first:
+            point = f"{wording()['grouping']['short_names'][first['label']]} in {top['label']}"
+            text = writer.say(f"proposal_note.strongest.{voice}", words["strongest"][voice],
+                              {"top_point": point})
+            if text:
+                last.append(text)
+    if last:
+        paragraphs.append(last)
+    text = "\n\n".join(" ".join(p) for p in paragraphs)
+    return text, {"voice": voice, "pools": picker.chosen, "unfilled": sorted(writer.unfilled)}
+
+
+# -- notes written before this format -------------------------------------------------------------
+
 _LEGACY_VERDICT_SENTENCES = (
     "This revision looks acceptable.",
     "No blocking problems were found in this revision.",
@@ -970,17 +1400,15 @@ _LEGACY_WITH_CONCERNS_RE = re.compile(
 
 
 def is_note(text: str) -> bool:
-    """True for a note in this format, as opposed to an older paragraph."""
+    """True for a note in the heading format of 2026-09-29. Current notes
+    are recognised by their stored choices, not by their text."""
     first = (text or "").lstrip().split("\n", 1)[0].strip()
     return first in NOTE_HEADINGS or (text or "").startswith("Not checked:")
 
 
 def without_legacy_verdict(text: str) -> str:
-    """An older explanation with its verdict sentences taken out.
-
-    Only exact sentences the previous writer produced are removed, so a note
-    in the current format, or any other text, passes through unchanged.
-    """
+    """An older explanation with its verdict sentences taken out. Only exact
+    sentences the first writer produced are removed."""
     if not text or is_note(text):
         return text or ""
     out = _LEGACY_WITH_CONCERNS_RE.sub("", text)

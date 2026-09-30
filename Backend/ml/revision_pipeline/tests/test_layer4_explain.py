@@ -1,10 +1,9 @@
-"""Tests for Layer 4: the assistive note.
+"""Tests for Layer 4: the note written from layer4_wording.yaml.
 
-What matters, and each has tests here: the note never states a verdict; it
-is deterministic; it is grounded in what Layers 1 and 3 found and in the two
-texts; firmness is carried by wording; the verdict decides emphasis only;
-and the ISO clause file is complete, consistent with the stored clause, and
-framed as relevance.
+What holds for every note: no verdict words; no ".." or " ."; ISO wording
+as relevance, never judgement; every slot filled; prose paragraphs only,
+as many as the tier allows; the same inputs and rotation history give the
+same note; and rotation moves away from wording already used.
 """
 
 import re
@@ -15,10 +14,9 @@ from revision_pipeline import config
 from revision_pipeline.layer1_rules import run_layer1
 from revision_pipeline.layer3_fusion import FusionResult, run_layer3
 from revision_pipeline.layer4_explain import (
-    CANNOT_TELL, CHANGED, CHANGED_YOU, LOOK_AT, LOOKS_FINE, MAX_CONCERNS,
-    NOTE_HEADINGS, REVIEWER, SUBMITTER, _ASK, _CHECK, _MODEL_ONLY, _WHY,
-    _iso, clause_for, explain, is_note, not_assessed_message,
-    without_legacy_verdict,
+    DRAFTER_ONLY, NOTE_HEADINGS, REVIEWER, SUBMITTER, TIERS, _Change,
+    clause_for, compose_note, compose_proposal_note, explain, is_note,
+    not_assessed_message, without_legacy_verdict, wording,
 )
 
 REASON = {"change_reason": "Updated after the August 2026 management review."}
@@ -31,15 +29,6 @@ POLICIES = (
     "3.4 Credentials will not be released if fees are unpaid."
 )
 
-TABLE = (
-    "| Responsibility | Activity |\n"
-    "| --- | --- |\n"
-    "| Accountant | 1. Generates the Schedule of Accounts Receivable. |\n"
-    "| | 2. Forwards the demand letters to the University President for signature. |\n"
-    "| University President | 3. Signs the Demand Letters. |\n"
-    "| Records Management Staff | 4. Sends the Demand Letters to the debtors. |"
-)
-
 VERDICT_WORDS = re.compile(
     r"\b(approve[ds]?|approval|reject(?:ed|s)?|needs[ _]revision|verdict|"
     r"confidence|turned down|ready to submit|you can still submit)\b",
@@ -47,344 +36,317 @@ VERDICT_WORDS = re.compile(
 )
 
 
-def note_for(old, new, verdict=None, issues=None, audience=SUBMITTER,
-             section="3.0 POLICIES", reason=REASON, advisories=None):
-    """Layer 1 on the real texts; Layer 3's verdict and issues as given, or
-    as the rules-only fusion produces them when not given."""
-    layer1 = run_layer1(old, new, reason)
-    fusion = run_layer3(layer1, agreeing_model(layer1))
-    if verdict is not None or issues is not None:
-        fusion = FusionResult(
-            verdict=verdict or fusion.verdict,
-            confidence=0.9,
-            issues=fusion.issues if issues is None else issues,
-            advisories=fusion.advisories if advisories is None else advisories,
-        )
-    return explain(fusion, layer1, section_label=section, audience=audience,
-                   old_text=old, new_text=new), layer1, fusion
-
-
 def agreeing_model(layer1):
-    """Layer 2 output that agrees with every rule flag, as the real pipeline
-    produces when the model sees the same change. Without it, Layer 3 runs
-    rules-only and its issue policy keeps only the most precise labels."""
+    """Layer 2 output that agrees with every rule flag."""
     flagged = {f["label"] for f in layer1.flags}
-    return {
-        "verdict_probs": [0.1, 0.2, 0.7],
-        "issue_probs": [0.99 if label in flagged else 0.01
-                        for label in config.ISSUE_LABELS],
-    }
-
-
-def fused_issues(old, new):
-    layer1 = run_layer1(old, new, REASON)
-    return run_layer3(layer1, agreeing_model(layer1)).issues
-
-
-def parts(note):
-    """The note's parts keyed by heading, in the documented text format."""
-    out = {}
-    for block in note.split("\n\n"):
-        lines = block.split("\n")
-        assert lines[0] in NOTE_HEADINGS, f"unknown heading: {lines[0]!r}"
-        out[lines[0]] = lines[1:]
-    return out
+    return {"verdict_probs": [0.1, 0.2, 0.7],
+            "issue_probs": [0.99 if label in flagged else 0.01 for label in config.ISSUE_LABELS]}
 
 
 def model_issue(label, confidence=0.95):
     return {"label": label, "source": "model", "confidence": confidence,
-            "severity": config.SEVERITY[label],
-            "clause": config.ISSUE_CLAUSE[label], "evidence": ""}
-
-
-# -- no verdict, ever --------------------------------------------------------
-
-@pytest.mark.parametrize("verdict", config.VERDICTS)
-@pytest.mark.parametrize("audience", [SUBMITTER, REVIEWER])
-def test_no_note_states_a_verdict(verdict, audience):
-    for old, new in [
-        (POLICIES, POLICIES.replace("shall be handled", "may be handled")),
-        (POLICIES, POLICIES.replace("365 days", "180 days")),
-        (POLICIES, POLICIES.replace("timely manner", "timely manner,")),
-        (POLICIES, POLICIES + "\n3.5 Receipts are issued for every payment."),
-    ]:
-        note, _, _ = note_for(old, new, verdict=verdict, audience=audience)
-        assert not VERDICT_WORDS.search(note), note
-
-
-def test_a_clean_change_with_an_unsettled_verdict_says_so_without_the_label():
-    note, _, _ = note_for(POLICIES, POLICIES + "\n3.5 Receipts are issued.",
-                          verdict="reject", issues=[])
-    assert "less settled" in parts(note)[LOOK_AT][0]
-    assert not VERDICT_WORDS.search(note)
-
-
-def test_a_clean_change_with_no_concern_says_so_honestly():
-    note, _, _ = note_for(POLICIES, POLICIES + "\n3.5 Receipts are issued.",
-                          verdict="approve", issues=[])
-    sections = parts(note)
-    assert LOOK_AT not in sections
-    assert sections[LOOKS_FINE][0] == "No specific concern passed its threshold."
-    # ...and still describes the change.
-    assert "Receipts are issued" in sections[CHANGED_YOU][0]
-
-
-# -- format and determinism ------------------------------------------------
-
-def test_the_same_change_always_produces_the_same_note():
-    new = POLICIES.replace("shall be handled", "may be handled")
-    assert note_for(POLICIES, new)[0] == note_for(POLICIES, new)[0]
-
-
-def test_parts_come_in_a_fixed_order():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365 days", "180 days"))
-    headings = [block.split("\n")[0] for block in note.split("\n\n")]
-    order = [CHANGED_YOU, LOOK_AT, LOOKS_FINE, CANNOT_TELL]
-    assert headings == [h for h in order if h in headings]
-
-
-def test_the_drafter_and_the_reviewers_are_addressed_differently():
-    new = POLICIES.replace("shall be handled", "may be handled")
-    drafter = parts(note_for(POLICIES, new, audience=SUBMITTER)[0])
-    reviewer = parts(note_for(POLICIES, new, audience=REVIEWER)[0])
-    assert CHANGED_YOU in drafter and CHANGED in reviewer
-    assert any(l.strip().startswith("Expect to be asked") for l in drafter[LOOK_AT])
-    assert any(l.strip().startswith("Worth asking the drafting office")
-               for l in reviewer[LOOK_AT])
-    # The findings themselves are the same.
-    assert drafter[LOOK_AT][0] == reviewer[LOOK_AT][0]
-
-
-def test_is_note_recognises_the_format():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365", "180"))
-    assert is_note(note)
-    assert not is_note("This revision looks acceptable. The change is cosmetic.")
-
-
-# -- what changed ------------------------------------------------------------
-
-def test_a_small_edit_is_quoted_word_for_word_and_placed():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("shall be handled", "may be handled"))
-    line = parts(note)[CHANGED_YOU][0]
-    assert "at 3.1" in line
-    assert "“personal information shall be handled”" in line
-    assert "“personal information may be handled”" in line
-
-
-def test_nearby_edits_on_one_line_are_quoted_as_one():
-    new = POLICIES.replace("more than 365 days", "more than 180 days, or 6 months,")
-    line = parts(note_for(POLICIES, new)[0])[CHANGED_YOU][0]
-    assert line.count("→") == 1, line
-
-
-def test_an_added_sentence_is_quoted_in_full():
-    new = POLICIES.replace(
-        "considered past due.",
-        "considered past due. The age of an account is counted from the date it was recorded.")
-    line = parts(note_for(POLICIES, new)[0])[CHANGED_YOU][0]
-    assert line.startswith("An added sentence in 3.0 POLICIES, at 3.3")
-    assert "“The age of an account is counted from the date it was recorded.”" in line
-    assert not line.endswith(".”.")
-
-
-def test_removed_table_rows_are_quoted_as_rows_not_pipes():
-    new = "\n".join(l for l in TABLE.splitlines() if "2. Forwards" not in l)
-    note, _, _ = note_for(TABLE, new, section="4.5 Other Debtors")
-    line = parts(note)[CHANGED_YOU][0]
-    assert "“2. Forwards the demand letters" in line
-    assert "| |" not in note
-
-
-def test_a_large_change_gives_its_size_rather_than_quoting():
-    new = "3.1 Records are handled under the Data Privacy Act."
-    line = parts(note_for(POLICIES, new)[0])[CHANGED_YOU][0]
-    assert line.startswith("A large change")
-    assert "words removed" in line
-
-
-def test_a_punctuation_fix_is_named_and_kept_short():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("timely manner.", "timely manner;"))
-    sections = parts(note)
-    assert sections[CHANGED_YOU][0].startswith("A punctuation fix")
-    assert CANNOT_TELL not in sections
-    assert any("spelling, punctuation or layout only" in l for l in sections[LOOKS_FINE])
-
-
-# -- concerns: grounded, placed, firm through wording ----------------------
-
-def test_a_rule_finding_is_stated_plainly_with_where_and_why():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("shall be handled", "may be handled"))
-    lead = parts(note)[LOOK_AT][0]
-    assert lead.startswith("- At 3.1, “shall” became “may”")
-    assert _WHY["modal_weakened"] in lead
-    assert "suspect" not in lead
-
-
-def test_a_figure_names_both_values():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365 days", "180 days"))
-    assert "“365 days” became “180 days”" in parts(note)[LOOK_AT][0]
-
-
-def test_a_removed_negation_is_named():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("will not be released",
-                                                       "will be released"))
-    assert "At 3.4, “not” was removed" in note
-
-
-def test_a_reassignment_names_who_left_and_who_arrived():
-    new = TABLE.replace("| Records Management Staff | 4.", "| Accounting Staff-4 | 4.")
-    note, _, fusion = note_for(TABLE, new, section="4.5 Other Debtors")
-    assert "responsibility_changed" in {i["label"] for i in fusion.issues}
-    assert ("Records Management Staff is no longer named; Accounting Staff-4 is "
-            "named instead") in note
-
-
-def test_a_model_only_finding_is_attributed_and_hedged_by_confidence():
-    for confidence, phrase in [(0.95, "strongly suspects"), (0.75, "suspects"),
-                               (0.55, "sees a possibility")]:
-        note, _, _ = note_for(
-            POLICIES, POLICIES + "\n3.5 Receipts are issued for every payment.",
-            verdict="needs_revision",
-            issues=[model_issue("out_of_scope_content", confidence)])
-        assert f"The check's model {phrase}" in parts(note)[LOOK_AT][0]
-
-
-def test_a_model_finding_the_rules_contradict_says_it_may_be_a_false_lead():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("timely manner", "prompt manner"),
-                          verdict="reject", issues=[model_issue("negation_changed")])
-    item = parts(note)[LOOK_AT]
-    assert "no “not”, “no” or “never” was added or removed" in item[0]
-    assert "may be a false lead" in item[0]
-    # A likely false lead gets no question, no checklist and no can't-tell line.
-    assert not any("Expect to be asked" in l for l in item)
-    assert CANNOT_TELL not in parts(note) or not any(
-        "law or policy" in l for l in parts(note)[CANNOT_TELL])
-
-
-def test_corroborated_concerns_come_before_doubtful_ones():
-    new = POLICIES.replace("365 days", "180 days")
-    note, _, fusion = note_for(POLICIES, new, verdict="reject",
-                               issues=[model_issue("negation_changed")]
-                               + fused_issues(POLICIES, new))
-    items = [l for l in parts(note)[LOOK_AT] if l.startswith("- ")]
-    assert "a figure changed" in items[0]
-    assert "false lead" in items[-1]
-
-
-# -- the verdict decides emphasis only -------------------------------------
-
-def two_concerns():
-    new = POLICIES.replace("shall be handled", "may be handled").replace("365", "180")
-    return new, fused_issues(POLICIES, new)
-
-
-def test_when_the_change_needs_work_every_concern_gets_its_question():
-    new, issues = two_concerns()
-    assert len(issues) >= 2
-    note, _, _ = note_for(POLICIES, new, verdict="reject", issues=issues)
-    asks = [l for l in parts(note)[LOOK_AT] if "Expect to be asked" in l]
-    assert len(asks) == len(issues)
-
-
-def test_otherwise_only_the_first_concern_does():
-    new, issues = two_concerns()
-    note, _, _ = note_for(POLICIES, new, verdict="approve", issues=issues)
-    asks = [l for l in parts(note)[LOOK_AT] if "Expect to be asked" in l]
-    assert len(asks) == 1
-
-
-def test_leftover_concerns_are_named_not_dropped():
-    issues = [model_issue(label) for label in config.ISSUE_LABELS[:MAX_CONCERNS + 2]]
-    note, _, _ = note_for(POLICIES, POLICIES + "\n3.5 Extra.", verdict="reject",
-                          issues=issues)
-    assert any(l.startswith("- Also noted:") for l in parts(note)[LOOK_AT])
-
-
-# -- ISO clauses: relevance, never violation -------------------------------
-
-def test_a_clause_is_given_in_full_once_then_by_number():
-    new, issues = two_concerns()
-    note, _, _ = note_for(POLICIES, new, verdict="reject", issues=issues)
-    assert note.count("clause 7.5.3, which asks that") == 1
-    assert "This also touches clause 7.5.3." in note
-
-
-def test_clauses_are_framed_as_relevance():
-    new, issues = two_concerns()
-    note, _, _ = note_for(POLICIES, new, verdict="reject", issues=issues)
-    assert "This touches ISO 9001:2015 clause" in note
-    assert not re.search(r"violat|breach|non-?conform|fails? (the )?clause", note, re.I)
-
-
-def test_the_clause_file_covers_every_issue_and_matches_the_stored_clause():
-    """The note's clause and the one stamped on each stored issue must agree."""
-    for label in config.ISSUE_LABELS:
-        assert clause_for(label) == config.ISSUE_CLAUSE[label], label
-
-
-def test_every_clause_used_has_a_paraphrase_that_completes_the_sentence():
-    data = _iso()
-    for label, clause in data["concerns"].items():
-        asks = data["clauses"][clause]["asks_that"]
-        assert asks and asks[0].islower() and not asks.endswith("."), (label, asks)
-
-
-def test_the_clause_file_never_speaks_of_violation():
-    text = str(_iso())
-    assert not re.search(r"violat|breach|shall ", text, re.I)
-
-
-def test_a_missing_reason_is_named_with_clause_6_3():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365", "180"),
-                          reason={"change_reason": ""})
-    look = parts(note)[LOOK_AT]
-    assert look[0] == ("- No reason for the change was recorded. The reason is the "
-                       "record that the change was planned, and the first thing a "
-                       "reviewer or auditor reads.")
-    assert "clause 6.3" in look[1]
-
-
-# -- every label renders ----------------------------------------------------
-
-@pytest.mark.parametrize("label", config.ISSUE_LABELS)
-def test_every_label_has_its_wording(label):
-    for table in (_WHY, _ASK, _CHECK, _MODEL_ONLY):
-        assert table.get(label), label
-
-
-@pytest.mark.parametrize("label", config.ISSUE_LABELS)
-@pytest.mark.parametrize("source", ["rule", "model"])
-def test_every_label_renders_without_template_debris(label, source):
-    issue = model_issue(label)
-    issue.update({"source": source, "evidence": "" if source == "model" else "the word",
-                  "ratio": 0.55})
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365", "180"),
-                          verdict="reject", issues=[issue])
+            "severity": config.SEVERITY[label], "clause": config.ISSUE_CLAUSE[label],
+            "evidence": ""}
+
+
+def compose(old, new, *, verdict=None, issues=None, audience=SUBMITTER, reason=REASON,
+            section="3.0 POLICIES", history=None, adjacent=None, key="k", **context):
+    # Layer 1 sees the retrieved texts, as in the pipeline; Layer 4 also
+    # sees their labels.
+    related = context.get("related_sections") or []
+    layer1 = run_layer1(old, new, reason, related_sections=[text for _, text in related])
+    fusion = run_layer3(layer1, agreeing_model(layer1))
+    if verdict is not None or issues is not None:
+        fusion = FusionResult(verdict=verdict or fusion.verdict, confidence=0.9,
+                              issues=fusion.issues if issues is None else issues,
+                              advisories=fusion.advisories)
+    return compose_note(fusion, layer1, section_label=section, audience=audience,
+                        old_text=old, new_text=new, change_reason=reason["change_reason"],
+                        history=history, adjacent_plans=adjacent, content_key=key, **context)
+
+
+# One edit per tier, as (tier, kwargs for compose).
+TIER_CASES = {
+    "trivial": dict(old=POLICIES, new=POLICIES.replace("timely manner", "timely manner,")),
+    "plain": dict(old=POLICIES, new=POLICIES.replace("Accounts Receivable should",
+                                                     "All Accounts Receivable should"),
+                  verdict="approve", issues=[]),
+    "unclear": dict(old=POLICIES, new=POLICIES.replace("Accounts Receivable should",
+                                                       "All Accounts Receivable should"),
+                    verdict="needs_revision", issues=[]),
+    "minor": dict(old=POLICIES, new=POLICIES.replace("in a timely manner", "in a timly mannerz"),
+                  verdict="needs_revision", issues=[]),
+    "tentative": dict(old=POLICIES,
+                      new=POLICIES + "\n3.5 The Cashier keeps a copy of each receipt for the files.",
+                      verdict="reject", issues=[model_issue("out_of_scope_content")]),
+    "notable": dict(old=POLICIES, new=POLICIES.replace("shall be handled", "may be handled"),
+                    verdict="needs_revision"),
+    "serious": dict(old=POLICIES, new=POLICIES.replace("will not be released", "will be released"),
+                    verdict="reject"),
+    "blocking": dict(old=POLICIES, new=POLICIES.replace("365", "180"),
+                     reason={"change_reason": ""}),
+}
+
+
+def all_notes():
+    for tier, case in TIER_CASES.items():
+        for audience in (SUBMITTER, REVIEWER):
+            yield tier, audience, *compose(**case, audience=audience)
+
+
+NOTES = list(all_notes())
+IDS = [f"{t}-{a}" for t, a, _, _ in NOTES]
+
+
+# -- the tier cases really are each tier ----------------------------------------
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_each_tier_case_reaches_its_tier(tier):
+    _, choices = compose(**TIER_CASES[tier])
+    assert choices["tier"] == tier
+
+
+# -- what every note must satisfy ----------------------------------------------------
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_no_note_states_a_verdict(tier, audience, note, choices):
+    assert not VERDICT_WORDS.search(note), VERDICT_WORDS.search(note)
+
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_no_double_stop_or_space_before_a_stop(tier, audience, note, choices):
+    assert ".." not in note.replace("…", "")
+    assert " ." not in note
+
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_every_slot_is_filled(tier, audience, note, choices):
     assert "{" not in note and "}" not in note
-    assert "  ." not in note and ".." not in note.replace("…", "")
-    assert "This touches" in note or "This also touches" in note
+    assert "“”" not in note
+    assert choices["unfilled"] == [], choices["unfilled"]
 
 
-# -- what looks fine only repeats what the rules counted -------------------
-
-def test_what_looks_fine_never_contradicts_a_concern():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365 days", "180 days"))
-    fine = " ".join(parts(note).get(LOOKS_FINE, []))
-    assert "figure" not in fine
-
-
-def test_an_addition_is_acknowledged_as_removing_nothing():
-    note, _, _ = note_for(POLICIES, POLICIES + "\n3.5 Receipts are issued.",
-                          verdict="approve", issues=[])
-    assert "Nothing was removed." in parts(note)[LOOKS_FINE]
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_prose_paragraphs_only(tier, audience, note, choices):
+    for paragraph in note.split("\n\n"):
+        assert paragraph and "\n" not in paragraph
+        assert not paragraph.startswith(("- ", "  "))
+        assert paragraph.strip() not in NOTE_HEADINGS
 
 
-# -- forms, and notes written before this format ---------------------------
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_paragraph_count_is_within_the_tier(tier, audience, note, choices):
+    low, high = wording()["selection"]["length"][tier]
+    assert low <= len(note.split("\n\n")) <= high
+
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_the_reader_is_never_addressed_as_the_drafter(tier, audience, note, choices):
+    if audience == REVIEWER:
+        assert not re.search(r"\byou've\b|\byour reason\b|\byou gave\b", note, re.I)
+
+
+# -- ISO: relevance, never judgement ---------------------------------------------------
+
+def test_iso_sentences_speak_of_relevance_only():
+    iso = wording()["iso"]
+    for template in iso["relevance_first"] + iso["relevance_again"]:
+        assert not re.search(r"violat|breach|non-?conform|fail", template, re.I)
+    for paraphrases in iso["asks_that"].values():
+        for text in paraphrases:
+            assert not re.search(r"violat|breach|shall ", text, re.I)
+
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_iso_is_mentioned_at_most_twice(tier, audience, note, choices):
+    assert len(re.findall(r"clause \d", note)) <= 2
+
+
+def test_the_clause_per_label_matches_the_stored_clause():
+    concern_clause = wording()["iso"]["concern_clause"]
+    for label, clause in config.ISSUE_CLAUSE.items():
+        assert str(concern_clause[label]) == clause
+    assert clause_for("adds_requirement") == "6.3"
+    for label in ("unknown_word", "inconsistent_terms", "unfinished_sentence"):
+        assert clause_for(label) == "7.5.3"
+
+
+def test_iso_is_not_mentioned_for_a_quiet_or_spelling_only_note():
+    note, choices = compose(**TIER_CASES["minor"])
+    assert "clause" not in note
+
+
+# -- determinism and rotation --------------------------------------------------------------
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_same_inputs_and_history_give_the_same_note(tier):
+    first = compose(**TIER_CASES[tier])
+    again = compose(**TIER_CASES[tier])
+    assert first == again
+
+
+def test_rotation_moves_away_from_wording_already_used():
+    case = TIER_CASES["serious"]
+    first_note, first = compose(**case)
+    second_note, second = compose(**case, history=[first])
+    assert second_note != first_note
+    pool = next(p for p in first["pools"] if p.startswith("openings."))
+    assert second["pools"][pool] != first["pools"][pool]
+
+
+def test_openings_are_not_reused_in_a_proposal_while_unused_ones_remain():
+    case = TIER_CASES["serious"]
+    pool = f"openings.drafter.serious"
+    size = len(wording()["openings"]["drafter"]["serious"])
+    history, used = [], []
+    for n in range(size):
+        _, choices = compose(**case, history=list(reversed(history)), key=f"s{n}")
+        used += choices["pools"][pool]
+        history.append(choices)
+    assert sorted(used) == list(range(size))
+
+
+def test_neighbouring_sections_do_not_share_a_plan():
+    case = TIER_CASES["serious"]
+    _, first = compose(**case)
+    _, second = compose(**case, adjacent=[first["plan"]], key="other")
+    assert second["plan"] != first["plan"]
+
+
+def test_the_choices_record_tier_plan_and_pools():
+    _, choices = compose(**TIER_CASES["notable"])
+    assert choices["tier"] == "notable"
+    assert choices["plan"] in {p["id"] for p in wording()["selection"]["plans"]["notable"]}
+    assert choices["pools"] and all(isinstance(v, list) for v in choices["pools"].values())
+
+
+# -- the wording file itself ---------------------------------------------------------------
+
+def test_the_file_never_uses_a_verdict_word():
+    def strings(node):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                if key not in ("meta", "slots", "selection"):
+                    yield from strings(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from strings(value)
+    for text in strings(wording()):
+        assert not VERDICT_WORDS.search(text), text
+
+
+def test_drafter_only_variants_still_exist_in_the_file():
+    texts = set()
+
+    def walk(node):
+        if isinstance(node, str):
+            texts.add(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(wording())
+    for _, text in DRAFTER_ONLY:
+        assert text in texts, text
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_every_tier_has_plans_openings_and_a_length(tier):
+    w = wording()
+    assert w["selection"]["plans"][tier]
+    assert w["selection"]["length"][tier]
+    assert w["openings"]["drafter"][tier] and w["openings"]["reader"][tier]
+
+
+# -- quoting ------------------------------------------------------------------------------------
+
+def test_an_item_number_is_never_cut_when_quoted():
+    old = "1.1 To provide guidelines and procedures of accounting services."
+    new = "1.1 provide guidelines and procedures of accounting services."
+    hunk = _Change(old, new).hunks[0]
+    assert hunk["old_ctx"].startswith("1.1 To")
+    assert hunk["new_ctx"].startswith("1.1 provide")
+
+
+def test_both_quotes_carry_the_same_context():
+    old = "The Summary shows the said the accountability will be charged."
+    new = "The Summary shows the said accountability will be charged."
+    hunk = _Change(old, new).hunks[0]
+    assert hunk["old_ctx"] == "the said the accountability will"
+    assert hunk["new_ctx"] == "the said accountability will"
+
+
+# -- context passed only to Layer 4 -------------------------------------------------------------
+
+def test_a_conflict_is_named_with_the_section_that_still_states_it():
+    old = POLICIES
+    new = POLICIES.replace("365 days", "180 days")
+    related = [("4.5 Accounts Receivable from Other Debtors",
+                "| Accountant | 2. Sort those accounts with age of over 365 days. |")]
+    note, _ = compose(old, new, verdict="reject", related_sections=related)
+    assert "4.5 Accounts Receivable from Other Debtors" in note
+
+
+def test_a_consistent_change_in_the_same_proposal_is_said_to_match():
+    old = POLICIES
+    new = POLICIES.replace("365 days", "180 days")
+    label = "4.5 Accounts Receivable from Other Debtors"
+    related = [(label, "| Accountant | 2. Sort those accounts with age of over 365 days. |")]
+    proposal = [{"label": label, "old_text": related[0][1],
+                 "new_text": related[0][1].replace("365", "180")}]
+    note, _ = compose(old, new, verdict="reject", related_sections=related,
+                      proposal_sections=proposal)
+    assert label in note and "still says" not in note
+
+
+# -- the proposal note --------------------------------------------------------------------------
+
+def _record(label, old, new, tier, flags=(), issues=(), related=()):
+    return {"label": label, "old_text": old, "new_text": new, "tier": tier,
+            "issues": list(issues), "advisories": [], "flags": list(flags),
+            "related": list(related)}
+
+
+def test_the_proposal_note_names_the_sections_and_a_consistent_figure():
+    flag_a = {"label": "numeric_changed", "from_values": ["1 year", "365 days"],
+              "to_values": ["180 days", "6 months"]}
+    flag_b = {"label": "numeric_changed", "from_values": ["1 year"], "to_values": ["6 months"]}
+    sections = [
+        _record("3.0 POLICIES", "over 1 year", "over 6 months", "serious", [flag_a],
+                [{"label": "numeric_changed"}]),
+        _record("4.5 Other Debtors", "aging over 1 year", "aging over 6 months", "notable",
+                [flag_b], [{"label": "numeric_changed"}]),
+    ]
+    for audience in (SUBMITTER, REVIEWER):
+        note, choices = compose_proposal_note(sections, audience=audience, content_key="p")
+        assert "3.0 POLICIES" in note and "4.5 Other Debtors" in note
+        assert "“1 year”" in note and "“6 months”" in note
+        assert not VERDICT_WORDS.search(note) and "{" not in note
+        assert 2 <= len(note.split("\n\n")) <= 3
+
+
+def test_the_proposal_note_is_deterministic():
+    sections = [_record("2.0 SCOPE", "a", "a,", "trivial"),
+                _record("4.5 Other", "b c", "b", "serious", issues=[{"label": "requirement_removed"}])]
+    assert compose_proposal_note(sections, content_key="x") == \
+        compose_proposal_note(sections, content_key="x")
+
+
+# -- older notes, and the forms message ---------------------------------------------------------
 
 def test_forms_section_message_says_not_checked():
     message = not_assessed_message("5.0 LIST OF FORMS")
     assert message.startswith("Not checked: 5.0 LIST OF FORMS")
     assert not VERDICT_WORDS.search(message)
+
+
+def test_a_heading_note_is_recognised_as_one():
+    assert is_note("What you changed\nA small edit.")
+    assert not is_note("This edit changes what 3.0 POLICIES asks of people.")
 
 
 def test_a_legacy_paragraph_loses_its_verdict_sentences_only():
@@ -395,12 +357,9 @@ def test_a_legacy_paragraph_loses_its_verdict_sentences_only():
         "The word “not” was removed, inverting what this section requires.")
 
 
-def test_a_legacy_approve_with_concerns_opening_is_removed():
-    old = ("No blocking problems were found, but two points are worth checking "
-           "before you submit. A figure was changed. You can go ahead and submit.")
-    assert without_legacy_verdict(old) == "A figure was changed."
-
-
-def test_a_note_in_the_current_format_passes_through_untouched():
-    note, _, _ = note_for(POLICIES, POLICIES.replace("365", "180"))
-    assert without_legacy_verdict(note) == note
+def test_explain_returns_the_note_alone():
+    layer1 = run_layer1(POLICIES, POLICIES.replace("365", "180"), REASON)
+    fusion = run_layer3(layer1, agreeing_model(layer1))
+    note = explain(fusion, layer1, section_label="3.0 POLICIES", audience=SUBMITTER,
+                   old_text=POLICIES, new_text=POLICIES.replace("365", "180"))
+    assert isinstance(note, str) and note
