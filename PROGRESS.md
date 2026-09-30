@@ -3,6 +3,28 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 30 September–1 October 2026 — Complete draft manuals
+
+Implemented in six reported/committed stages from `027f732`. Draft generation
+now includes all manual sections, using agreed new text for changed sections.
+DCR summaries and effectivity remain limited to the proposal's amendments.
+No schema or AI changes. Full record: `Backend/api/COMPLETE_MANUAL_REPORT.md`.
+
+Verification: 167 generation/package/concurrence/effectivity tests; then 15
+recovery/package-reading tests (six overlap with the first run). Word-rendered
+synthetic samples had 2, 2 and 12 pages with complete text and intact tables.
+Frontend build and changed-component lint pass; global lint has 11 existing
+errors and 2 warnings in unchanged files.
+
+User explicitly authorized recovering the one existing unsigned partial draft.
+After an integrity-checked SQLite backup, its new complete attachment was
+labelled with its current-baseline reconstruction date; original retained, audit
+event recorded. Content and workflow records match the pre-recovery backup.
+Earlier generated copies now have a collapsed authenticated download list.
+
+Restart existing backend workers and refresh/rebuild the frontend to pick up the
+changes. Existing printed or downloaded partial files must be downloaded again.
+
 ## 30 September 2026 — Layer 4 wording 4.1 (review of c031bd5)
 
 Wording-only follow-up to the refinement below. Four defects found by rendering

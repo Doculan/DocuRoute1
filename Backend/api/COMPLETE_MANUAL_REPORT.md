@@ -126,3 +126,40 @@ python manage.py recover_complete_draft --proposal PROPOSAL_ID --apply --actor A
 The command is deliberately limited to unsigned legacy drafts. A current-baseline
 reconstruction is not evidence of unchanged sections as they stood at the original
 lock. Signed or completed packages need a separately agreed records procedure.
+
+## Stage 6: final documentation and delivery (1 October 2026)
+
+README and standing project documentation now describe complete draft manuals.
+The stage log and recovery instructions distinguish lock-time snapshots from
+current-baseline reconstructions. No migrations, trained-model changes or changes
+to assessment inputs were required. The external PDF guide was not edited.
+
+Validation commands (from Backend with the environment active):
+
+```text
+python manage.py test api.tests_generation api.tests_package api.tests_concurrence api.tests_effective
+python manage.py test api.tests_draft_recovery api.tests_package.PackageReadingTests
+```
+
+The runs used `MD5PasswordHasher` only in their isolated test processes to shorten
+fixture account creation. Production password hashing was unchanged. Frontend
+validation used `npm run lint`, `npm run build`, and a baseline/current ESLint
+comparison of `ProposalPackage.jsx`. Global lint remains a known pre-existing
+failure as detailed in Stage 5. No browser interaction test was performed.
+
+Stage commits:
+
+| Stage | Commit |
+| --- | --- |
+| Scope and inventory | `ebfb7a5` |
+| Complete generation | `6885726` |
+| Workflow verification | `4c4f789` |
+| Rendered verification | `280c353` |
+| Recovery and earlier-copy downloads | `f193585` |
+| Final documentation | This document's finalization commit |
+
+To use the update, restart backend workers that have not reloaded the code and
+refresh the frontend (or deploy the new production build). Re-download the
+current draft for the recovered unsigned package. Copies already downloaded or
+printed before recovery are not modified. Database backups, actual documents and
+generated review samples are excluded from the source commits.

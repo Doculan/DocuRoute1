@@ -6,6 +6,25 @@ them into sections, and routing changes through the official Document Change
 Request process - drafting, concurrence, signing, the IMR's decision and the
 Document Custodian making them effective.
 
+### Complete draft manuals
+
+When a proposal completes concurrence, its **Draft copy** contains every section
+of the manual in document order, including unchanged sections and tables. The
+agreed proposal text replaces the changed sections. Header status fields remain
+blank for hand-filling. The DCR still summarizes only the amendments.
+
+The saved draft is a snapshot at lock time: later manual edits do not rewrite
+the downloaded file. Making the proposal effective applies only its changed
+sections. Earlier generated copies, when present, are retained under a collapsed
+section in the package view; use the current documents for signing.
+
+Legacy partial drafts are not automatically regenerated. The administrator's
+`recover_complete_draft` command is dry-run-first and can replace only unsigned
+legacy drafts, preserving the original and recording the use of the current
+manual as the reconstruction baseline. See
+[`Backend/api/COMPLETE_MANUAL_REPORT.md`](Backend/api/COMPLETE_MANUAL_REPORT.md)
+for the recovery procedure, implementation stages and verification results.
+
 ---
 
 ## 1. Prerequisites
