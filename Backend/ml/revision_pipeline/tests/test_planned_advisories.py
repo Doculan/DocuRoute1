@@ -1,11 +1,10 @@
-"""Three real edits every layer missed, kept as fixtures for the planned
-advisory checks (LAYER4_INPUT_SPEC.md section 7).
+"""Three real edits every layer used to miss, kept as fixtures for the four
+text advisories (advisory_checks.py; LAYER4_INPUT_SPEC.md section 7).
 
-The checks are planned, not built. So each planned advisory is a strict
-xfail: it fails today, and the day a check reports it the xfail turns into
-an error until its marker is removed. What must hold before and after is
-that the checks add advisories only: the rule flags, which feed Layers 2
-and 3 and the published figures, stay exactly as they are.
+Each advisory the fixtures expect must be reported, and the rule flags -
+which feed Layers 2 and 3 and the published figures - must stay exactly as
+they were before the advisories existed: an advisory never becomes a flag,
+and never acts on the verdict.
 """
 
 import json
@@ -39,7 +38,6 @@ def test_the_rule_flags_are_what_they_were(edit):
 PLANNED = [(e, p) for e in EDITS for p in e["planned"]]
 
 
-@pytest.mark.xfail(strict=True, reason="advisory checks planned, not built")
 @pytest.mark.parametrize(
     "edit, planned", PLANNED,
     ids=[f"{e['name']}-{p['label']}" for e, p in PLANNED],
@@ -47,6 +45,7 @@ PLANNED = [(e, p) for e in EDITS for p in e["planned"]]
 def test_the_planned_advisory_is_reported(edit, planned):
     found = [a for a in layer1(edit).advisories if a.get("label") == planned["label"]]
     assert found, f"no {planned['label']} advisory"
+    assert all(a["affects_verdict"] is False for a in found)
     evidence = json.dumps(found, ensure_ascii=False)
     for key in ("word", "kept", "item", "kind"):
         if key in planned:

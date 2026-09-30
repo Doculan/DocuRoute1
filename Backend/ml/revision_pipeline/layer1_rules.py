@@ -31,6 +31,7 @@ from .diffing import (
 )
 from .entities import get_entities
 from .glossary import EQUIVALENT, NOT_EQUIVALENT, UNKNOWN, get_glossary
+from .advisory_checks import text_advisories
 from .malformed import malformed_advisories
 
 # -- Patterns --------------------------------------------------
@@ -514,6 +515,10 @@ def run_layer1(
     # covers any of it, so without this the reviewer sees nothing at all. These
     # are reported, never acted on - see malformed.py.
     result.advisories.extend(malformed_advisories(old_text, new_text))
+    # Spelling, inconsistent terms, unfinished lines, new obligations.
+    # Advisories too: no feature, and affects_verdict is False on each, so
+    # nothing reaches Layer 2 or the fusion model. See advisory_checks.py.
+    result.advisories.extend(text_advisories(old_text, new_text))
     if not (new_text or "").strip():
         result.hard_fails.append({
             "reason": "empty_revision",
