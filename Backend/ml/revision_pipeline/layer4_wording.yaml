@@ -1,7 +1,7 @@
 # =============================================================================
 # Layer 4 wording — the assistive note
 # =============================================================================
-# Draft 1, written against LAYER4_INPUT_SPEC.md (cf26b04 + §7 planned advisories).
+# Draft 2 (after the first engine run), written against LAYER4_INPUT_SPEC.md (cf26b04 + §7 planned advisories).
 #
 # This file holds ALL the language Layer 4 uses. The engine chooses and fills;
 # it never writes a sentence that is not built from this file.
@@ -28,7 +28,7 @@
 # =============================================================================
 
 meta:
-  version: 1
+  version: 2
   status: draft — wording for review; ISO paraphrases for the QMS office
   audiences:
     drafter: the office that wrote the proposal (spec audience “submitter”)
@@ -49,6 +49,11 @@ slots:
   lines_removed:  "Whole removed lines, quoted, joined per the list rule. Table pipes stripped; role prefixed as “Role — ”."
   lines_added:    "Same for added lines."
   n_lines:        "Number of whole lines, in words under eleven (“two”)."
+  were:           "“was” for one line, “were” for several."
+  n_hunks:        "Number of separate changes, in words under eleven."
+  hunk_list:      "Each change as “old” → “new”, with “ (step 2)” after each when there are several places; joined with “; ”."
+  first_word:     "The word a line now opens with."
+  top_point:      "The single most significant concern, from `grouping.definite_names`."
   words_removed:  "Word count, in words under eleven."
   words_added:    "Word count, in words under eleven."
   share:          "Share of the section's wording removed, as “about a third”, “roughly half”, or “55%”."
@@ -139,7 +144,15 @@ selection:
     - "notable: the first concern gets ask + check; the rest get why only."
     - "tentative: one ask OR one check, never both."
     - "Order concerns: stated high → stated medium → suggested → advisories → quiet lines."
-    - "At most 4 concerns written in full; the rest go into `grouping.also_noted`."
+    - "At most 2 concerns written in full; the rest go into `grouping.also_noted`."
+    - "If OPEN already quoted the hunk a stated concern refers to, use that concern's `lead_followup` instead of `lead_stated*`. Never quote the same words twice in one note."
+    - "The ISO sentence goes immediately after the concern it relates to, never after an unrelated one."
+    - "`combined.new_requirement_unclear` counts as the primary concern (LEAD1), ahead of any suggested (model-only) concern. When it is used, `adds_requirement.why` is replaced by `adds_requirement.why_after_unclear`."
+    - "Context lines about conflicts (`context.dropped_rule_findings.contradicts_manual`) are used only for numeric conflicts, never role conflicts."
+    - "A `transitions.contrast` word may only follow a concern or advisory, never a neutral description of the change."
+    - "When ADVISORIES begins a paragraph that is also the first of the note, open with `advisories_intro` first; better still, prefer plans that open with OPEN."
+    - "When the CHANGE block has several places, use `change.small_edit.several_places_sentence` so it reads as a full sentence."
+    - "A section note that mentions another section describes it as it stood when checked; the proposal note is the current summary."
 
   plans:
     # A plan is an ordered list of paragraphs; each paragraph lists blocks.
@@ -164,8 +177,6 @@ selection:
         paragraphs: [[OPEN], [ADVISORIES, QUIET], [FINE, CLOSE]]
       - id: M2
         paragraphs: [[OPEN, ADVISORIES], [QUIET, FINE, CLOSE]]
-      - id: M3
-        paragraphs: [[ADVISORIES], [CHANGE, FINE, QUIET], [CLOSE]]
     unclear:
       - id: U1
         paragraphs: [[OPEN], [UNCLEAR, CONTEXT], [FINE, CLOSE]]
@@ -246,7 +257,7 @@ openings:
       - "{change_cap}, and one part of it is worth a closer look."
       - "This edit changes something that matters in {section}: {change}."
       - "Here's the change: {change}. There's one thing in it I'd look at before sending it on."
-      - "{change_cap}. Most of it is straightforward, but not all of it."
+      - "{change_cap}. There’s one part of it worth a closer look."
     serious:
       - "This edit changes what {section} asks of people: {change}."
       - "{change_cap}. This is a substantive change, and it's worth reading the rest of this carefully."
@@ -315,8 +326,9 @@ change:
     when: "one insertion of 5–30 words ending a sentence"
     variants:
       - "a new sentence was added {at_item}: “{added_sentence}”"
-      - "{at_item_cap}, you've added “{added_sentence}”"         # drafter only
       - "an added line in {where}: “{added_sentence}”"
+    drafter_only:
+      - "{at_item_cap}, you’ve added “{added_sentence}”"
   lines_removed_quoted:
     when: "whole lines only, removed, quotable"
     variants:
@@ -331,8 +343,8 @@ change:
   lines_unquotable:
     when: "whole lines only, not quotable"
     variants:
-      - "{n_lines} line{s} were {removed_or_added} in {section}, {at_items}"
-      - "a block of {n_lines} line{s} was {removed_or_added} {at_items} in {section}"
+      - "{n_lines} line{s} {were} {removed_or_added} in {section}, {at_items}"
+      - "{n_lines} line{s} {were} {removed_or_added} {at_items} in {section}"
   small_edit:
     when: "≤ 3 hunks, each ≤ 12 words a side"
     variants:
@@ -340,7 +352,11 @@ change:
       - "{at_item_cap}, the wording changed from “{old_ctx}” to “{new_ctx}”"
       - "a wording edit in {where}: “{old_ctx}” now reads “{new_ctx}”"
       - "the text {at_item} went from “{old_ctx}” to “{new_ctx}”"
-    several_places: "{hunk_list}"          # “…” → “…” (3.1); “…” → “…” (3.6)
+    several_places: "{hunk_list}"          # inside another sentence only
+    several_places_sentence:
+      - "{n_hunks_cap} small wording changes in {section}: {hunk_list}"
+      - "the edits themselves are {hunk_list}"
+      - "{section} has {n_hunks} small changes: {hunk_list}"
   larger_edit:
     when: "otherwise"
     variants:
@@ -366,6 +382,10 @@ concerns:
       - "{at_item_cap}, the obligation softened: “{a}” is now “{b}”."
       - "The change from “{a}” to “{b}” {at_item} turns a rule into an option."
       - "Where the text said “{a}”, it now says “{b}”, and that shifts the step from required to optional."
+    lead_followup:
+      - "That turns a requirement into a permission."
+      - "So what used to be required is now optional."
+      - "That one word changes the step from a rule into a choice."
     lead_stated_no_pairs:
       - "An obligation in this section became a permission."
       - "Something that used to be required here is now optional."
@@ -383,8 +403,12 @@ concerns:
         - "It's fair to ask the drafting office whether the step is meant to become optional, and who decides when it's skipped."
         - "Worth confirming with the drafting office that making this optional was the intent."
     check:
-      - "Try reading the sentence as someone who'd rather not do the step, and see whether it still holds."
-      - "If the step is meant to stay mandatory, “{a}” should stay."
+      drafter:
+        - "Try reading the sentence as someone who’d rather not do the step, and see whether it still holds."
+        - "If the step is meant to stay mandatory, “{a}” should stay."
+      reader:
+        - "It helps to read the sentence as someone who’d rather not do the step, and see whether it still holds."
+        - "If the step should stay mandatory, the original “{a}” would need to stay."
     limit:
       - "whether the law or policy behind this section allows the step to become optional"
 
@@ -393,6 +417,10 @@ concerns:
       - "{at_item_cap}, “{neg_word}” was {added_or_removed}, which reverses what the sentence requires."
       - "Removing or adding a single word can flip a rule, and that's what happened {at_item}: “{neg_word}” was {added_or_removed}."
       - "The word “{neg_word}” was {added_or_removed} {at_item}, so the sentence now says the opposite of what it did."
+    lead_followup:
+      - "That one word reverses what the sentence requires."
+      - "So the sentence now says the opposite of what it did."
+      - "That flips the rule: what was ruled out is now allowed, or the reverse."
     lead_stated_reversal:
       - "{at_item_cap}, {reversal}, which reverses the sense of the requirement."
       - "The order of things flipped {at_item}: {reversal}."
@@ -413,8 +441,12 @@ concerns:
         - "It's worth asking the drafting office whether the reversal is intended, and what allows it."
         - "Worth confirming with the drafting office that the reversal was deliberate."
     check:
-      - "Read the sentence before and after, side by side, and confirm the new meaning is the one intended."
-      - "Check the policy or law this rule rests on still allows the new reading."
+      drafter:
+        - "Read the sentence before and after, side by side, and confirm the new meaning is the one intended."
+        - "Check that the policy or law this rule rests on still allows the new reading."
+      reader:
+        - "Reading the sentence before and after, side by side, makes the reversal easy to judge."
+        - "It’s worth checking that the policy or law behind this rule allows the new reading."
     limit:
       - "whether the law or policy behind this section allows the reversal"
 
@@ -423,6 +455,10 @@ concerns:
       - "A figure changed {at_item}: {from_text} is now {to_text}."
       - "{at_item_cap}, {from_text} became {to_text}."
       - "The number here moved from {from_text} to {to_text}{at_item_tail}."
+    lead_followup:
+      - "That changes the figure people work to."
+      - "So the threshold itself is different now."
+      - "That’s a change to a number people are held to, not just to the wording."
     lead_stated_added:
       - "A figure was added {at_item}: {to_text}."
     lead_stated_removed:
@@ -444,8 +480,12 @@ concerns:
         - "It's worth asking the drafting office where the new figure comes from."
         - "Worth checking with the drafting office what the new figure is based on."
     check:
-      - "Look for other sections, forms or systems that use the same figure, and change them in the same proposal if they should match."
-      - "Mention the source of the new figure in the reason for the change, so reviewers don't have to ask."
+      drafter:
+        - "Look for other sections, forms or systems that use the same figure, and change them in the same proposal if they should match."
+        - "Mention the source of the new figure in the reason for the change, so reviewers don’t have to ask."
+      reader:
+        - "It’s worth checking whether other sections, forms or systems use the same figure."
+        - "The reason for the change is the natural place for the new figure’s source."
     limit:
       - "whether the new figure matches the memorandum, policy or law it comes from"
 
@@ -454,6 +494,9 @@ concerns:
       - "{at_item_cap}, {gone} is no longer named; {came} is named instead."
       - "The step {at_item} changed hands, from {gone} to {came}."
       - "Responsibility moved {at_item}: {came} now does what {gone} used to."
+    lead_followup:
+      - "So the step now belongs to {came_or_another_office} instead of {gone}."
+      - "That hands the step, and the accountability for it, to {came_or_another_office}."
     lead_stated_gone:
       - "{gone} is no longer named {at_item}."
       - "{at_item_cap}, the step no longer names {gone}."
@@ -475,8 +518,12 @@ concerns:
         - "It's worth asking the drafting office whether {came_or_the_new_office} has agreed to take this on."
         - "Worth confirming the office now named knows about this."
     check:
-      - "Confirm with the office now named, and look for other sections that assign the same step."
-      - "If the office now named is also a concurring office on this manual, its concurrence settles the question."
+      drafter:
+        - "Confirm with the office now named, and look for other sections that assign the same step."
+        - "If the office now named is also a concurring office on this manual, its concurrence settles the question."
+      reader:
+        - "It’s worth checking that other sections assigning the same step are consistent with this one."
+        - "If the office now named is a concurring office here, its concurrence answers the question."
     limit:
       - "whether the office now named has agreed, and has the people to do the work"
 
@@ -506,8 +553,12 @@ concerns:
         - "It's worth asking the drafting office why this is no longer needed, and whether it's covered elsewhere."
         - "Worth checking with the drafting office where this requirement lives now."
     check:
-      - "Say where the requirement now lives, or state in the reason that it's being dropped on purpose."
-      - "If the step has moved to another section or form, name it in the reason for the change."
+      drafter:
+        - "Say where the requirement now lives, or state in the reason that it’s being dropped on purpose."
+        - "If the step has moved to another section or form, name it in the reason for the change."
+      reader:
+        - "It’s worth checking whether the requirement has moved somewhere else in the document."
+        - "The reason for the change should say whether this is being dropped on purpose."
     limit:
       - "whether what was removed is covered by another manual, a memorandum or a form"
 
@@ -527,8 +578,12 @@ concerns:
       reader:
         - "It's worth asking the drafting office whether everything removed is covered elsewhere."
     check:
-      - "Compare the two versions and note where each removed point now lives."
-      - "If the section is being slimmed down on purpose, say so in the reason."
+      drafter:
+        - "Compare the two versions and note where each removed point now lives."
+        - "If the section is being slimmed down on purpose, say so in the reason."
+      reader:
+        - "Comparing the two versions side by side shows what went."
+        - "The reason for the change should say whether the section is being slimmed down on purpose."
     limit:
       - "whether what was removed is covered by another manual, a memorandum or a form"
 
@@ -554,12 +609,19 @@ concerns:
       reader:
         - "It's worth asking the drafting office whether it's still needed, or what replaced it."
     check:
-      - "Search the document and its forms for other references to it."
-      - "If something replaced it, name the replacement in the text or the reason."
+      drafter:
+        - "Search the document and its forms for other references to it."
+        - "If something replaced it, name the replacement in the text or the reason."
+      reader:
+        - "It’s worth checking whether the document or its forms still refer to it."
+        - "If something replaced it, the text or the reason should name it."
     limit:
       - "whether the dropped term is still in use elsewhere, such as on a form or in a system"
 
   non_equivalent_term:
+    lead_followup:
+      - "The two words don’t mean the same thing in this manual."
+      - "That’s more than a change of wording; the manual treats the two words differently."
     lead_stated:
       - "“{a}” became “{b}” {at_item}, and this manual doesn't treat the two as meaning the same."
       - "{at_item_cap}, “{a}” is now “{b}”, which isn't an equivalent here."
@@ -573,7 +635,10 @@ concerns:
       reader:
         - "It's worth asking the drafting office whether the new word is meant to change what's being asked."
     check:
-      - "See how the manual uses both words elsewhere, and pick the one that matches what you mean."
+      drafter:
+        - "See how the manual uses both words elsewhere, and pick the one that matches what you mean."
+      reader:
+        - "It’s worth seeing how the manual uses both words elsewhere."
     limit:
       - "what the new wording is meant to change — the check reads words, not intent"
 
@@ -598,7 +663,10 @@ concerns:
       reader:
         - "It's worth asking the drafting office which statement is right, and whether the other section will change to match."
     check:
-      - "Open {other_section_or_the_other_section}, decide which statement stands, and change both in this proposal if they should match."
+      drafter:
+        - "Open {other_section_or_the_other_section}, decide which statement stands, and change both in this proposal if they should match."
+      reader:
+        - "It’s worth opening {other_section_or_the_other_section} to see which statement should stand."
     limit:
       - "which of the two statements the university actually follows"
 
@@ -615,7 +683,10 @@ concerns:
       reader:
         - "It's worth asking whether it belongs here or in another section."
     check:
-      - "See whether another section already covers the same point."
+      drafter:
+        - "See whether another section already covers the same point."
+      reader:
+        - "It’s worth checking whether another section already covers the same point."
     limit:
       - "whether the added wording belongs here or somewhere readers would look for it first"
 
@@ -634,24 +705,32 @@ hedges:
 quiet_lines:
   key_term_deleted:
     - "The automated reading wondered whether a key term went missing, but none actually did, so there's likely nothing to act on there."
-    - "A possible dropped term came up, but every listed term is still present."
+    - "The automated reading raised a possible dropped term, but every listed term is still present."
   modal_weakened:
     - "The automated reading flagged a possible softened obligation, but no “shall” or “must” actually changed."
   negation_changed:
-    - "The automated reading wondered whether the meaning reversed, but no “not”, “no” or “never” changed, so it's probably a false lead."
-    - "A possible reversal came up, but nothing in the wording actually flips the meaning."
+    - "The automated reading wondered whether the meaning reversed, but no “not”, “no” or “never” changed, so it’s probably a false lead."
+    - "The automated reading raised a possible reversal, but nothing in the wording actually flips the meaning."
   numeric_changed:
-    - "A possible changed figure came up, but no number, date or amount actually changed."
+    - "The automated reading raised a possible changed figure, but no number, date or amount actually changed."
   responsibility_changed:
     - "The automated reading wondered whether a step changed hands, but no office was added or removed."
   requirement_removed:
-    - "A possible removed requirement came up, but every sentence of the old text is still there."
+    - "The automated reading raised a possible removed requirement, but every sentence of the old text is still there."
   excessive_deletion:
     - "The automated reading flagged a large removal, but only {share} of the wording actually went."
 
 # -----------------------------------------------------------------------------
 # ADVISORIES — existing and planned (§7). Never change the hidden verdict.
 # -----------------------------------------------------------------------------
+advisories_intro:
+  one:
+    - "One small thing stood out."
+    - "There’s one small thing worth fixing."
+  several:
+    - "A couple of small things stood out."
+    - "There are a few small things worth tidying."
+
 advisories:
 
   unknown_word:
@@ -668,33 +747,43 @@ advisories:
 
   inconsistent_terms:
     variants:
-      - "{section} now calls the same people by different names: “{kept}” in some places, {introduced} in others."
-      - "The edit introduces {introduced} where the rest of {section} says “{kept}”, so one group now has more than one name."
-      - "“{kept}” and {introduced} now sit side by side in {section} for what looks like the same thing."
+      - "{section} now uses more than one word for the same thing: “{kept}” in some places, {introduced} in others."
+      - "The edit brings in {introduced} where the rest of {section} says “{kept}”, so one thing now has more than one name."
+      - "“{kept}” now appears alongside {introduced} in {section}, for what looks like the same thing."
     why:
-      - "Mixed terms make readers wonder whether different people are meant."
-      - "If they're the same people, one name throughout reads more clearly; if they're different, the section should say so."
+      - "Mixed terms make readers wonder whether different things are meant."
+      - "If they mean the same, one word throughout reads more clearly; if they don’t, the section should say how they differ."
     tip:
       - "If the manual should treat them as the same, the QMS office can record them as equivalent terms."
 
   unfinished_sentence:
     item_opens_lower_case:
-      - "{at_item_cap} now opens with “{first_word}” in lower case; it used to begin with “{was}”, so it may have lost its first word."
-      - "The line {at_item} seems to be missing its opening word — it used to start with “{was}”."
+      - "{item} now opens with “{first_word}” in lower case; it used to begin with “{was}”, so it may have lost its first word."
+      - "The line at {item} seems to be missing its opening word; it used to start with “{was}”."
+      - "Item {item} now begins with “{first_word}” in lower case, where it used to start with “{was}”, so a word may have gone missing."
+    new_line_opens_lower_case:
+      - "The new line at {item} starts in lower case, so it may be missing its first word."
+    opens_lower_case_no_item:
+      - "One of the edited lines now starts in lower case, so it may be missing its first word."
     no_final_punctuation:
-      - "The line {at_item} stops without a full stop, as if it was cut short."
-      - "{at_item_cap} ends without punctuation, so the sentence may be unfinished."
+      - "The line at {item} stops without a full stop, as if it was cut short."
+      - "{item} ends without punctuation, so the sentence may be unfinished."
+    no_final_punctuation_no_item:
+      - "One of the edited lines ends without punctuation, as if it was cut short."
 
   adds_requirement:
     added_sentence:
-      - "This adds a new requirement {at_item}: something “{req_word}” now happen."
+      - "This adds a new requirement {at_item}, worded with “{req_word}”."
       - "The new line {at_item} is an obligation, since it uses “{req_word}”, so it creates something people will be expected to do."
-      - "{at_item_cap} introduces a new rule, worded with “{req_word}”."
+      - "{at_item_cap}, the edit introduces a new rule, worded with “{req_word}”."
     strengthened:
       - "{at_item_cap}, “{was}” became “{req_word}”, so something optional is now required."
     why:
-      - "That's often exactly the point of a revision; it just means someone will now be expected to do it, and it's worth being sure who."
-      - "New requirements are fine to add — the useful thing is to make clear who does it and when."
+      - "That’s often exactly the point of a revision; it just means someone will now be expected to do it, and it’s worth being sure who."
+      - "New requirements are fine to add; the useful thing is to make clear who does it and when."
+    why_after_unclear:
+      - "Once the wording is settled, it’s also worth saying who is responsible for it, and from when."
+      - "When the sentence is finished, naming who does it and from when will save a round of questions."
     ask:
       drafter:
         - "Expect to be asked who's responsible for the new requirement, and from when."
@@ -795,10 +884,12 @@ context:
     # layer1_result.flags that the policy dropped. Use sparingly, as context,
     # never as a concern. Only when not already covered by an issue.
     contradicts_manual:
+      # numeric conflicts only (kind == numeric); never role conflicts
       - "One more thing: {other_section} still says “{value}”, so if this figure is meant to change everywhere, that section needs the same edit."
-      - "Worth knowing: “{value}” still appears in {other_section}."
+      - "Worth knowing: {other_section} still uses “{value}”."
     numeric_changed_frequency:
-      - "The rules also noticed a timing word changed ({from_text}), which can shift how quickly something is expected to happen."
+      - "The check also noticed a timing word changed ({from_text}), which can shift how quickly something is expected to happen."
+      - "One related detail: {from_text} was a timing word, so the expected speed may read differently now."
   reason_link:
     # When the reason doesn't mention the main change. Only for stated
     # numeric_changed, modal_weakened, requirement_removed, responsibility_changed,
@@ -857,10 +948,13 @@ fine:
 # -----------------------------------------------------------------------------
 limits:
   lead_in:
-    - "What this can't tell you is {limit}."
-    - "One thing this check can't judge is {limit}."
-    - "It also can't tell you {limit}."
-    - "That still leaves {limit}, which is for your office and the reviewers."    # drafter
+    drafter:
+      - "What this can’t tell you is {limit}."
+      - "One thing this check can’t judge is {limit}."
+      - "That still leaves {limit}, which is for your office and the reviewers."
+    reader:
+      - "One thing this check can’t judge is {limit}."
+      - "It can’t tell {limit}; that’s for the offices reviewing it."
   added_wording:
     - "It also can't tell whether the new wording is accurate; it compares wording, not facts."
 
@@ -871,6 +965,18 @@ grouping:
   also_noted:
     - "It also noticed {short_names}."
     - "Beyond that, there's {short_names}."
+  definite_names:
+    excessive_deletion: "the large removal"
+    key_term_deleted: "the dropped term"
+    modal_weakened: "the softened obligation"
+    negation_changed: "the reversed meaning"
+    numeric_changed: "the changed figure"
+    responsibility_changed: "the change of responsibility"
+    requirement_removed: "the removed requirement"
+    non_equivalent_term: "the change of term"
+    contradicts_manual: "the conflict with another section"
+    out_of_scope_content: "the wording that may belong elsewhere"
+    adds_requirement: "the new requirement"
   short_names:
     excessive_deletion: "a large removal"
     key_term_deleted: "a dropped term"
@@ -888,11 +994,15 @@ grouping:
 # -----------------------------------------------------------------------------
 closings:
   drafter:
-    light:        # trivial, plain, minor
+    light:        # trivial, plain
       - "It looks good to go."
       - "Nothing else to flag here."
       - "That's everything on this one."
       - "This one should be straightforward."
+    minor:        # minor — something small to tidy
+      - "Worth a quick fix before sending it on, but nothing here changes what the section asks."
+      - "Once that’s tidied, there’s nothing else to flag."
+      - "A small correction and this one should be fine."
     moderate:     # unclear, tentative, notable
       - "None of this stops you sending it on; the reviewers and concurring offices have the final say."
       - "It's your call whether to adjust it first — the decision rests with the reviewers, not this check."
@@ -906,6 +1016,9 @@ closings:
     light:
       - "Nothing else to flag."
       - "That's the whole of it."
+    minor:
+      - "Otherwise, nothing else stands out."
+      - "Beyond that small point, nothing else to flag."
     moderate:
       - "These are points worth raising, not conclusions; the decision rests with the offices reviewing it."
       - "Take these as prompts for your own reading of the change."
@@ -949,9 +1062,11 @@ proposal_note:
       - "{other_section} still says “{value}”, and it isn't part of this proposal, so the document would disagree with itself unless it's added."
   strongest:
     drafter:
-      - "If you settle one thing before sending it on, make it {top_point}."
+      - "If there’s one thing to settle before sending it on, it’s {top_point} in {section}."
+      - "The point most likely to come up is {top_point} in {section}."
     reader:
-      - "The point most worth raising is {top_point}."
+      - "The point most worth raising is {top_point} in {section}."
+      - "If there’s one question for the drafting office, it’s about {top_point} in {section}."
 
 # -----------------------------------------------------------------------------
 # NOT CHECKED — unchanged from today.

@@ -57,25 +57,25 @@ LOOKS_FINE = "What looks fine"
 CANNOT_TELL = "What this check can't tell you"
 NOTE_HEADINGS = (CHANGED_YOU, CHANGED, LOOK_AT, LOOKS_FINE, CANNOT_TELL)
 
-MAX_CONCERNS = 4            # selection.emphasis: at most four written in full
+MAX_CONCERNS = 2            # selection.emphasis: at most two written in full
 MAX_SENTENCES = MAX_CONCERNS  # accepted from older callers
 HISTORY_LIMIT = 20          # selection.rotation: the same user's last 20 notes
 
 TIERS = ("blocking", "serious", "notable", "tentative", "minor", "trivial",
          "unclear", "plain")
-_CLOSING_WEIGHT = {"trivial": "light", "plain": "light", "minor": "light",
+_CLOSING_WEIGHT = {"trivial": "light", "plain": "light", "minor": "minor",
                    "unclear": "moderate", "tentative": "moderate", "notable": "moderate",
                    "serious": "strong", "blocking": "strong"}
 
-# Variants the file marks "# drafter" / "# drafter only" in comments, which a
-# YAML parser cannot see. Kept here by pool and exact text; a test checks
-# each still exists in the file, so an edit there cannot silently orphan it.
-DRAFTER_ONLY = {
-    ("change.added_sentence", "{at_item_cap}, you've added “{added_sentence}”"),
-    ("limits.lead_in", "That still leaves {limit}, which is for your office and the reviewers."),
-}
-# The reader is never addressed as the one who made the change.
-_SECOND_PERSON_RE = re.compile(r"\byou(?:'ve|'ll|r)?\b", re.IGNORECASE)
+# Drafter-only wording is marked in the file itself (`drafter_only` lists,
+# pools split by voice). As a last guard, the reader is never addressed as
+# the one who made the change when a neutral variant exists.
+_SECOND_PERSON_RE = re.compile(r"\byou(?:[’']ve|[’']ll|r)?\b", re.IGNORECASE)
+
+# Blocks that carry a concern or an advisory: a contrast word ("That said,")
+# may follow only these, never a neutral description of the change.
+# A quiet line is not one: it says there is likely nothing to act on.
+_FINDING_BLOCKS = re.compile(r"^(LEAD|WHY|ASK|CHECK)\d$|^(ADVISORIES|ISO)$")
 
 # Slots that may legitimately be empty; every other slot must be filled or
 # the variant is not eligible.
@@ -429,9 +429,6 @@ class _Writer:
             variants = [variants]
         candidates = []
         for index, template in enumerate(variants or []):
-            if self.voice == "reader":
-                if (pool, template) in DRAFTER_ONLY:
-                    continue
             if allow is not None and not allow(index, template):
                 continue
             text = _fill(template, slots)
@@ -591,6 +588,9 @@ def _change_slots(ctx: _Section) -> dict:
     slots.update({
         "n_lines": _number_word(len(ch.removed_lines or ch.added_lines)),
         "s": "" if len(ch.removed_lines or ch.added_lines) == 1 else "s",
+        "were": "was" if len(ch.removed_lines or ch.added_lines) == 1 else "were",
+        "n_hunks": _number_word(len(ch.hunks)),
+        "n_hunks_cap": _cap(_number_word(len(ch.hunks))),
         "lines_removed": _lines_slot(ch.removed_lines, ch.old),
         "lines_added": _lines_slot(ch.added_lines, ch.new),
         "removed_or_added": "removed" if ch.removed_lines else "added",
@@ -612,7 +612,10 @@ def _change_slots(ctx: _Section) -> dict:
     return slots
 
 
-def _describe_change(ctx: _Section, writer: _Writer) -> str:
+def _describe_change(ctx: _Section, writer: _Writer) -> tuple:
+    """(inline, sentence): the change as it reads inside an opening, and as
+    it reads standing alone in the CHANGE block. They differ only where the
+    edit has several places (`several_places` / `several_places_sentence`)."""
     shape = _shape(ctx)
     block = wording()["change"][shape]
     slots = _change_slots(ctx)
@@ -625,8 +628,14 @@ def _describe_change(ctx: _Section, writer: _Writer) -> str:
                 piece += f" ({hunk['item']})"
             parts.append(piece)
         slots["hunk_list"] = "; ".join(parts)
-        text = writer.say("change.small_edit.several_places", block["several_places"], slots)
-    else:
+        inline = writer.say("change.small_edit.several_places", block["several_places"], slots)
+        sentence = writer.say("change.small_edit.several_places_sentence",
+                              block.get("several_places_sentence"), slots)
+        return inline or "", sentence or inline or ""
+    variants = list(block["variants"])
+    if writer.voice == "drafter":
+        variants += list(block.get("drafter_only") or [])
+    if True:
         allow = None
         if shape == "larger_edit":
             large = slots["_large"]
@@ -637,8 +646,8 @@ def _describe_change(ctx: _Section, writer: _Writer) -> str:
                 if "moderate" in template:
                     return not large
                 return True
-        text = writer.say(f"change.{shape}", block["variants"], slots, allow=allow)
-    return text or ""
+        text = writer.say(f"change.{shape}", variants, slots, allow=allow)
+    return text or "", text or ""
 
 
 # -- concerns ---------------------------------------------------------------------------------
@@ -650,9 +659,14 @@ def _values(flag, issue, side):
     return _straight_to_items(issue.get(f"{side}_text") or "")
 
 
-def _concern(ctx: _Section, firm: str, issue: dict, writer: _Writer, *, opened_lines: bool) -> dict:
+def _concern(ctx: _Section, firm: str, issue: dict, writer: _Writer, *, opened_lines: bool,
+             quoted: str = "") -> dict:
     """Lead, why, ask, check, limit and clause for one concern; each already
-    written, or None where the file has nothing fillable."""
+    written, or None where the file has nothing fillable.
+
+    ``quoted``: what the note's opening quotes (lower case). When every word
+    this concern would quote is already there, its `lead_followup` is used
+    instead, so no words are quoted twice in one note."""
     label = issue["label"]
     words = wording()["concerns"][label]
     ch = ctx.change
@@ -713,9 +727,15 @@ def _concern(ctx: _Section, firm: str, issue: dict, writer: _Writer, *, opened_l
                 gone.append(in_old)
             elif in_new and not in_old:
                 came.append(in_new)
+        if gone and not came:
+            # A role that already appears elsewhere in the section is still
+            # the one now named at the edited step.
+            came = [spelled for spelled in (_find_ci(r, " ".join(h["new"] for h in ch.hunks))
+                                            for r in roles) if spelled and spelled not in gone]
         slots.update({"gone": _join(gone), "came": _join(came),
                       "roles": _join([_quote(r) for r in roles[:3]]),
-                      "came_or_the_new_office": _join(came) or "the new office"})
+                      "came_or_the_new_office": _join(came) or "the new office",
+                      "came_or_another_office": _join(came) or "another office"})
         lead_pool = ("lead_stated_swap" if gone and came else "lead_stated_gone" if gone
                      else "lead_stated_came" if came else "lead_stated_roles_only")
     elif label == "requirement_removed":
@@ -770,17 +790,36 @@ def _concern(ctx: _Section, firm: str, issue: dict, writer: _Writer, *, opened_l
     if label == "requirement_removed" and firm == "suggested":
         slots.setdefault("req_text", "")
 
+    # Never quote the same words twice: if the opening already quoted what
+    # this lead would, follow up on it instead.
+    followup = False
+    if firm == "stated" and words.get("lead_followup") and quoted:
+        named = {
+            "modal_weakened": [slots.get("a"), slots.get("b")],
+            "negation_changed": [slots.get("neg_word")]
+            if lead_pool == "lead_stated_added_removed" else [],
+            "numeric_changed": _values(flag, issue, "from") + _values(flag, issue, "to"),
+            "responsibility_changed": [x for x in (slots.get("gone"), slots.get("came")) if x],
+            "non_equivalent_term": [slots.get("a"), slots.get("b")],
+        }.get(label) or []
+        if named and all(w and w.lower() in quoted for w in named):
+            lead_pool, followup = "lead_followup", True
+
     key = f"concerns.{label}"
     lead = writer.say(f"{key}.{lead_pool}", words.get(lead_pool), slots) if lead_pool else None
+    checks = words.get("check")
+    if isinstance(checks, dict):
+        checks = checks.get(writer.voice)
     return {
-        "label": label, "firmness": firm, "slots": slots,
+        "label": label, "firmness": firm, "slots": slots, "followup": followup,
         "lead": lead,
         "why": writer.say(f"{key}.{why_pool}", words.get(why_pool), slots),
         "ask": writer.say(f"{key}.ask.{writer.voice}", (words.get("ask") or {}).get(writer.voice), slots),
-        "check": writer.say(f"{key}.check", words.get("check"), slots),
+        "check": writer.say(f"{key}.check.{writer.voice}", checks, slots),
         "limit": (words.get("limit") or [""])[0],
         "clause": clause_for(label) if firm == "stated" else "",
         "short_name": wording()["grouping"]["short_names"].get(label, label.replace("_", " ")),
+        "definite_name": wording()["grouping"].get("definite_names", {}).get(label, ""),
     }
 
 
@@ -792,15 +831,21 @@ def _quiet_line(ctx: _Section, issue: dict, writer: _Writer):
 
 # -- advisories ----------------------------------------------------------------------------------
 
-def _advisory_sentences(ctx: _Section, writer: _Writer) -> list:
-    """The ADVISORIES block, in a fixed order: the new requirement first."""
+def _advisory_sentences(ctx: _Section, writer: _Writer):
+    """The ADVISORIES block, and the combined new-requirement concern.
+
+    Returns (sentences, combined, findings). ``combined`` is a concern when
+    a new requirement ends on a non-word (`combined.new_requirement_unclear`):
+    it then leads the note as LEAD1 (selection.emphasis) and its advisories
+    are not repeated here. ``findings`` counts the advisories written, for
+    `advisories_intro`.
+    """
     words = wording()["advisories"]
     by_label = {}
     for adv in ctx.advisories:
         by_label.setdefault(adv.get("label"), adv)
-    out = []
-    unknown = by_label.get("unknown_word")
-    unknown_words = (unknown or {}).get("words") or []
+    out, findings, combined = [], 0, None
+    unknown_words = (by_label.get("unknown_word") or {}).get("words") or []
     unfinished = by_label.get("unfinished_sentence")
     consumed_unknown, consumed_unfinished = set(), set()
 
@@ -811,36 +856,44 @@ def _advisory_sentences(ctx: _Section, writer: _Writer) -> list:
         slots.update({"req_word": req.get("word", ""), "was": req.get("was") or ""})
         partner = next((w for w in unknown_words
                         if w.get("item") == req.get("item") and not w.get("suggestion")), None)
+        ask = writer.say(f"advisories.adds_requirement.ask.{writer.voice}",
+                         words["adds_requirement"]["ask"][writer.voice], slots)
+        text = None
         if partner and req.get("item"):
             slots["word"] = partner["word"]
             pool = wording()["combined"]["new_requirement_unclear"]
             variants = pool["variants"] if writer.voice == "drafter" else pool["reader"]
             text = writer.say(f"combined.new_requirement_unclear.{writer.voice}", variants, slots)
-            if text:
-                out.append(text)
-                consumed_unknown.add(partner["word"])
-                consumed_unfinished.add(req.get("item"))
+        if text:
+            consumed_unknown.add(partner["word"])
+            consumed_unfinished.add(req.get("item"))
+            combined = {
+                "label": "adds_requirement", "firmness": "stated", "slots": slots,
+                "followup": False, "lead": text,
+                "why": writer.say("advisories.adds_requirement.why_after_unclear",
+                                  words["adds_requirement"].get("why_after_unclear"), slots),
+                "ask": ask, "check": None, "limit": "",
+                "clause": clause_for("adds_requirement"),
+                "short_name": wording()["grouping"]["short_names"].get("adds_requirement", ""),
+                "definite_name": wording()["grouping"].get("definite_names", {}).get(
+                    "adds_requirement", ""),
+            }
         else:
             kind = req.get("kind", "added_sentence")
-
-            def modal_only(index, template):
-                # "something “{req_word}” now happen" reads only with a modal.
-                return "now happen" not in template or req.get("word") in ("must", "shall", "should")
             text = writer.say(f"advisories.adds_requirement.{kind}",
-                              words["adds_requirement"].get(kind), slots, allow=modal_only)
-            if text:
-                out.append(text)
-        why = writer.say("advisories.adds_requirement.why", words["adds_requirement"]["why"], slots)
-        ask = writer.say(f"advisories.adds_requirement.ask.{writer.voice}",
-                         words["adds_requirement"]["ask"][writer.voice], slots)
-        out += [s for s in (why, ask) if s]
+                              words["adds_requirement"].get(kind), slots)
+            why = writer.say("advisories.adds_requirement.why", words["adds_requirement"]["why"], slots)
+            out += [s for s in (text, why, ask) if s]
+            findings += 1
 
     left = [w for w in unknown_words if w["word"] not in consumed_unknown]
+    suffix = words["unknown_word"]["reader_suffix"] if writer.voice == "reader" else ""
     if len(left) > 1:
         text = writer.say("advisories.unknown_word.several", words["unknown_word"]["several"],
                           {"word_list": _quoted_list(w["word"] for w in left)})
         if text:
-            out.append(text + (words["unknown_word"]["reader_suffix"] if writer.voice == "reader" else ""))
+            out.append(text + suffix)
+            findings += len(left)
     elif left:
         w = left[0]
         slots = ctx.place(w.get("item", ""))
@@ -848,7 +901,8 @@ def _advisory_sentences(ctx: _Section, writer: _Writer) -> list:
         pool = "with_suggestion" if w.get("suggestion") else "no_suggestion"
         text = writer.say(f"advisories.unknown_word.{pool}", words["unknown_word"][pool], slots)
         if text:
-            out.append(text + (words["unknown_word"]["reader_suffix"] if writer.voice == "reader" else ""))
+            out.append(text + suffix)
+            findings += 1
 
     terms = by_label.get("inconsistent_terms")
     if terms:
@@ -861,24 +915,33 @@ def _advisory_sentences(ctx: _Section, writer: _Writer) -> list:
                               words["inconsistent_terms"][part], slots)
             if text:
                 out.append(text)
+        findings += 1
 
     if unfinished:
+        pools = words["unfinished_sentence"]
         for line in (unfinished.get("lines") or [])[:2]:
-            if line.get("item") in consumed_unfinished:
+            item = line.get("item") or ""
+            if item and item in consumed_unfinished:
                 continue
-            slots = ctx.place(line.get("item", ""))
-            slots.update({"first_word": line.get("first_word", ""), "was": line.get("was") or ""})
-            kind = line.get("kind")
-            text = writer.say(f"advisories.unfinished_sentence.{kind}",
-                              words["unfinished_sentence"].get(kind), slots)
+            if line.get("kind") == "item_opens_lower_case":
+                pool = ("item_opens_lower_case" if item and line.get("was")
+                        else "new_line_opens_lower_case" if item
+                        else "opens_lower_case_no_item")
+            else:
+                pool = "no_final_punctuation" if item else "no_final_punctuation_no_item"
+            slots = {"item": item, "first_word": line.get("first_word", ""),
+                     "was": line.get("was") or ""}
+            text = writer.say(f"advisories.unfinished_sentence.{pool}", pools.get(pool), slots)
             if text:
                 out.append(text)
+                findings += 1
 
     if "vague_change_reason" in by_label:
         text = writer.say(f"advisories.vague_change_reason.{writer.voice}",
                           words["vague_change_reason"][writer.voice], {})
         if text:
             out.append(text)
+            findings += 1
 
     for label in ("malformed_citation", "malformed_text"):
         adv = by_label.get(label)
@@ -888,7 +951,8 @@ def _advisory_sentences(ctx: _Section, writer: _Writer) -> list:
             text = writer.say(f"advisories.{label}", words[label], slots)
             if text:
                 out.append(text)
-    return out
+                findings += 1
+    return out, combined, findings
 
 
 # -- context, fine, limits ------------------------------------------------------------------------
@@ -899,25 +963,22 @@ def _context_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
     issue_labels = {c["label"] for c in concerns}
     all_issue_labels = {i.get("label") for i in (getattr(ctx.fusion, "issues", None) or [])}
 
-    # A conflict the rules found and the issue policy dropped.
+    # A conflict the rules found and the issue policy dropped - numeric
+    # conflicts only, never role conflicts (selection.emphasis).
     flag = ctx.flag("contradicts_manual")
-    if flag and "contradicts_manual" not in all_issue_labels:
-        value = str(((flag.get("conflicts") or [{}])[0]).get("value") or "")
+    conflict = ((flag or {}).get("conflicts") or [{}])[0]
+    if (flag and "contradicts_manual" not in all_issue_labels
+            and conflict.get("kind") == "numeric"):
+        value = str(conflict.get("value") or "")
         other = ctx.other_with(value)
         if other:
             changed = ctx.changed_in_proposal(other)
             slots = {"other_section": other, "value": value}
-            kind = ((flag.get("conflicts") or [{}])[0]).get("kind")
-
-            def about_figures(index, template):
-                # One variant speaks of "this figure"; not for a role.
-                return kind == "numeric" or "figure" not in template
             if changed and value.lower() not in (changed.get("new_text") or "").lower():
                 text = writer.say("context.coordinated.consistent", words["coordinated"]["consistent"], slots)
             else:
                 text = writer.say("context.dropped_rule_findings.contradicts_manual",
-                                  words["dropped_rule_findings"]["contradicts_manual"], slots,
-                                  allow=about_figures)
+                                  words["dropped_rule_findings"]["contradicts_manual"], slots)
             if text:
                 out.append(text)
 
@@ -1011,7 +1072,10 @@ def _limit_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
             limits.append(c["limit"])
     out = []
     for limit in limits[:2]:
-        text = writer.say("limits.lead_in", words["lead_in"], {"limit": limit})
+        lead_in = words["lead_in"]
+        if isinstance(lead_in, dict):
+            lead_in = lead_in.get(writer.voice)
+        text = writer.say(f"limits.lead_in.{writer.voice}", lead_in, {"limit": limit})
         if text:
             out.append(text)
     if (not out and ctx.change.words_added
@@ -1022,30 +1086,36 @@ def _limit_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
     return out
 
 
-def _iso_sentences(ctx: _Section, concerns: list, writer: _Writer) -> list:
-    """iso.iso_rules: only stated concerns, adds_requirement, hard fails and
-    the vague reason; at most two clause mentions per note."""
-    clauses = []
-    for fail in ctx.hard_fails:
-        clauses.append(clause_for(fail.get("reason", "")))
-    for c in concerns:
-        if c["firmness"] == "stated":
-            clauses.append(c["clause"])
-    for adv in ctx.advisories:
-        if adv.get("label") in ("adds_requirement", "vague_change_reason"):
-            clauses.append(clause_for(adv["label"]))
-    seen, out = [], []
-    iso = wording()["iso"]
-    for clause in clauses:
-        if not clause or clause in seen or len(seen) == 2:
+def _iso_owner(plan: dict, blocks: dict, concerns: list, ctx: _Section) -> str:
+    """The clause for the ISO block: that of the concern (or hard fail) the
+    block immediately follows, skipping blocks with nothing in them. An ISO
+    sentence never follows an unrelated concern (selection.emphasis), and is
+    only for what iso_rules allow: stated concerns, a new requirement and
+    hard fails."""
+    order = _plan_blocks(plan)
+    if "ISO" not in order:
+        return ""
+    for block in reversed(order[:order.index("ISO")]):
+        if not blocks.get(block):
             continue
-        seen.append(clause)
-        asks = writer.say(f"iso.asks_that.{clause}", iso["asks_that"].get(clause), {})
-        text = writer.say("iso.relevance_first", iso["relevance_first"],
-                          {"clause": clause, "asks_that": asks or ""})
-        if text:
-            out.append(text)
-    return out
+        if block == "HARD_FAIL" and ctx.hard_fails:
+            return clause_for(ctx.hard_fails[0].get("reason", ""))
+        if block[:-1] in ("LEAD", "WHY", "ASK", "CHECK") and block[-1].isdigit():
+            n = int(block[-1])
+            concern = concerns[n - 1] if n <= len(concerns) else None
+            return concern["clause"] if concern and concern["firmness"] == "stated" else ""
+        return ""
+    return ""
+
+
+def _iso_sentence(clause: str, writer: _Writer) -> list:
+    if not clause:
+        return []
+    iso = wording()["iso"]
+    asks = writer.say(f"iso.asks_that.{clause}", iso["asks_that"].get(clause), {})
+    text = writer.say("iso.relevance_first", iso["relevance_first"],
+                      {"clause": clause, "asks_that": asks or ""})
+    return [text] if text else []
 
 
 # -- plans and paragraphs --------------------------------------------------------------------------
@@ -1068,7 +1138,15 @@ def _plan_blocks(plan: dict) -> list:
     return [b for para in plan["paragraphs"] for b in para]
 
 
-def _choose_plan(tier: str, needed: set, n_full: int, picker: _Picker, avoid: set):
+def _opens_before_leads(plan: dict) -> bool:
+    order = _plan_blocks(plan)
+    first_open = min((order.index(b) for b in ("OPEN", "CHANGE") if b in order), default=None)
+    first_lead = min((i for i, b in enumerate(order) if b.startswith("LEAD")), default=None)
+    return first_lead is None or (first_open is not None and first_open < first_lead)
+
+
+def _choose_plan(tier: str, needed: set, n_full: int, picker: _Picker, avoid: set,
+                 opening_first: bool = False):
     plans = wording()["selection"]["plans"][tier]
 
     def missing(plan):
@@ -1082,6 +1160,9 @@ def _choose_plan(tier: str, needed: set, n_full: int, picker: _Picker, avoid: se
     scored = [(i, p, missing(p)) for i, p in enumerate(plans)]
     fewest = min(len(g) for _, _, g in scored)
     eligible = [(i, p) for i, p, g in scored if len(g) == fewest]
+    if opening_first:
+        # A lead that follows up on the quoted change must come after it.
+        eligible = [(i, p) for i, p in eligible if _opens_before_leads(p)] or eligible
     not_adjacent = [(i, p) for i, p in eligible if p["id"] not in avoid]
     candidates = not_adjacent or eligible
     chosen_id = picker.pick(f"plans.{tier}", [(i, p["id"]) for i, p in candidates])
@@ -1130,11 +1211,25 @@ def compose_note(fusion_result, layer1_result, *, section_label: str = "",
     shape = _shape(ctx)
 
     blocks: dict = {}
-    change = _describe_change(ctx, writer)
+    change, change_sentence = _describe_change(ctx, writer)
     opened_lines = shape == "lines_removed_quoted"
-    concerns = [_concern(ctx, firm, issue, writer, opened_lines=opened_lines)
-                for firm, issue in full[:MAX_CONCERNS]]
-    extra = [c for c in full[MAX_CONCERNS:]]
+    # What the opening quotes, so no concern quotes the same words again.
+    ch = ctx.change
+    if shape in ("small_edit", "punctuation", "spelling", "equivalent_terms"):
+        quoted = " ".join(h["old_ctx"] + " " + h["new_ctx"] for h in ch.hunks)
+    elif shape == "added_sentence":
+        quoted = " ".join(h["new"] for h in ch.hunks)
+    elif shape in ("lines_removed_quoted", "lines_added_quoted"):
+        quoted = " ".join(ch.removed_lines + ch.added_lines)
+    else:
+        quoted = ""
+    quoted = quoted.lower()
+    advisory_sentences, combined, findings = _advisory_sentences(ctx, writer)
+    written = [_concern(ctx, firm, issue, writer, opened_lines=opened_lines, quoted=quoted)
+               for firm, issue in full]
+    # The unclear new requirement is the primary concern (selection.emphasis).
+    ranked = ([combined] if combined else []) + written
+    concerns, extra = ranked[:MAX_CONCERNS], ranked[MAX_CONCERNS:]
 
     opening = None
     if change:
@@ -1153,7 +1248,7 @@ def compose_note(fusion_result, layer1_result, *, section_label: str = "",
         if opening is None:
             opening = writer.say(f"openings.{voice}.{tier}", pool, slots)
     blocks["OPEN"] = [opening] if opening else []
-    blocks["CHANGE"] = [_tidy_sentence(_cap(change) + ".")] if change else []
+    blocks["CHANGE"] = [_tidy_sentence(_cap(change_sentence) + ".")] if change_sentence else []
 
     # Leads, why, ask, check - per concern, as far as the plan has room.
     for n, c in enumerate(concerns, start=1):
@@ -1167,22 +1262,27 @@ def compose_note(fusion_result, layer1_result, *, section_label: str = "",
     blocks["HARD_FAIL"] = [s for s in (writer.say(f"hard_fails.{f.get('reason')}",
                                                   W["hard_fails"].get(f.get("reason")), {})
                                        for f in ctx.hard_fails) if s]
-    blocks["ADVISORIES"] = _advisory_sentences(ctx, writer)
+    blocks["ADVISORIES"] = advisory_sentences
     blocks["CONTEXT"] = _context_sentences(ctx, concerns, writer)
     blocks["FINE"] = _fine_sentences(ctx, concerns, quiet, writer)
     blocks["LIMITS"] = _limit_sentences(ctx, concerns, writer)
-    blocks["ISO"] = _iso_sentences(ctx, concerns, writer)
     blocks["UNCLEAR"] = ([writer.say(f"unclear.{voice}", W["unclear"][voice], {})]
                          if tier == "unclear" else [])
-    blocks["CLOSE"] = [s for s in [writer.say(f"closings.{voice}.{_CLOSING_WEIGHT[tier]}",
-                                              W["closings"][voice][_CLOSING_WEIGHT[tier]], {})] if s]
+    # closings.minor is for "something small to tidy". A minor note that
+    # only carries a quiet line has nothing to tidy, so it closes lightly.
+    weight = _CLOSING_WEIGHT[tier]
+    if weight == "minor" and not findings:
+        weight = "light"
+    blocks["CLOSE"] = [s for s in [writer.say(f"closings.{voice}.{weight}",
+                                              W["closings"][voice][weight], {})] if s]
 
     needed = {b for b in ("HARD_FAIL", "ADVISORIES", "CONTEXT") if blocks[b]}
     needed |= {f"LEAD{n}" for n in range(1, min(len(concerns), 2) + 1) if blocks.get(f"LEAD{n}")}
-    plan, gaps = _choose_plan(tier, needed, len(concerns), picker, set(adjacent_plans or []))
+    plan, gaps = _choose_plan(tier, needed, len(concerns), picker, set(adjacent_plans or []),
+                              opening_first=any(c["followup"] for c in concerns) or opened_lines)
+    blocks["ISO"] = _iso_sentence(_iso_owner(plan, blocks, concerns, ctx), writer)
     leads_in_plan = sum(1 for b in _plan_blocks(plan) if b.startswith("LEAD"))
-    also = [c["short_name"] for c in concerns[leads_in_plan:]] + [
-        W["grouping"]["short_names"].get(i["label"], i["label"]) for _, i in extra]
+    also = [c["short_name"] for c in concerns[leads_in_plan:] + extra if c["short_name"]]
     blocks["ALSO"] = ([writer.say("grouping.also_noted", W["grouping"]["also_noted"],
                                   {"short_names": _join(also)})] if also else [])
     blocks["ALSO"] = [s for s in blocks["ALSO"] if s]
@@ -1199,7 +1299,7 @@ def compose_note(fusion_result, layer1_result, *, section_label: str = "",
                                                for k in ("gone", "came", "other_section", "section")]
     paragraphs = []
     for para in plan["paragraphs"]:
-        sentences = []
+        sentences, previous = [], None
         for block in para:
             content = list(blocks.get(block, []))
             if not content:
@@ -1210,10 +1310,20 @@ def compose_note(fusion_result, layer1_result, *, section_label: str = "",
             elif block == "ADVISORIES" and sentences:
                 content[0] = _with_transition(writer, "add", content[0],
                                               _starts_lowerable(content[0], protected))
-            elif block == "FINE" and sentences and (concerns or blocks["ADVISORIES"]):
+            elif block == "ADVISORIES" and not paragraphs:
+                # Advisories opening the note get an introduction first.
+                intro = W.get("advisories_intro") or {}
+                kind = "one" if findings <= 1 else "several"
+                lead = writer.say(f"advisories_intro.{kind}", intro.get(kind), {})
+                if lead:
+                    content = [lead] + content
+            elif (block == "FINE" and previous is not None
+                  and _FINDING_BLOCKS.match(previous)):
+                # A contrast word only after a concern or an advisory.
                 content[0] = _with_transition(writer, "contrast", content[0],
                                               _starts_lowerable(content[0], protected))
             sentences += content
+            previous = block
         if sentences:
             paragraphs.append(sentences)
 
@@ -1350,12 +1460,13 @@ def compose_proposal_note(sections: list, *, audience: str = REVIEWER, history=N
                     key=lambda s: _TIER_RANK.get(s.get("tier"), 99))
     if ranked:
         top = ranked[0]
-        first = next((i for i in top.get("issues") or []
-                      if i.get("label") in wording()["grouping"]["short_names"]), None)
+        names = wording()["grouping"].get("definite_names", {})
+        labels = [i.get("label") for i in top.get("issues") or []]
+        labels += [a.get("label") for a in top.get("advisories") or []]
+        first = next((label for label in labels if label in names), None)
         if first:
-            point = f"{wording()['grouping']['short_names'][first['label']]} in {top['label']}"
             text = writer.say(f"proposal_note.strongest.{voice}", words["strongest"][voice],
-                              {"top_point": point})
+                              {"top_point": names[first], "section": top["label"]})
             if text:
                 last.append(text)
     if last:

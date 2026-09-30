@@ -14,7 +14,7 @@ from revision_pipeline import config
 from revision_pipeline.layer1_rules import run_layer1
 from revision_pipeline.layer3_fusion import FusionResult, run_layer3
 from revision_pipeline.layer4_explain import (
-    DRAFTER_ONLY, NOTE_HEADINGS, REVIEWER, SUBMITTER, TIERS, _Change,
+    NOTE_HEADINGS, REVIEWER, SUBMITTER, TIERS, _Change,
     clause_for, compose_note, compose_proposal_note, explain, is_note,
     not_assessed_message, without_legacy_verdict, wording,
 )
@@ -237,21 +237,22 @@ def test_the_file_never_uses_a_verdict_word():
         assert not VERDICT_WORDS.search(text), text
 
 
-def test_drafter_only_variants_still_exist_in_the_file():
-    texts = set()
+def test_voice_specific_wording_is_marked_in_the_file():
+    """Checks and limit lead-ins are split by voice, and the drafter-only
+    change variant sits in its own list, so the reader never gets them."""
+    w = wording()
+    for label, words in w["concerns"].items():
+        assert set(words["check"]) == {"drafter", "reader"}, label
+    assert set(w["limits"]["lead_in"]) == {"drafter", "reader"}
+    assert w["change"]["added_sentence"]["drafter_only"]
+    for text in w["change"]["added_sentence"]["variants"]:
+        assert not re.search(r"\byou", text, re.I)
 
-    def walk(node):
-        if isinstance(node, str):
-            texts.add(node)
-        elif isinstance(node, dict):
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for value in node:
-                walk(value)
-    walk(wording())
-    for _, text in DRAFTER_ONLY:
-        assert text in texts, text
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_no_words_are_quoted_twice(tier, audience, note, choices):
+    quotes = re.findall(r"“([^”]{4,})”", note)
+    assert len(quotes) == len(set(quotes)), quotes
 
 
 @pytest.mark.parametrize("tier", TIERS)
