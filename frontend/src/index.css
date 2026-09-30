@@ -3268,3 +3268,10 @@ a:hover { color: var(--brand-500); }
   color: var(--n-600);
 }
 .package-earlier li { margin-bottom: 0.25rem; }
+
+/* The note streams in the first time the drafter sees it; "Show all" skips. */
+.ai-note-skip { align-self: flex-start; margin-top: -0.2rem; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

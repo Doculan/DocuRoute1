@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import AiNote from "../AiNote";
 import DiffView from "../DiffView";
 import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
@@ -192,6 +193,15 @@ export function ProposalDetail({
           {data.overall_reason || <span className="subtle">Not given yet.</span>}
         </p>
       </section>
+
+      {data.proposal_note?.reader && (
+        <section className="card card-pad" style={{ marginTop: "1.75rem" }}>
+          <span className="label" style={{ display: "block", marginBottom: "0.6rem" }}>
+            AI check — the proposal as a whole
+          </span>
+          <AiNote text={data.proposal_note.reader} />
+        </section>
+      )}
 
       <section style={{ marginTop: "1.75rem" }}>
         <h2 className="section-title">

@@ -272,6 +272,11 @@ function Proposal({ proposalId, onBack, onSay }) {
         </div>
       )}
 
+      {data.proposal_note && (
+        <ProposalNote note={data.proposal_note} forReviewers={data.viewer_is_initiator === false}
+                      noteId={`proposal-${proposalId}-v${data.version}`} />
+      )}
+
       <Editor
         proposalId={proposalId}
         data={data}
@@ -606,9 +611,27 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
 }
 
 /**
+ * The proposal-level note: composed once at submission from the stored
+ * section checks, and frozen with the version.
+ */
+function ProposalNote({ note, forReviewers, noteId }) {
+  const text = forReviewers ? note.reader : note.drafter;
+  if (!text) return null;
+  return (
+    <section className="card card-pad" style={{ marginBottom: "1.25rem" }}>
+      <span className="label" style={{ display: "block", marginBottom: "0.6rem" }}>
+        AI check — the proposal as a whole
+      </span>
+      <AiNote key={noteId} text={text} noteId={noteId} reveal={!forReviewers} />
+    </section>
+  );
+}
+
+/**
  * The AI check's note on one section. No verdict: the note says what
  * changed, what to look at and why, in words. The drafting office reads it
- * addressed to them; everyone else reads it addressed to reviewers.
+ * addressed to them, streamed in the first time they see it; everyone else
+ * reads it addressed to them, all at once.
  */
 function Assessment({ assessment, stale, forReviewers }) {
   const text = forReviewers
@@ -625,7 +648,9 @@ function Assessment({ assessment, stale, forReviewers }) {
         )}
       </div>
 
-      <AiNote text={text} />
+      <AiNote key={`${assessment.id}-${forReviewers ? "reader" : "drafter"}`}
+              text={text} noteId={`${assessment.id}-${forReviewers ? "reader" : "drafter"}`}
+              reveal={!forReviewers && assessment.note_format === "prose"} />
 
       {assessment.coordinated_change && (
         <p className="subtle text-sm" style={{ marginTop: "0.6rem" }}>
