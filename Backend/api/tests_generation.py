@@ -327,6 +327,37 @@ class DcrContentTests(PackageFixture):
 
 class DraftCopyTests(PackageFixture):
 
+    def test_download_keeps_the_complete_lock_time_snapshot(self):
+        unchanged = self.s2.content
+        proposal = self.locked(sections=[(self.s1, 'The Cashier shall retain a copy.')])
+        attachment = self.attachment(proposal, Attachment.PAGES_GENERATED)
+        with attachment.file.open('rb') as source:
+            original_bytes = source.read()
+        self.s2.content = 'An unrelated later revision.'
+        self.s2.save(update_fields=['content'])
+        url = f'/api/proposals/{proposal.pk}/attachments/{attachment.pk}/download/'
+        response = self.as_(self.acc_enc).get(url)
+        self.assertEqual(response.status_code, 200)
+        downloaded = b''.join(response.streaming_content)
+        response.close()
+        self.assertEqual(downloaded, original_bytes)
+        paragraphs = [p.text for p in docx.Document(io.BytesIO(downloaded)).paragraphs]
+        self.assertIn(unchanged, paragraphs)
+        self.assertNotIn(self.s2.content, paragraphs)
+
+    def test_complete_draft_failure_rolls_back_the_final_concurrence(self):
+        proposal_id = self.a_draft()
+        self.submit(proposal_id)
+        self.decide(proposal_id, self.bud_head, Concurrence.CONCUR)
+        with mock.patch.object(pages, 'build_document', side_effect=ValueError('Draft rendering failed')):
+            with self.assertRaisesMessage(ValueError, 'Draft rendering failed'):
+                self.decide(proposal_id, self.cmo_head, Concurrence.CONCUR)
+        proposal = Proposal.objects.get(pk=proposal_id)
+        self.assertEqual(proposal.status, Proposal.CONCURRENCE)
+        self.assertEqual(proposal.dcr_number, '')
+        self.assertFalse(proposal.attachments.exists())
+        self.assertFalse(proposal.events.filter(event=AuditEvent.DOCUMENTS_GENERATED).exists())
+
     def test_pipe_tables_keep_their_empty_columns(self):
         """An empty cell at either end must not be eaten.
 

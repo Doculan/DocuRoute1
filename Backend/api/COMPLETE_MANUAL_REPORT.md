@@ -49,3 +49,16 @@ of four), then passed with the implementation. All four DraftCopyTests pass,
 including multiple changed sections, unchanged content/tables and NUMPAGES fields.
 Tests use an isolated database and temporary media. A fast password hasher is set
 only inside the test process; production password settings are untouched.
+
+## Stage 3: workflow integrity
+
+167 tests pass across `tests_generation`, `tests_package`, `tests_concurrence`
+and `tests_effective`. The downloaded complete draft retains identical bytes
+after an unrelated section changes. Its unchanged section remains the lock-time
+text. A draft-rendering exception rolls back the final concurrence, DCR number
+and attachment rows. Existing tests confirm authenticated downloads, preserved
+superseded copies and effectivity limited to changed sections.
+
+As in the pre-existing generation path, a database rollback does not remove
+files already written before a later generator fails; such orphan files are not
+downloadable through attachment records. This change does not add file cleanup.
