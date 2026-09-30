@@ -360,13 +360,32 @@ class DraftCopyTests(PackageFixture):
         self.assertEqual([c.text for c in table.rows[0].cells],
                          ['Responsibility', '', 'Activity'])
 
-    def test_unchanged_sections_are_left_out(self):
+    def test_complete_draft_includes_unchanged_sections_and_replaces_changed_text(self):
+        from api.models import ManualSection
+        before = ManualSection.objects.create(
+            manual=self.manual, subtitle='1.0 OBJECTIVE', order=-1,
+            content='Preserve this objective.', tag='POLICY')
+        child = ManualSection.objects.create(
+            manual=self.manual, parent=self.s2, subtitle='4.1 DETAIL', order=3,
+            content=TABLE, tag='PROCEDURE')
+        original = self.s1.content
+        revised = "The Cashier shall release the cheque within one working day."
         proposal = self.locked(sections=[
-            (self.s1, "The Cashier shall release the cheque within one working day."),
+            (self.s1, revised),
         ])
         document = docx.Document(
             self.attachment(proposal, Attachment.PAGES_GENERATED).file.path)
-        self.assertNotIn('4.0 PROCEDURES', [p.text for p in document.paragraphs])
+        paragraphs = [p.text for p in document.paragraphs]
+        titles = [before.subtitle, self.s1.subtitle, self.s2.subtitle, child.subtitle]
+        self.assertEqual([p for p in paragraphs if p in titles], titles)
+        self.assertIn(before.content, paragraphs)
+        self.assertIn(self.s2.content, paragraphs)
+        self.assertEqual(paragraphs.count(revised), 1)
+        self.assertNotIn(original, paragraphs)
+        self.assertIn('Complete draft manual', paragraphs[0])
+        self.assertNotIn('changed sections only', paragraphs[0])
+        self.assertEqual([c.text for c in document.tables[0].rows[0].cells],
+                         ['Responsibility', '', 'Activity'])
 
     def test_the_header_counts_the_pages(self):
         """"Page 1 of 4", as the university's documents read."""

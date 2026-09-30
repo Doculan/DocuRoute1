@@ -1,8 +1,9 @@
-"""The draft copy: the changed sections, printed on the document template.
+"""The complete draft manual, printed on the document template.
 
 The DCR asks for a draft copy of the document to be attached. This is it -
-the agreed text of every changed section, in document order, on
-`MANUAL_BLANK.docx`.
+every section in document order on `MANUAL_BLANK.docx`, substituting the
+agreed proposal text for changed sections. Unchanged sections are read at
+generation time; the saved attachment freezes the complete lock-time draft.
 
 **One file for the request, not one per section.** Separate files would
 each number their pages from one, and a sheaf of "Page 1 of 1" is not a
@@ -37,6 +38,26 @@ _SEPARATOR = re.compile(r'^\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$')
 
 
 def generate(proposal, version, actor):
+    document = build_document(proposal, version)
+    return [save(
+        document, proposal, version, Attachment.PAGES_GENERATED, actor,
+        filename=f'{proposal.dcr_number} Draft copy {proposal.manual.title}.docx',
+    )]
+
+
+def build_document(proposal, version, *, note=None):
+    """Build without saving, also used for isolated previews and recovery.
+
+    Normal generation is called in the proposal-lock transaction. Recovery
+    must explicitly label its current baseline instead of claiming lock-time
+    content. Do not change `changed_sections`: DCR summaries still need it.
+    """
+    changes = {c.section_id: c for c in changed_sections(version)}
+    sections = list(proposal.manual.sections.order_by('order', 'pk'))
+    if not sections:
+        raise ValueError('Cannot generate a complete draft: the manual has no sections.')
+    if changes.keys() - {section.pk for section in sections}:
+        raise ValueError('Cannot generate a complete draft: a changed section is outside the manual.')
     document = Document(PAGES_TEMPLATE)
     _add_total_pages(document)
 
@@ -45,29 +66,29 @@ def generate(proposal, version, actor):
         if not ''.join(t.text or '' for t in paragraph.iter(qn('w:t'))).strip():
             body.remove(paragraph)
 
-    note = document.add_paragraph()
-    run = note.add_run(
-        f'Draft copy attached to {proposal.dcr_number} · changed sections only'
+    label = document.add_paragraph()
+    run = label.add_run(
+        note if note is not None else
+        f'Complete draft manual incorporating the changes in {proposal.dcr_number}'
     )
     run.font.size = Pt(8)
     run.font.color.rgb = RGBColor(0x59, 0x59, 0x59)
 
-    for index, change in enumerate(changed_sections(version)):
+    for index, section in enumerate(sections):
         heading = document.add_paragraph()
-        heading.add_run(change.section.subtitle.strip()).bold = True
+        heading.add_run(section.subtitle.strip()).bold = True
         heading.paragraph_format.keep_with_next = True
         heading.paragraph_format.space_before = Pt(12 if index else 6)
 
-        for kind, content in blocks(change.new_text):
+        change = changes.get(section.pk)
+        text = change.new_text if change is not None else section.content
+        for kind, content in blocks(text):
             if kind == 'table':
                 _add_table(document, content)
             else:
                 document.add_paragraph(content)
 
-    return [save(
-        document, proposal, version, Attachment.PAGES_GENERATED, actor,
-        filename=f'{proposal.dcr_number} Draft copy {proposal.manual.title}.docx',
-    )]
+    return document
 
 
 def split_row(line):

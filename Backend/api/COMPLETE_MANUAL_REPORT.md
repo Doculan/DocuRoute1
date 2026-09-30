@@ -35,3 +35,17 @@ need a named actor, a reason and explicit acceptance of the current baseline.
 
 Each stage is reported and committed before proceeding. Generated documents,
 private data, database files and model artifacts stay out of Git.
+
+## Stage 2: complete generation
+
+The generator now reads every section ordered by `order, pk`, substitutes only
+actual proposal changes, and labels the result as a complete draft. Subsections
+and unchanged tables are included. Building and saving are separated to support
+isolated previews and explicitly labelled recovery. Empty manuals and changes
+pointing outside the manual are refused rather than producing incomplete files.
+
+The replacement regression test failed on the old generator (one heading instead
+of four), then passed with the implementation. All four DraftCopyTests pass,
+including multiple changed sections, unchanged content/tables and NUMPAGES fields.
+Tests use an isolated database and temporary media. A fast password hasher is set
+only inside the test process; production password settings are untouched.
