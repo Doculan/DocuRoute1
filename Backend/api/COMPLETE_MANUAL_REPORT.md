@@ -62,3 +62,21 @@ superseded copies and effectivity limited to changed sections.
 As in the pre-existing generation path, a database rollback does not remove
 files already written before a later generator fails; such orphan files are not
 downloadable through attachment records. This change does not add file cleanup.
+
+## Stage 4: rendered-document inspection
+
+Three synthetic eight-section manuals were built with the production generator
+and official template, without database writes: one revised section, three
+revised sections, and a long manual with three revisions and a 35-row table.
+Microsoft Word exported the drafts to PDF. The resulting PDFs contain 2, 2 and
+12 pages respectively. All eight headings and the expected unchanged/revised
+markers are present. All 120 numbered paragraphs and 35 table rows in the long
+sample survive export.
+
+Visually inspected the short draft's two pages and the long draft's table
+continuation and final pages. Headers, blank status fields, footer boxes and
+confidentiality text remain in place. Table headers repeat across page breaks;
+empty cells retain their columns. Final pages show `2 of 2` and `12 of 12`.
+No layout patch was needed. These are synthetic samples, not certification of
+every possible source document or a browser walkthrough. Samples remain under
+the local temporary `docuroute-complete-manual-*` folder, outside Git.
