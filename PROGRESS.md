@@ -3,6 +3,19 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 1 October 2026 — Editable tables in proposal sections
+
+Draft proposal tables now render as editable cells with row/column controls,
+confirmed deletion and undo. Surrounding prose stays editable. Source-offset
+editing preserves unchanged content and avoids the reader's legacy column
+merging. Unsaved changes mark AI notes stale and require saving before checking.
+
+Verification: 14 frontend tests, production build and new-file lint pass.
+Chrome exercised the actual proposal screen with mock APIs, including exact save
+payloads, Tab, controls, undo, check lifecycle and narrow-screen scrolling.
+Global lint retains the same 11 errors and 2 warnings. No backend, AI or live-data
+changes. Details and limitations: `frontend/TABLE_EDITOR_REPORT.md`.
+
 ## 30 September–1 October 2026 — Complete draft manuals
 
 Implemented in six reported/committed stages from `027f732`. Draft generation

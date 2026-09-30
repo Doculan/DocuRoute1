@@ -1044,6 +1044,19 @@ a:hover { color: var(--brand-500); }
 }
 .textarea-doc:focus { background: var(--n-0); }
 
+.section-content-editor { display: grid; gap: 0.8rem; min-width: 0; }
+.section-content-editor .textarea-doc { min-height: 5rem; }
+.section-table-editor { min-width: 0; border: 1px solid var(--n-300); border-radius: 8px; padding: 0.6rem; }
+.section-edit-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.section-edit-table caption { text-align: left; padding: 0 0 0.5rem; font-weight: 600; }
+.section-edit-table td, .section-edit-table th { border: 1px solid var(--n-300); padding: 0; vertical-align: top; min-width: 140px; }
+.section-edit-table th { background: var(--paper-3); }
+.section-edit-table .is-selected { outline: 2px solid var(--primary, #5140b8); outline-offset: -2px; }
+.section-cell-input { display: block; width: 100%; min-height: 4.5em; padding: 0.55rem; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; line-height: 1.5; resize: vertical; overflow-wrap: anywhere; }
+.section-cell-input:focus { outline: none; background: var(--n-0); }
+.section-cell-input:disabled { opacity: 0.7; }
+.section-table-actions { gap: 0.4rem; padding-top: 0.6rem; }
+
 .select {
   appearance: none;
   padding-right: 1.9rem;
@@ -3164,6 +3177,7 @@ a:hover { color: var(--brand-500); }
 
 .proposal-section-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 0.6rem;
   width: 100%;

@@ -9,6 +9,7 @@ import { STATUS_LABEL, WITH_PACKAGE, statusTone } from "../proposalStatus";
 // DiffView is the reviewer's technical diff.
 import DocDiff from "../DocDiff";
 import AiNote from "../AiNote";
+import SectionContentEditor from "../SectionContentEditor";
 
 const BASE_URL = "";
 
@@ -532,11 +533,16 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
           {sections.map((s) => {
             const change = s.change;
             const isOpen = openSection === s.section_id;
+            const dirty = isOpen && draft !== (change?.new_text ?? s.current_text ?? "");
             return (
               <div key={s.section_id} className="proposal-section">
                 <button
                   className="proposal-section-head"
+                  disabled={busy}
                   onClick={() => {
+                    const current = sections.find((section) => section.section_id === openSection);
+                    if (current && draft !== (current.change?.new_text ?? current.current_text ?? "") &&
+                        !window.confirm("Discard unsaved edits to this section?")) return;
                     setOpenSection(isOpen ? null : s.section_id);
                     setDraft(change?.new_text ?? s.current_text ?? "");
                   }}
@@ -546,33 +552,35 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
                   {change?.has_changed && (
                     <>
                       <span className="badge badge-info">changed</span>
-                      {change.check_is_current ? (
+                      {change.check_is_current && !dirty ? (
                         <span className="subtle text-xs">checked</span>
                       ) : (
                         <span className="badge badge-warning">needs a check</span>
                       )}
                     </>
                   )}
+                  {dirty && <span className="badge badge-warning">unsaved edits</span>}
                 </button>
 
                 {isOpen && (
                   <div className="proposal-section-body">
                     {editable ? (
                       <>
-                        <textarea
-                          className="textarea textarea-doc"
+                        <SectionContentEditor
+                          key={s.section_id}
+                          label={s.subtitle}
                           value={draft}
-                          onChange={(e) => setDraft(e.target.value)}
-                          rows={10}
+                          onChange={setDraft}
+                          disabled={busy}
                         />
                         <div className="row-wrap" style={{ gap: "0.5rem", marginTop: "0.6rem" }}>
-                          <button className="btn btn-primary btn-sm" disabled={busy}
+                          <button className="btn btn-primary btn-sm" disabled={busy || !dirty}
                                   onClick={() => saveSection(s)}>
                             Save this section
                           </button>
                           {change?.has_changed && (
                             <>
-                              <button className="btn btn-ghost btn-sm" disabled={busy}
+                              <button className="btn btn-ghost btn-sm" disabled={busy || dirty}
                                       onClick={() => check(s)}>
                                 {change.check_is_current ? "Check again" : "Run the check"}
                               </button>
@@ -583,6 +591,7 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
                             </>
                           )}
                         </div>
+                        {dirty && <p className="subtle text-xs">Save this section before running the AI check.</p>}
                       </>
                     ) : change?.has_changed ? (
                       <DocDiff diffText={change.diff_text} />
@@ -595,7 +604,7 @@ function Editor({ proposalId, data, editable, onChanged, onError }) {
                     {change?.assessment && (
                       <Assessment
                         assessment={change.assessment}
-                        stale={!change.check_is_current}
+                        stale={!change.check_is_current || dirty}
                         forReviewers={data.viewer_is_initiator === false}
                       />
                     )}
