@@ -8,7 +8,7 @@ pytesseract
 pdf2image
 pymupdf
 pymupdf4llm
-scikit-learn
+scikit-learn==1.9.0
 joblib
 python-docx
 mammoth
