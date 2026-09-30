@@ -3,6 +3,21 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 30 September 2026 — Layer 4 wording 4.1 (review of c031bd5)
+
+Wording-only follow-up to the refinement below. Four defects found by rendering
+180 notes (three edits, both voices, 30 rotations): an opening ("The comparison
+shows that {change}") that broke on noun-phrase change wording; an item number
+quoted and then repeated ("“3.2 …” now reads “3.2 …” at 3.2"); colon openings
+running into a lower-case "in"; and up to three "the check did not…" sentences
+per note. Also the space before an ellipsis in quoted evidence was being eaten.
+Now: inline several-place changes put the location after the list; the location
+is dropped where the quote shows it; FINE is the one sentence about what was not
+flagged, and light closings end the note without restating it. Five new tests,
+each failing on c031bd5. 427 pipeline tests, 119 proposal/pre-assessment/
+concurrence API tests, check_setup Ready, fingerprint `6a6a5c667a3c4d11`.
+Stored notes unchanged; restart backend workers.
+
 ## 30 September 2026 — Layer 4 prose and qualified findings
 
 User-authorized refinement of the completed explanation engine: describe small

@@ -99,3 +99,12 @@ The test environment emitted existing SVM artifact warnings (scikit-learn 1.8.0
 artifacts loaded with 1.9.0), a PyMuPDF import deprecation, and a Windows physical
 CPU detection warning with logical-core fallback. Tests and inference completed
 successfully; those environment issues were outside this wording refinement.
+
+## Follow-up: wording 4.1
+
+A review of the notes this refinement produced found four defects, fixed in
+wording 4.1: a noun-phrase-unsafe opening, an item number repeated after a quote
+that already showed it, colon openings joining a lower-case "in", and up to three
+"the check did not…" sentences in one note. Openings now read, for example,
+"“Any” was removed and “EO” was added at 3.2." The stand-alone change sentence
+("In 3.2 of 3.0 POLICIES, …") is unchanged. See PROGRESS.md for verification.

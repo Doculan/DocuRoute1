@@ -441,3 +441,49 @@ def test_grouped_insertions_do_not_describe_unchanged_words_as_added():
     assert "“central office also” was added" not in note, note
     assert "now reads" in note, note
     assert "“current” was added at 3.3" in note, note
+
+
+_CHECK_SAYS = re.compile(r"check (?:did not|didn't|has not)|not flagged|not detected|"
+                         r"did not identify|no specific concern", re.I)
+
+
+@pytest.mark.parametrize("audience", [SUBMITTER, REVIEWER])
+def test_several_small_edits_read_cleanly_in_every_opening(audience):
+    old = ("3.2 Any request for information shall be governed by Executive Order "
+           "No. 02, series of 2016 or the Freedom of Information.")
+    new = old.replace("Any request", "Request").replace("Information.", "Information EO.")
+    history = []
+    for key in range(30):
+        note, choices = compose(old, new, verdict="approve", issues=[],
+                                audience=audience, history=history, key=str(key))
+        # "In {section}, …" and colon openings take the change as it stands.
+        assert ": in " not in note, note
+        assert not re.search(r"[Ii]n 3\.0 POLICIES, in ", note), note
+        # Quoted evidence opening with an ellipsis keeps its space.
+        assert ":..." not in note, note
+        history.insert(0, choices)
+
+
+def test_an_item_number_shown_in_the_quote_is_not_repeated_after_it():
+    old = "3.2 The office keeps the records.\n3.3 Staff read the manual."
+    new = "3.2 The central office also keeps the records.\n3.3 Staff read the current manual."
+    history = []
+    for key in range(20):
+        note, choices = compose(old, new, verdict="approve", issues=[],
+                                history=history, key=str(key))
+        assert not re.search(r"“3\.2[^”]*” now reads “3\.2[^”]*” at 3\.2", note), note
+        assert "at 3.3" in note, note
+        history.insert(0, choices)
+
+
+@pytest.mark.parametrize("audience", [SUBMITTER, REVIEWER])
+def test_what_the_check_did_not_find_is_said_once(audience):
+    old = "3.2 Records are available to all employees."
+    new = "3.2 Records are available to some employees."
+    history = []
+    for key in range(30):
+        note, choices = compose(old, new, verdict="approve", issues=[],
+                                audience=audience, history=history, key=str(key))
+        assert len(_CHECK_SAYS.findall(note)) == 1, note
+        assert not re.search(r"shows that an? ", note), note
+        history.insert(0, choices)

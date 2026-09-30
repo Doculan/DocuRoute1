@@ -29,7 +29,7 @@
 # =============================================================================
 
 meta:
-  version: 4
+  version: 4.1
   status: refined review wording; ISO paraphrases for the QMS office
   audiences:
     drafter: the office that wrote the proposal (spec audience “submitter”)
@@ -243,7 +243,7 @@ openings:
       - "Only a small correction here: {change}."
     plain:
       - "Here's what this edit does: {change}."
-      - "The comparison shows that {change}."
+      - "Here's the edit: {change}."
       - "{change_cap}."
       - "Looking at {section}, {change}."
     minor:
@@ -361,7 +361,7 @@ change:
       insert: "“{new}” was added{at_item_tail}"
       delete: "“{old}” was removed{at_item_tail}"
       replace: "“{old_ctx}” now reads “{new_ctx}”{at_item_tail}"
-    several_places: "in {where}, {hunk_list}"
+    several_places: "{hunk_list}{at_item_tail}"      # inside an opening
     several_places_sentence:
       - "in {where}, {hunk_list}"
       - "the wording changed in {where}: {hunk_list}"
@@ -944,12 +944,12 @@ fine:
     # Built from features that are zero and not contradicted by a concern.
     variants:
       - "The check did not flag changes to figures, obligations or named responsibilities."
-      - "Changes to figures, obligations and named responsibilities were not detected by this check."
-      - "The check has not identified changes to figures, obligations or named responsibilities."
+      - "Changes to figures, obligations or named responsibilities were not detected."
+      - "Figures, obligations and named responsibilities were not flagged as changed."
     partial: "The check did not flag changes to {things}."  # joined subset
   nothing_removed:
-    - "The text comparison found no removed words."
-    - "No word removals were detected in the comparison."
+    - "No words were removed."
+    - "The edit removes no words."
 
 # -----------------------------------------------------------------------------
 # LIMITS — what this check can't tell you. Specific to the concerns; max 2.
@@ -1002,11 +1002,11 @@ grouping:
 # -----------------------------------------------------------------------------
 closings:
   drafter:
-    light:        # trivial, plain
-      - "The check did not identify a specific concern to raise."
-      - "No specific concern was flagged in this comparison."
-      - "This check has no specific concern to add."
-      - "No further concern was detected in the wording compared."
+    light:        # trivial, plain — FINE has already said what was not flagged
+      - "That's everything the check found."
+      - "That covers what the comparison showed."
+      - "That's the full result for this section."
+      - "Nothing more from this check."
     minor:        # minor — something small to tidy
       - "These findings are worth following up."
       - "The points above are what this check identified for attention."
@@ -1022,8 +1022,8 @@ closings:
       - "Address the points above in the text or explain the intended change for the reviewers."
   reader:
     light:
-      - "The check did not identify a specific concern to raise."
-      - "No specific concern was flagged in this comparison."
+      - "That's everything the check found."
+      - "That covers what the comparison showed."
     minor:
       - "These are the points this check identified for follow-up with the drafting office."
       - "The points above are what this check identified for attention."

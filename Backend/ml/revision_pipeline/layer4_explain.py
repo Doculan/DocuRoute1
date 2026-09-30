@@ -393,7 +393,9 @@ class _Picker:
 
 def _tidy_sentence(text: str) -> str:
     text = _WS_RE.sub(" ", text).strip()
-    text = text.replace(" ,", ",").replace(" .", ".").replace(" :", ":").replace(" ;", ";")
+    text = text.replace(" ,", ",").replace(" :", ":").replace(" ;", ";")
+    # A full stop, but not an ellipsis opening quoted evidence ("edit: ...the").
+    text = re.sub(r" \.(?!\.)", ".", text)
     for mark in (".", "?", "!"):
         text = text.replace(f"{mark}”.", f"{mark}”")
     text = re.sub(r"(?<!\.)\.\.(?!\.)", ".", text)
@@ -627,26 +629,34 @@ def _describe_change(ctx: _Section, writer: _Writer) -> tuple:
     slots = _change_slots(ctx)
     ch = ctx.change
     if shape == "small_edit" and len(ch.hunks) > 1:
-        parts = []
+        parts, shows_item = [], False
         for hunk in ch.hunks:
             # Describe the observed action, without inferring its purpose or
             # effect on meaning. Keep context for substitutions; insertions
             # and deletions can name the actual words instead of two mostly
             # identical fragments. Different locations stay with each edit.
-            piece_slots = ctx.place(hunk["item"] if len(ch.items) > 1 else "")
-            piece_slots.update(hunk)
             # Adjacent insertions/deletions can be grouped around unchanged
             # words. If both spans contain text, describe a substitution so
             # those intervening words are not falsely called added/removed.
             kind = "replace" if hunk["old"] and hunk["new"] else hunk["tag"]
+            quoted = {"replace": (hunk["old_ctx"], hunk["new_ctx"]),
+                      "insert": (hunk["new"],), "delete": (hunk["old"],)}[kind]
+            # Where the quote already shows the item number, it is not
+            # stated again after the quote.
+            item = hunk["item"]
+            if item and any(q.strip().startswith(item) for q in quoted):
+                item, shows_item = "", True
+            piece_slots = ctx.place(item if len(ch.items) > 1 else "")
+            piece_slots.update(hunk)
             piece = writer.say(f"change.small_edit.actions.{kind}",
                                block["actions"][kind], piece_slots)
             if piece:
                 parts.append(piece)
         slots["hunk_list"] = _join(parts)
         # Actions quote the changed words, so unlike context quotes they do
-        # not contain the shared item number. State that location once.
-        slots.update(ctx.place(ch.single_item))
+        # not usually contain the shared item number. State that location
+        # once, unless a quote already shows it.
+        slots.update(ctx.place("" if shows_item else ch.single_item))
         inline = writer.say("change.small_edit.several_places", block["several_places"], slots)
         sentence = writer.say("change.small_edit.several_places_sentence",
                               block.get("several_places_sentence"), slots)
