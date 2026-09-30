@@ -582,7 +582,13 @@ def _lines_slot(lines, text) -> str:
 
 def _change_slots(ctx: _Section) -> dict:
     ch = ctx.change
-    slots = ctx.place(ch.single_item)
+    item = ch.single_item
+    # Where the quoted words already show the item number ("1.1 To
+    # provide…"), the location is not stated again after the quote.
+    if item and ch.hunks and any(
+            h["old_ctx"].startswith(item) or h["new_ctx"].startswith(item) for h in ch.hunks):
+        item = ""
+    slots = ctx.place(item)
     removed_share = float(ctx.features.get("deleted_word_ratio", 0) or 0)
     added_share = float(ctx.features.get("inserted_word_ratio", 0) or 0)
     slots.update({
@@ -1120,11 +1126,27 @@ def _iso_sentence(clause: str, writer: _Writer) -> list:
 
 # -- plans and paragraphs --------------------------------------------------------------------------
 
+def _direct_contrast(previous: str, paragraph: list, blocks: dict, concerns: list) -> bool:
+    """transitions.contrast may join a FINE or LIMITS line only to what came
+    immediately before it in the same paragraph: an advisory, or a stated
+    concern whose lead is in that paragraph too."""
+    if previous == "ADVISORIES":
+        return True
+    if previous[:-1] in ("LEAD", "WHY", "ASK", "CHECK") and previous[-1].isdigit():
+        n = int(previous[-1])
+        concern = concerns[n - 1] if n <= len(concerns) else None
+        return bool(concern and concern["firmness"] == "stated"
+                    and f"LEAD{n}" in paragraph and blocks.get(f"LEAD{n}"))
+    return False
+
+
 def _with_transition(writer: _Writer, pool: str, sentence: str, lower_ok: bool) -> str:
     connector = writer.say(f"transitions.{pool}", wording()["transitions"][pool], {})
     if not connector:
         return sentence
-    body = _uncap(sentence) if lower_ok and not connector.endswith(":") else sentence
+    # One sentence either way: after "Beyond that," and after "There's one
+    # more:" alike, what follows continues in lower case (selection.emphasis).
+    body = _uncap(sentence) if lower_ok else sentence
     return f"{connector} {body}"
 
 
@@ -1317,9 +1339,10 @@ def compose_note(fusion_result, layer1_result, *, section_label: str = "",
                 lead = writer.say(f"advisories_intro.{kind}", intro.get(kind), {})
                 if lead:
                     content = [lead] + content
-            elif (block == "FINE" and previous is not None
-                  and _FINDING_BLOCKS.match(previous)):
-                # A contrast word only after a concern or an advisory.
+            elif (block in ("FINE", "LIMITS") and previous is not None
+                  and _direct_contrast(previous, para, blocks, concerns)):
+                # A contrast word only straight after a stated concern or an
+                # advisory in the same paragraph; otherwise no connective.
                 content[0] = _with_transition(writer, "contrast", content[0],
                                               _starts_lowerable(content[0], protected))
             sentences += content
@@ -1471,6 +1494,12 @@ def compose_proposal_note(sections: list, *, audience: str = REVIEWER, history=N
                 last.append(text)
     if last:
         paragraphs.append(last)
+    # Always 2-3 paragraphs: with nothing beyond the scope, say so.
+    if len(paragraphs) < 2:
+        text = writer.say(f"proposal_note.no_concerns.{voice}",
+                          (words.get("no_concerns") or {}).get(voice), {})
+        if text:
+            paragraphs.append([text])
     text = "\n\n".join(" ".join(p) for p in paragraphs)
     return text, {"voice": voice, "pools": picker.chosen, "unfilled": sorted(writer.unfilled)}
 

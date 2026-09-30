@@ -364,3 +364,29 @@ def test_explain_returns_the_note_alone():
     note = explain(fusion, layer1, section_label="3.0 POLICIES", audience=SUBMITTER,
                    old_text=POLICIES, new_text=POLICIES.replace("365", "180"))
     assert isinstance(note, str) and note
+
+
+# -- wording file v3 rules ----------------------------------------------------------------------
+
+@pytest.mark.parametrize("tier, audience, note, choices", NOTES, ids=IDS)
+def test_a_colon_transition_continues_in_lower_case(tier, audience, note, choices):
+    for connector in wording()["transitions"]["second_concern"]:
+        if connector.endswith(":"):
+            for found in re.finditer(re.escape(connector) + r" (\S)", note):
+                assert not found.group(1).isupper() or found.group(1) in "“", note
+
+
+def test_the_item_is_not_repeated_after_a_quote_that_shows_it():
+    old = "1.1 To provide guidelines and procedures of accounting services."
+    new = "1.1 provide guidelines and procedures of accounting services."
+    for audience in (SUBMITTER, REVIEWER):
+        note, _ = compose(old, new, verdict="needs_revision", issues=[], audience=audience,
+                          section="1.0 OBJECTIVE")
+        assert "” at 1.1" not in note and "1.1, " not in note.split("“")[0]
+
+
+def test_a_proposal_note_with_nothing_to_raise_still_has_two_paragraphs():
+    sections = [_record("2.0 SCOPE", "a", "a,", "trivial")]
+    for audience in (SUBMITTER, REVIEWER):
+        note, _ = compose_proposal_note(sections, audience=audience, content_key="one")
+        assert 2 <= len(note.split("\n\n")) <= 3

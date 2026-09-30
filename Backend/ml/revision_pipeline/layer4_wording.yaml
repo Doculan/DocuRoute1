@@ -1,7 +1,7 @@
 # =============================================================================
 # Layer 4 wording — the assistive note
 # =============================================================================
-# Draft 2 (after the first engine run), written against LAYER4_INPUT_SPEC.md (cf26b04 + §7 planned advisories).
+# Draft 3 (after the second engine run), written against LAYER4_INPUT_SPEC.md (cf26b04 + §7 planned advisories).
 #
 # This file holds ALL the language Layer 4 uses. The engine chooses and fills;
 # it never writes a sentence that is not built from this file.
@@ -28,7 +28,7 @@
 # =============================================================================
 
 meta:
-  version: 2
+  version: 3
   status: draft — wording for review; ISO paraphrases for the QMS office
   audiences:
     drafter: the office that wrote the proposal (spec audience “submitter”)
@@ -148,6 +148,10 @@ selection:
     - "If OPEN already quoted the hunk a stated concern refers to, use that concern's `lead_followup` instead of `lead_stated*`. Never quote the same words twice in one note."
     - "The ISO sentence goes immediately after the concern it relates to, never after an unrelated one."
     - "`combined.new_requirement_unclear` counts as the primary concern (LEAD1), ahead of any suggested (model-only) concern. When it is used, `adds_requirement.why` is replaced by `adds_requirement.why_after_unclear`."
+    - "A transitions.second_concern phrase that ends in a colon is followed by the next clause in LOWER CASE, joined into ONE sentence — never a separate capitalised sentence. \"There's one more:\" + \"the automated reading suggests...\" -> \"There's one more: the automated reading suggests...\". A transitions.second_concern phrase that does NOT end in a colon (\"A second point:\" is the only one that does — change the others to not need one, or always lower-case after it) starts its own sentence normally."
+    - "transitions.contrast (\"Even so\", \"That said\", \"Still\") may ONLY join a FINE or LIMITS line to a concern or advisory that came immediately before it in the SAME paragraph. Never use it to join FINE to a suggested/tentative concern, and never at the start of a paragraph that opens a new topic. When FINE follows two or more concerns/advisories with no direct contrast, join with no connective word, as its own sentence."
+    - "When {item} is already visible inside a quoted span (e.g. the quote itself begins with the item number, as in a numbered policy line), do not also append \"at {item}\"/\"{at_item}\" after the quote — the change block states the location once, not twice."
+    - "A proposal note is always 2 to 3 paragraphs. When there is only a scope paragraph and no cross-section or strongest-point content, add a third paragraph from `proposal_note.no_concerns` instead of stopping at one."
     - "Context lines about conflicts (`context.dropped_rule_findings.contradicts_manual`) are used only for numeric conflicts, never role conflicts."
     - "A `transitions.contrast` word may only follow a concern or advisory, never a neutral description of the change."
     - "When ADVISORIES begins a paragraph that is also the first of the note, open with `advisories_intro` first; better still, prefer plans that open with OPEN."
@@ -1067,6 +1071,13 @@ proposal_note:
     reader:
       - "The point most worth raising is {top_point} in {section}."
       - "If there’s one question for the drafting office, it’s about {top_point} in {section}."
+  no_concerns:
+    drafter:
+      - "None of the changed sections raised a specific concern, so there's nothing in particular to settle before sending this on."
+      - "Nothing here needs settling before you send it on."
+    reader:
+      - "None of the changed sections raised a specific concern."
+      - "There's nothing here that particularly needs raising with the drafting office."
 
 # -----------------------------------------------------------------------------
 # NOT CHECKED — unchanged from today.
