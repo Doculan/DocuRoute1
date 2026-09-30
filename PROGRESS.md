@@ -2417,8 +2417,18 @@ advisories of LAYER4_INPUT_SPEC.md section 7 are built as advisories only.
   count; "will" does not); `affects_verdict` false on each.
 - **Fixed**: quoted context cutting an item number (".1 To provide").
 - **Migration 0033** (two JSON fields, default `{}`): tested on a copy of
-  the live database - row counts unchanged, integrity ok. **Not applied to
-  the live database**; back it up first.
+  the live database, then **applied to the live database on 2026-09-30**
+  after a backup (`db.sqlite3.bak-20260930-pre-0033`): row counts
+  unchanged, integrity ok.
+- **Wording file v2** (same day): `lead_followup` so no words are quoted
+  twice, voice-split checks and limit lead-ins, `advisories_intro`,
+  `several_places_sentence`, `closings.minor`, `definite_names`, the new
+  unfinished-line pools, and the rules in `selection.emphasis` (at most two
+  concerns in full; the unclear new requirement as LEAD1; ISO only after
+  the concern it relates to; conflict context for numeric conflicts only;
+  a contrast word only after a finding). Two engine choices on top: a minor
+  note with only a quiet line closes lightly, not with `closings.minor`;
+  and a quiet line is not a finding for the contrast rule.
 - **Housekeeping**: `Backend/media/proposals/` ignored, and the five files
   `d0b8ebe` committed there untracked (they remain in that commit's
   history); scikit-learn pinned to 1.9.0; `iso_relevance.json` replaced by
@@ -4787,6 +4797,13 @@ What follows from that, for now:
   working tree in phase 3b, and the `.bak` removed from the repository;
   the earlier versions are **still in the public history**. Same
   deferral: part of the history cleanup that needs the repository owner.
+- **Added 2026-09-30: five generated proposal documents.** Commit
+  `d0b8ebe` committed `Backend/media/proposals/4/` - three `.docx` and two
+  `.pdf` (a generated DCR, draft copy and annex, and signed-copy uploads),
+  which carry manual text. Untracked at `f2a74f0`, and `Backend/media/proposals/`
+  is now ignored; the files are **still in the public history** at
+  `d0b8ebe`. Same deferral: part of the history cleanup that needs the
+  repository owner.
 
 
 
