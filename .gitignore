@@ -52,3 +52,8 @@ Backend/db.sqlite3-shm
 # which holds no real values, belongs in version control.
 .env
 Backend/.env
+
+# Generated DCRs, draft copies and uploaded signed scans. They hold manual
+# text and signatures, belong to the database that references them, and
+# must never be committed.
+Backend/media/proposals/
