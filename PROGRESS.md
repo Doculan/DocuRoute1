@@ -2387,6 +2387,45 @@ and "learners" within 3.6, with "recievables"; and an added
 
 ---
 
+## Layer 4 engine on the wording file; four advisories built (2026-09-30)
+
+No model change: Layers 1-3, the fingerprint (`6a6a5c667a3c4d11`) and the
+published figures are as they were. Layer 4's language is now entirely
+`layer4_wording.yaml` (the engine only chooses and fills); the four
+advisories of LAYER4_INPUT_SPEC.md section 7 are built as advisories only.
+
+- **Engine** (`layer4_explain.py`): tier -> plan -> blocks -> prose
+  paragraphs; firmness per concern; rotation of every pool, least recently
+  used first, over the other sections of the proposal and then the user's
+  last 20 notes, ties broken by a content hash; neighbouring sections avoid
+  each other's plan. The choices are stored on each check
+  (`RevisionPreAssessment.note_choices`) and notes are never regenerated.
+  Re-checking identical content reproduces its note (earlier checks of the
+  same content are left out of the history).
+- **More context to Layer 4 only**: the reason, the retrieved sections'
+  labels, the document title, the proposal's other changed sections.
+  Layer 1 receives exactly what it did.
+- **Proposal note**: composed at submission from the stored section checks,
+  frozen on `ProposalVersion.proposal_note`; shown on the proposal page
+  (drafter or reader voice) and on the QMS screen (reader).
+- **Frontend**: `AiNote.jsx` renders paragraphs (older notes as before),
+  streams a new note in for the drafter the first time, about 30 words a
+  second, with "Show all", never under reduced motion.
+- **Advisories** (`advisory_checks.py`): `unknown_word` (pyspellchecker,
+  pinned, plus the generated `manual_vocabulary.txt`), `inconsistent_terms`,
+  `unfinished_sentence`, `adds_requirement` ("should" and "is required"
+  count; "will" does not); `affects_verdict` false on each.
+- **Fixed**: quoted context cutting an item number (".1 To provide").
+- **Migration 0033** (two JSON fields, default `{}`): tested on a copy of
+  the live database - row counts unchanged, integrity ok. **Not applied to
+  the live database**; back it up first.
+- **Housekeeping**: `Backend/media/proposals/` ignored, and the five files
+  `d0b8ebe` committed there untracked (they remain in that commit's
+  history); scikit-learn pinned to 1.9.0; `iso_relevance.json` replaced by
+  the wording file's `iso` section; all six tags confirmed on GitHub.
+
+---
+
 ## Questions for the QMS office — open
 
 *The full list lives in `MULTI_OFFICE_WORKFLOW_PLAN.md` section 8. These are

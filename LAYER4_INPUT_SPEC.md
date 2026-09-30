@@ -1,5 +1,13 @@
 # Layer 4 input spec
 
+> **Status, 2026-09-30:** the engine this spec was written for is built.
+> Its wording lives in `Backend/ml/revision_pipeline/layer4_wording.yaml`,
+> which replaced the templates §4 describes and `iso_relevance.json`. §4 is
+> kept as the record of the earlier engine. The four advisories of §7 are
+> built (`advisory_checks.py`), and `explain()` now also receives the change
+> reason, the retrieved sections' labels, the document title, the other
+> sections changed in the proposal, and the rotation history.
+
 *What Layer 4 receives, so its wording can be drafted outside the codebase and an engine built to it. Written 2026-09-29 against the code at `cf26b04`. Nothing here changes Layers 1-3, the model or the published figures.*
 
 Layer 4 is `explain()` in `Backend/ml/revision_pipeline/layer4_explain.py`. It is called from `pipeline.assess_texts()` twice per checked section, once per audience, with the same findings. What it returns is stored as text on the check (`RevisionPreAssessment.explanation_staff` and `explanation_reviewer`) and is never re-run.
@@ -1736,7 +1744,9 @@ The change reason for every check: *"Aligned with the collection guidelines adop
 
 ## 7. Planned advisories
 
-*Planned 2026-09-30, not built.* Four new Layer 1 checks, each reported as an **advisory**, added so the new wording can describe them. They come from three real edits to FAM 6.01 that no layer caught (7.6).
+*Built 2026-09-30* (`advisory_checks.py`). Four Layer 1 checks, each reported as an **advisory**, added so the new wording can describe them. They come from three real edits to FAM 6.01 that no layer caught (7.6).
+
+**Decided and built:** pyspellchecker (pinned) for the word list; a committed, generated `manual_vocabulary.txt` for the manuals' own words (`scripts/build_manual_vocabulary.py`); "should" and "is required" count for `adds_requirement`, "will" does not; clause 6.3 for `adds_requirement`, 7.5.3 for the rest; the refinements below applied. **Measured after building** (same data): `unknown_word` 0 of 1,019 harmless edits, 18 words across the manuals in the worst case; `inconsistent_terms` 0 harmless (was 1), 3 on the other edits (was 52); `unfinished_sentence` 0 harmless, 32 other, 82 of 976 manual lines in the worst case; `adds_requirement` 2 harmless (was 1, now with "should"), 75 other, 153 of 1,498 manual sentences state an obligation. The measurements in 7.2-7.5 below are the prototype's, kept as planned.
 
 ### 7.1 The boundary
 
