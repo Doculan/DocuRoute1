@@ -80,3 +80,49 @@ empty cells retain their columns. Final pages show `2 of 2` and `12 of 12`.
 No layout patch was needed. These are synthetic samples, not certification of
 every possible source document or a browser walkthrough. Samples remain under
 the local temporary `docuroute-complete-manual-*` folder, outside Git.
+
+## Stage 5: historical recovery
+
+Added `recover_complete_draft`, dry-run by default. Application requires an
+approved active administrator ID, a reason and explicit current-baseline
+acceptance. It refuses downstream states, any signature records (including
+superseded scans), changed-section baseline mismatches, unreadable originals and
+already complete drafts. Original bytes and rows are retained; replacement uses
+the existing supersession relationship and adds an audit event. Failed recovery
+rolls back records and removes only its newly written file.
+
+The package API exposes earlier generated copies, and the proposal screen puts
+their downloads in a collapsed reference-only section. Current reconstructed
+copies display their replacement reason. Existing download permissions apply.
+
+Nine recovery tests passed; after adding the history display, all 15 recovery and
+package-reading tests passed. Frontend production build passed. The changed
+component is lint-clean both at the starting commit and now. Repository-wide
+lint reports 11 errors and 2 warnings in unchanged files; this work does not
+claim a clean global lint run.
+
+The user explicitly chose to replace the existing unsigned draft and preserve
+the original. A SQLite online backup was created and integrity-checked locally
+before applying recovery. Recovery replaced attachment 2 with attachment 4 for
+the sole eligible unsigned package, under administrator account 1, with a dated
+current-baseline reconstruction label and one audit event. All eight headings
+are present in order. Original attachment 2 remains available as an earlier copy.
+Manual content, proposal/version/change records, concurrence, section history
+and document status were compared with the backup and are unchanged.
+
+Local backup: `Backend/db.sqlite3.bak-20260930-210347-pre-complete-draft` (not in Git).
+
+### Recovery operation on another installation
+
+Take a consistent database backup (SQLite online backup API, or the deployment's
+database backup process) and preserve the media files before applying recovery.
+From `Backend`, with its environment active:
+
+```text
+python manage.py recover_complete_draft --proposal PROPOSAL_ID
+python manage.py recover_complete_draft --proposal PROPOSAL_ID --apply --actor ADMIN_USER_ID --reason "Reason for reconstructing the unsigned draft" --accept-current-baseline
+```
+
+The command is deliberately limited to unsigned legacy drafts. A current-baseline
+reconstruction is not evidence of unchanged sections as they stood at the original
+lock. Signed or completed packages need a separately agreed records procedure.

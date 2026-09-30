@@ -117,6 +117,7 @@ export default function ProposalPackage({ proposalId, onChanged }) {
             <span className="package-name text-sm">
               {GENERATED_LABEL[file.kind]}
               <span className="package-meta">{file.filename}</span>
+              {file.replacement_reason && <span className="package-meta">{file.replacement_reason}</span>}
             </span>
             <span className="package-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => download(file)}>
@@ -126,6 +127,21 @@ export default function ProposalPackage({ proposalId, onChanged }) {
           </div>
         ))}
       </div>
+
+      {pkg.previous_generated?.length > 0 && (
+        <details style={{ marginTop: "1rem" }}>
+          <summary>Earlier generated copies</summary>
+          <p className="package-note">Retained for reference. Use the current documents above for signing.</p>
+          {pkg.previous_generated.map((file) => (
+            <div key={file.id} className="package-row">
+              <span className="package-name text-sm">{file.filename}</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => download(file)}>
+                Download earlier copy
+              </button>
+            </div>
+          ))}
+        </details>
+      )}
 
       <h2 className="section-title" style={{ marginTop: "1.5rem" }}>Signed copies</h2>
       <p className="package-note">

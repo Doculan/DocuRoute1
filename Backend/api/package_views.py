@@ -139,6 +139,7 @@ def package_payload(proposal, user):
     ) if version else []
 
     generated = [_file_payload(a) for a in rows if a.is_generated and a.is_current]
+    previous_generated = [_file_payload(a) for a in rows if a.is_generated and not a.is_current]
     order = {k: i for i, (k, _) in enumerate(Attachment.KIND_CHOICES)}
     generated.sort(key=lambda f: order[f['kind']])
 
@@ -170,6 +171,7 @@ def package_payload(proposal, user):
         'status': proposal.status,
         'dcr_number': proposal.dcr_number,
         'generated': generated,
+        'previous_generated': previous_generated,
         'scans': scans,
         'outstanding': documents.scans_outstanding(proposal, version) if version else [],
         # Whether this person may upload or replace anything at all here.
