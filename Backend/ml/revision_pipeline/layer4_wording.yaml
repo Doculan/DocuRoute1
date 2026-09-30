@@ -18,7 +18,8 @@
 #     rejected, rejects, verdict, confidence, “needs revision”, “turned down”,
 #     “ready to submit”, “you can still submit”. Say “sign-off”, “signing step”,
 #     “go forward”, “send it on” instead.
-#   - Never state anything Layers 1–3 did not find.
+#   - Ground claims in assessment findings, advisory checks and the supplied
+#     texts. Absence of a finding is not proof of unchanged meaning.
 #   - ISO clauses are relevance (“this touches…”), never violation.
 #     Paraphrases are our own words; never quote the standard.
 #   - Plain text. Paragraphs separated by one blank line. No headings,
@@ -28,8 +29,8 @@
 # =============================================================================
 
 meta:
-  version: 3
-  status: draft — wording for review; ISO paraphrases for the QMS office
+  version: 4
+  status: refined review wording; ISO paraphrases for the QMS office
   audiences:
     drafter: the office that wrote the proposal (spec audience “submitter”)
     reader: every other office, the IMR and the custodian (spec “reviewer”)
@@ -51,7 +52,7 @@ slots:
   n_lines:        "Number of whole lines, in words under eleven (“two”)."
   were:           "“was” for one line, “were” for several."
   n_hunks:        "Number of separate changes, in words under eleven."
-  hunk_list:      "Each change as “old” → “new”, with “ (step 2)” after each when there are several places; joined with “; ”."
+  hunk_list:      "Observed actions in prose, with each location when several places changed; joined with commas and 'and'."
   first_word:     "The word a line now opens with."
   top_point:      "The single most significant concern, from `grouping.definite_names`."
   words_removed:  "Word count, in words under eleven."
@@ -238,17 +239,17 @@ openings:
     trivial:
       - "This is a light touch: {change}."
       - "A tidy-up, by the look of it: {change}."
-      - "{change_cap}. That's all this edit does."
+      - "{change_cap}."
       - "Only a small correction here: {change}."
     plain:
       - "Here's what this edit does: {change}."
-      - "I read this as {change}."
+      - "The comparison shows that {change}."
       - "{change_cap}."
       - "Looking at {section}, {change}."
     minor:
-      - "This edit is mostly straightforward: {change}."
-      - "{change_cap}, and most of it reads cleanly."
-      - "I went through {section}: {change}."
+      - "Here's what changed: {change}."
+      - "{change_cap}."
+      - "In {section}, {change}."
     unclear:
       - "{change_cap}."
       - "Here's what changed: {change}."
@@ -274,14 +275,14 @@ openings:
     trivial:
       - "The drafting office made a light correction: {change}."
       - "A tidy-up in {section}: {change}."
-      - "{change_cap}. That's the whole edit."
+      - "{change_cap}."
     plain:
       - "In {section}, {change}."
       - "The drafting office's edit: {change}."
       - "{change_cap}."
     minor:
-      - "The edit in {section} is mostly straightforward: {change}."
-      - "{change_cap}, and most of it reads cleanly."
+      - "In {section}, {change}."
+      - "{change_cap}."
     unclear:
       - "{change_cap}."
       - "In {section}, {change}."
@@ -314,12 +315,12 @@ change:
     when: "cosmetic; every hunk punctuation_only"
     variants:
       - "a punctuation fix {at_item}: “{old_ctx}” now reads “{new_ctx}”"
-      - "{at_item_cap}, a small punctuation change: “{old_ctx}” → “{new_ctx}”"
+      - "the punctuation {at_item} changed from “{old_ctx}” to “{new_ctx}”"
       - "a punctuation adjustment in {where}, from “{old_ctx}” to “{new_ctx}”"
   spelling:
     when: "cosmetic, not punctuation only"
     variants:
-      - "a spelling or formatting fix {at_item}: “{old_ctx}” → “{new_ctx}”"
+      - "the wording {at_item} changed from “{old_ctx}” to “{new_ctx}”"
       - "a small correction in {where}, where “{old_ctx}” became “{new_ctx}”"
   equivalent_terms:
     when: "change_type terminology_equivalent"
@@ -356,11 +357,14 @@ change:
       - "{at_item_cap}, the wording changed from “{old_ctx}” to “{new_ctx}”"
       - "a wording edit in {where}: “{old_ctx}” now reads “{new_ctx}”"
       - "the text {at_item} went from “{old_ctx}” to “{new_ctx}”"
-    several_places: "{hunk_list}"          # inside another sentence only
+    actions:
+      insert: "“{new}” was added{at_item_tail}"
+      delete: "“{old}” was removed{at_item_tail}"
+      replace: "“{old_ctx}” now reads “{new_ctx}”{at_item_tail}"
+    several_places: "in {where}, {hunk_list}"
     several_places_sentence:
-      - "{n_hunks_cap} small wording changes in {section}: {hunk_list}"
-      - "the edits themselves are {hunk_list}"
-      - "{section} has {n_hunks} small changes: {hunk_list}"
+      - "in {where}, {hunk_list}"
+      - "the wording changed in {where}: {hunk_list}"
   larger_edit:
     when: "otherwise"
     variants:
@@ -796,10 +800,10 @@ advisories:
 
   vague_change_reason:
     drafter:
-      - "The reason you gave doesn't say much about what prompted the change or what it's for, which is the first thing a reviewer reads."
-      - "Your reason for the change is quite general; a sentence on what prompted it would help everyone reading."
+      - "Your change reason is quite general. Explain what prompted these edits and what they are intended to clarify or change."
+      - "The reason does not yet explain what prompted the edits. State the problem being addressed and the intended result so reviewers can assess the change in context."
     reader:
-      - "The reason given is quite general, so it doesn't say much about what prompted the change."
+      - "The change reason is quite general. Ask the drafting office to explain what prompted the edits and their intended result."
 
   malformed_citation:
     - "A legal reference looks broken after the edit: {evidence}."
@@ -930,22 +934,22 @@ unclear:
 # -----------------------------------------------------------------------------
 fine:
   cosmetic:
-    - "Nothing the section requires has changed; this is spelling, punctuation or layout only."
-    - "The rules and requirements read exactly as before."
-    - "It doesn't change what anyone has to do."
+    - "The check identified this as a spelling, punctuation or formatting edit."
+    - "The detected changes appear limited to spelling, punctuation or formatting."
+    - "This appears to be a surface correction based on the wording compared."
   equivalent:
-    - "Since the manual treats the two terms as the same, the requirement is unchanged."
-    - "The meaning stays the same."
+    - "The terms match an equivalent pair in the check's glossary; confirm that they fit this context."
+    - "The glossary treats these terms as equivalent, though their use here still needs to fit the sentence."
   untouched:
     # Built from features that are zero and not contradicted by a concern.
     variants:
-      - "No figure, obligation or named office changed."
-      - "The deadlines, obligations and offices named here are all as they were."
-      - "Nothing else in the section moved: figures, obligations and responsibilities are untouched."
-    partial: "No {things} changed."           # things = joined subset
+      - "The check did not flag changes to figures, obligations or named responsibilities."
+      - "Changes to figures, obligations and named responsibilities were not detected by this check."
+      - "The check has not identified changes to figures, obligations or named responsibilities."
+    partial: "The check did not flag changes to {things}."  # joined subset
   nothing_removed:
-    - "Nothing was taken out."
-    - "Everything that was there before is still there."
+    - "The text comparison found no removed words."
+    - "No word removals were detected in the comparison."
 
 # -----------------------------------------------------------------------------
 # LIMITS — what this check can't tell you. Specific to the concerns; max 2.
@@ -999,14 +1003,14 @@ grouping:
 closings:
   drafter:
     light:        # trivial, plain
-      - "It looks good to go."
-      - "Nothing else to flag here."
-      - "That's everything on this one."
-      - "This one should be straightforward."
+      - "The check did not identify a specific concern to raise."
+      - "No specific concern was flagged in this comparison."
+      - "This check has no specific concern to add."
+      - "No further concern was detected in the wording compared."
     minor:        # minor — something small to tidy
-      - "Worth a quick fix before sending it on, but nothing here changes what the section asks."
-      - "Once that’s tidied, there’s nothing else to flag."
-      - "A small correction and this one should be fine."
+      - "These findings are worth following up."
+      - "The points above are what this check identified for attention."
+      - "Review the points above when revising the text or its change reason."
     moderate:     # unclear, tentative, notable
       - "None of this stops you sending it on; the reviewers and concurring offices have the final say."
       - "It's your call whether to adjust it first — the decision rests with the reviewers, not this check."
@@ -1015,14 +1019,14 @@ closings:
     strong:       # serious, blocking
       - "It's worth settling these before sending it on, but the decision is yours and the reviewers'."
       - "A few minutes on these now will likely save a round of questions later. The final say still sits with the reviewers."
-      - "You can send it on as it is; just expect these points to come up."
+      - "Address the points above in the text or explain the intended change for the reviewers."
   reader:
     light:
-      - "Nothing else to flag."
-      - "That's the whole of it."
+      - "The check did not identify a specific concern to raise."
+      - "No specific concern was flagged in this comparison."
     minor:
-      - "Otherwise, nothing else stands out."
-      - "Beyond that small point, nothing else to flag."
+      - "These are the points this check identified for follow-up with the drafting office."
+      - "The points above are what this check identified for attention."
     moderate:
       - "These are points worth raising, not conclusions; the decision rests with the offices reviewing it."
       - "Take these as prompts for your own reading of the change."
@@ -1073,11 +1077,11 @@ proposal_note:
       - "If there’s one question for the drafting office, it’s about {top_point} in {section}."
   no_concerns:
     drafter:
-      - "None of the changed sections raised a specific concern, so there's nothing in particular to settle before sending this on."
-      - "Nothing here needs settling before you send it on."
+      - "The stored section checks did not identify a specific concern to raise."
+      - "No specific concern was flagged by the stored checks for these sections."
     reader:
-      - "None of the changed sections raised a specific concern."
-      - "There's nothing here that particularly needs raising with the drafting office."
+      - "The stored section checks did not identify a specific concern to raise."
+      - "No specific concern was flagged by the stored checks for these sections."
 
 # -----------------------------------------------------------------------------
 # NOT CHECKED — unchanged from today.

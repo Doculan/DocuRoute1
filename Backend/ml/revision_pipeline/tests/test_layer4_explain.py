@@ -390,3 +390,54 @@ def test_a_proposal_note_with_nothing_to_raise_still_has_two_paragraphs():
     for audience in (SUBMITTER, REVIEWER):
         note, _ = compose_proposal_note(sections, audience=audience, content_key="one")
         assert 2 <= len(note.split("\n\n")) <= 3
+
+
+@pytest.mark.parametrize("audience", [SUBMITTER, REVIEWER])
+def test_small_edits_are_explained_as_actions_with_their_location(audience):
+    old = ("3.2 Any request for information shall be governed by Executive Order "
+           "No. 02, series of 2016 or the Freedom of Information.")
+    new = old.replace("Any request", "Request").replace("Information.", "Information EO.")
+    for key in range(12):
+        note, choices = compose(old, new, verdict="approve", issues=[],
+                                audience=audience, key=str(key))
+        assert "→" not in note, note
+        assert "“Any” was removed" in note, note
+        assert "“EO” was added" in note, note
+        assert "3.2" in note, note
+        assert not choices["unfilled"]
+
+
+@pytest.mark.parametrize("audience", [SUBMITTER, REVIEWER])
+def test_absent_findings_do_not_claim_unchanged_meaning_or_readiness(audience):
+    # No detected issue is not proof that changing the scope is harmless.
+    old = "3.2 Records are available to all employees."
+    new = "3.2 Records are available to some employees."
+    history = []
+    for key in range(12):
+        note, choices = compose(old, new, verdict="approve", issues=[],
+                                audience=audience, history=history, key=str(key))
+        assert re.search(r"check (?:did not|didn't|has not)|not flagged|not detected", note), note
+        assert not re.search(r"untouched|all as they were|No .* changed\.|good to go|"
+                             r"nothing else to flag|should be fine|nothing here changes", note, re.I), note
+        history.insert(0, choices)
+
+
+@pytest.mark.parametrize("audience", [SUBMITTER, REVIEWER])
+def test_vague_reason_feedback_has_an_action_without_promising_clearance(audience):
+    case = dict(TIER_CASES["plain"], reason={"change_reason": "Update the document."})
+    history = []
+    for key in range(8):
+        note, choices = compose(**case, audience=audience, history=history, key=str(key))
+        assert "prompted" in note, note
+        assert re.search(r"[Ee]xplain|[Ss]tate|[Aa]sk .*explain", note), note
+        assert not re.search(r"Once .*tidied|should be fine|nothing else to flag", note, re.I), note
+        history.insert(0, choices)
+
+
+def test_grouped_insertions_do_not_describe_unchanged_words_as_added():
+    old = "3.2 The office keeps the records.\n3.3 Staff read the manual."
+    new = "3.2 The central office also keeps the records.\n3.3 Staff read the current manual."
+    note, _ = compose(old, new, verdict="approve", issues=[])
+    assert "“central office also” was added" not in note, note
+    assert "now reads" in note, note
+    assert "“current” was added at 3.3" in note, note

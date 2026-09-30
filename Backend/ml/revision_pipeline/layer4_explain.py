@@ -629,11 +629,24 @@ def _describe_change(ctx: _Section, writer: _Writer) -> tuple:
     if shape == "small_edit" and len(ch.hunks) > 1:
         parts = []
         for hunk in ch.hunks:
-            piece = f"{_quote(hunk['old_ctx'])} → {_quote(hunk['new_ctx'])}"
-            if hunk["item"] and len(ch.items) > 1:
-                piece += f" ({hunk['item']})"
-            parts.append(piece)
-        slots["hunk_list"] = "; ".join(parts)
+            # Describe the observed action, without inferring its purpose or
+            # effect on meaning. Keep context for substitutions; insertions
+            # and deletions can name the actual words instead of two mostly
+            # identical fragments. Different locations stay with each edit.
+            piece_slots = ctx.place(hunk["item"] if len(ch.items) > 1 else "")
+            piece_slots.update(hunk)
+            # Adjacent insertions/deletions can be grouped around unchanged
+            # words. If both spans contain text, describe a substitution so
+            # those intervening words are not falsely called added/removed.
+            kind = "replace" if hunk["old"] and hunk["new"] else hunk["tag"]
+            piece = writer.say(f"change.small_edit.actions.{kind}",
+                               block["actions"][kind], piece_slots)
+            if piece:
+                parts.append(piece)
+        slots["hunk_list"] = _join(parts)
+        # Actions quote the changed words, so unlike context quotes they do
+        # not contain the shared item number. State that location once.
+        slots.update(ctx.place(ch.single_item))
         inline = writer.say("change.small_edit.several_places", block["several_places"], slots)
         sentence = writer.say("change.small_edit.several_places_sentence",
                               block.get("several_places_sentence"), slots)
@@ -1046,12 +1059,12 @@ def _fine_sentences(ctx: _Section, concerns: list, quiet: list, writer: _Writer)
     adv = {a.get("label") for a in ctx.advisories}
     things = []
     if not ctx.features.get("numeric_changed_count") and not labels & {"numeric_changed", "contradicts_manual"}:
-        things.append("figure")
+        things.append("figures")
     if (not ctx.features.get("modal_weakened_count") and "modal_weakened" not in labels
             and "adds_requirement" not in adv):
-        things.append("obligation")
+        things.append("obligations")
     if not ctx.features.get("role_terms_changed_count") and not labels & {"responsibility_changed", "contradicts_manual"}:
-        things.append("named office")
+        things.append("named responsibilities")
     out = []
     if len(things) == 3:
         text = writer.say("fine.untouched", words["untouched"]["variants"], {})

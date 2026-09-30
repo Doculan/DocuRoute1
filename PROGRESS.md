@@ -3,6 +3,23 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 30 September 2026 — Layer 4 prose and qualified findings
+
+User-authorized refinement of the completed explanation engine: describe small
+multi-span edits as actions in sentences, make vague-reason feedback actionable,
+and replace categorical reassurance with what the check actually detected. Keep
+the two voices, deterministic rotation and stored snapshots. Grouped edits retain
+context so intervening unchanged words are not falsely described as added.
+
+Validation: 422 pipeline tests (196 Layer 4), 57 proposal/pre-assessment API tests,
+and model setup Ready. Seven new regression cases were demonstrated failing before
+their fixes. Three trained-model comparisons against `79e2d23` retained identical
+non-explanation output. Fingerprint remains `6a6a5c667a3c4d11`; no Layers 1–3,
+retrieval, model, schema or live-data changes. Restart backend workers to load the
+cached wording; stored notes remain unchanged. No browser walkthrough performed.
+
+Full report: `Backend/ml/reports/LAYER4_REFINEMENT_2026-09-30.md`.
+
 ---
 
 ## Ground rules (in addition to the spec's section 0)
