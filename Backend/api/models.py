@@ -1352,6 +1352,40 @@ class AuditEvent(models.Model):
         return f"{self.get_event_display()} — {self.office_name_at_time}"
 
 
+class Notification(models.Model):
+    """One person's inbox entry for one event.
+
+    Points at the audit event rather than copying its words, so the inbox
+    and the record cannot disagree about what happened. Written in the
+    same transaction as the event, to the people who held a post in the
+    office concerned at that moment - see `notifications.py`.
+    """
+
+    user = models.ForeignKey(
+        'CustomUser', on_delete=models.CASCADE, related_name='notifications',
+    )
+    event = models.ForeignKey(
+        AuditEvent, on_delete=models.CASCADE, related_name='notifications',
+    )
+    # Null while unread. Opening the proposal, or "mark all read", sets it.
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'event'], name='one_notification_per_user_per_event',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'read_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user} <- {self.event}"
+
+
 class QmsDecision(models.Model):
     """What the IMR or the Document Custodian decided about a request.
 

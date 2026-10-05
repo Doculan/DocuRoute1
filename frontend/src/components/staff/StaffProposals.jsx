@@ -39,7 +39,7 @@ function when(value) {
  * Reading comes first everywhere: the editor shows the whole document
  * with every section collapsed, and opening one is what starts an edit.
  */
-export default function StaffProposals({ startManualId, onDone }) {
+export default function StaffProposals({ startManualId, onDone, openRequest, onOpened }) {
   const [tab, setTab] = useState("mine");
   const [mine, setMine] = useState([]);
   const [awaiting, setAwaiting] = useState([]);
@@ -91,6 +91,13 @@ export default function StaffProposals({ startManualId, onDone }) {
     })();
   }, [startManualId, onDone, load]);
 
+  // Arriving from a notification.
+  useEffect(() => {
+    if (!openRequest) return;
+    setOpen(openRequest.id);
+    onOpened?.();
+  }, [openRequest, onOpened]);
+
   const say = (text) => {
     setMessage(text);
     setTimeout(() => setMessage(""), 6000);
@@ -99,8 +106,9 @@ export default function StaffProposals({ startManualId, onDone }) {
   if (open != null) {
     return (
       <Proposal
+        key={open}
         proposalId={open}
-        onBack={() => { setOpen(null); load(); }}
+        onBack={() => { setOpen(null); load(); onDone?.(); }}
         onSay={say}
       />
     );

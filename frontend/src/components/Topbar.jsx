@@ -14,6 +14,7 @@ export default function Topbar({
   pendingCount = 0,
   pendingTitle = "Items waiting for review",
   onPendingClick,
+  actions,
 }) {
   return (
     <header className="topbar">
@@ -52,6 +53,8 @@ export default function Topbar({
           <span className="topbar-dot">{pendingCount > 99 ? "99+" : pendingCount}</span>
         </button>
       )}
+
+      {actions}
     </header>
   );
 }

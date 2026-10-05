@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, documents
+from . import access, documents, notifications
 from .ai_notes import compose_version_note
 from .generation.common import position_title
 from .models import (
@@ -42,11 +42,19 @@ from ml.revision_pipeline.change_reason import blocks_submission, classify_reaso
 
 
 def _record(proposal, version, event, user, office, detail=''):
-    return AuditEvent.objects.create(
+    """Write the audit event, and tell whoever needs to hear about it.
+
+    One place for both, so no transition can be recorded and forgotten
+    by the inbox - which is how the proposing office went unaware of
+    concurrences and returns.
+    """
+    record = AuditEvent.objects.create(
         proposal=proposal, version=version, event=event, actor=user,
         position=_held_position(user, office), office=office,
         office_name_at_time=office.name, detail=detail,
     )
+    notifications.notify(record)
+    return record
 
 
 def _who(user, office_name, position=None, kind=None):
@@ -600,6 +608,9 @@ def proposal_full(request, proposal_id):
 
     if not can_see(request.user, proposal):
         return Response({'error': 'Access denied'}, status=403)
+
+    # Opening the proposal is reading what the notices were about.
+    notifications.mark_read(request.user, proposal_id=proposal.id)
 
     data = _full_payload(proposal)
     # Which rendering of each section's AI note to show: the one addressed

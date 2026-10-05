@@ -593,6 +593,89 @@ a:hover { color: var(--brand-500); }
   font-variant-numeric: tabular-nums;
 }
 
+/* Notifications: the bell and its panel. */
+.notif {
+  position: relative;
+  margin-left: auto;
+}
+.topbar-search ~ .notif { margin-left: 0; }
+
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.8rem;
+}
+.notif-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--brand-600);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.notif-link:hover { text-decoration: underline; }
+.notif-empty {
+  margin: 0;
+  padding: 1.2rem 0.9rem;
+  color: var(--text-subtle);
+  font-size: 0.8rem;
+}
+.notif-list { list-style: none; margin: 0; padding: 0; }
+.notif-list li + li { border-top: 1px solid var(--rule-soft); }
+.notif-item {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.65rem 0.9rem 0.65rem 1.4rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  position: relative;
+}
+.notif-item:hover { background: var(--surface-sunk); }
+.notif-item.is-unread { color: var(--text); }
+.notif-item.is-unread::before {
+  content: "";
+  position: absolute;
+  left: 0.6rem;
+  top: 1.05rem;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--gold);
+}
+.notif-msg { font-size: 0.8rem; line-height: 1.4; }
+.notif-detail {
+  font-family: var(--font-doc);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.notif-at { font-size: 0.7rem; color: var(--text-subtle); }
+
 .app-content {
   flex: 1;
   overflow-y: auto;

@@ -3,6 +3,40 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — Concurrence notifications (first slice of P5)
+
+Bug reported: after a concurring office concurred or returned a proposal,
+nothing told the proposing office. It had to open the proposal to see.
+Notifications had been deferred to P5; "Awaiting your office" was the only
+signal, and only concurring offices got it.
+
+Migration `0034` adds `Notification(user, event → AuditEvent, read_at)`.
+The message is derived from the audit event, never copied. Routing lives in
+`api/notifications.py` and is called from `concurrence_views._record`,
+inside the same transaction:
+
+| Event | Who is told |
+|---|---|
+| Submitted (incl. resubmission) | Every concurring office |
+| Concurred, returned, locked | The proposing office |
+
+Everyone holding a current post in the office is told (Encoder and Head),
+except the actor. A return carries its feedback. Other events notify nobody
+yet; `package_views` also goes through `_record`, so extending `ROUTES`
+covers it.
+
+API: `GET /api/notifications/` (unread count and latest 20),
+`POST /api/notifications/read/` (all, or `proposal_id`). Opening a proposal
+marks its notices read for that person. Staff portal: a bell in the topbar
+that polls every 60 s, and opening a notice opens the proposal.
+
+DB backed up to `db.sqlite3.bak-20261005-pre-0034`. The migration was
+applied, reversed and reapplied on a copy, then applied for real.
+13 new tests (`tests_notifications.py`).
+
+Not done: QMS staff and signatory offices (on lock) are not notified yet,
+and there is no email.
+
 ## 1 October 2026 — Editable tables in proposal sections
 
 Draft proposal tables now render as editable cells with row/column controls,

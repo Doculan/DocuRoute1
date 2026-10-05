@@ -7,6 +7,7 @@ import StaffHome from "./StaffHome";
 import StaffHelp from "./StaffHelp";
 import StaffProposals from "./StaffProposals";
 import Topbar from "../Topbar";
+import NotificationBell from "../NotificationBell";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
@@ -62,6 +63,11 @@ export default function StaffDashboard({ onLogout }) {
   const [awaiting, setAwaiting] = useState(0);
   // Set when a proposal is started from a section rather than from the tab.
   const [proposeForManual, setProposeForManual] = useState(null);
+  // Set when a notification is opened: which proposal, and a fresh object
+  // each time so the same one can be opened twice.
+  const [openRequest, setOpenRequest] = useState(null);
+  // Bumped whenever a proposal may have changed, so the bell re-reads.
+  const [bellKey, setBellKey] = useState(0);
 
   const username = localStorage.getItem("username") || "Staff";
 
@@ -79,6 +85,12 @@ export default function StaffDashboard({ onLogout }) {
   }, []);
 
   useEffect(() => { refreshAwaiting(); }, [refreshAwaiting]);
+
+  const openProposal = (id) => {
+    setOpenRequest({ id });
+    setActivePage("proposals");
+  };
+  const clearOpenRequest = useCallback(() => setOpenRequest(null), []);
 
   const openManual = (manualId) => {
     setSelectedManualId(manualId);
@@ -140,7 +152,13 @@ export default function StaffDashboard({ onLogout }) {
         return (
           <StaffProposals
             startManualId={proposeForManual}
-            onDone={() => { setProposeForManual(null); refreshAwaiting(); }}
+            onDone={() => {
+              setProposeForManual(null);
+              refreshAwaiting();
+              setBellKey((k) => k + 1);
+            }}
+            openRequest={openRequest}
+            onOpened={clearOpenRequest}
           />
         );
       case "help":
@@ -195,7 +213,12 @@ export default function StaffDashboard({ onLogout }) {
       </aside>
 
       <div className="app-main">
-        <Topbar crumb={CRUMBS[activePage] || "My Manuals"} />
+        <Topbar
+          crumb={CRUMBS[activePage] || "My Manuals"}
+          actions={
+            <NotificationBell onOpenProposal={openProposal} refreshKey={bellKey} />
+          }
+        />
 
         <main className="app-content">
           <div
