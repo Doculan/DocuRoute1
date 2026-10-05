@@ -78,7 +78,9 @@ export default function People() {
       await axios.post(
         `${BASE_URL}/api/org/people/${person.id}/approve/`, {}, getAuth()
       );
-      say(`${person.username} approved. They hold no post yet.`);
+      say(person.requested_office
+        ? `${person.username} approved. They hold no post yet — assign one at ${person.requested_office.name} if that is right.`
+        : `${person.username} approved. They hold no post yet.`);
       await load();
     } catch (err) {
       setError(err.response?.data?.error || "Could not approve.");
@@ -163,6 +165,11 @@ export default function People() {
                 <div className="strong">{p.full_name || p.username}</div>
                 <div className="subtle text-xs">
                   {p.username}{p.email ? ` · ${p.email}` : ""}
+                </div>
+                <div className="text-xs" style={{ marginTop: "0.2rem" }}>
+                  {p.requested_office
+                    ? <>Applied to <strong>{p.requested_office.name}</strong></>
+                    : <span className="subtle">No office given</span>}
                 </div>
               </div>
               <button className="btn btn-primary btn-sm" onClick={() => approve(p)}>

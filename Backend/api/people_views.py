@@ -71,6 +71,12 @@ def _person_payload(person, assignments=None):
         'system_role': person.system_role,
         'is_approved': person.is_approved,
         'is_active': person.is_active,
+        # What they applied for at sign-up; the posts below are what the
+        # system admin actually assigned.
+        'requested_office': (
+            {'id': person.requested_office_id, 'name': person.requested_office.name}
+            if person.requested_office_id else None
+        ),
         'current_positions': [_assignment_payload(a) for a in current],
         'past_positions': [
             _assignment_payload(a) for a in assignments if not a.is_current
@@ -86,7 +92,7 @@ def people(request):
     The full list is system-admin only. Names are personal data under RA
     10173, and the process itself only ever needs a position.
     """
-    queryset = CustomUser.objects.prefetch_related(
+    queryset = CustomUser.objects.select_related('requested_office').prefetch_related(
         'position_assignments__position__office'
     ).order_by('username')
 

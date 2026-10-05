@@ -3,6 +3,25 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — Applying to an office at sign-up
+
+Sign-up has an optional "Office you're applying to" dropdown of active
+offices. It is an **application, not a post**: it grants nothing. The
+system admin sees "Applied to …" on both approval screens (People →
+Awaiting approval, and Users) and assigns the actual position by hand,
+as before (user's choice; no one-click Encoder assignment).
+
+Needed one field, contrary to the first assumption: migration `0037`
+adds a nullable `CustomUser.requested_office` (FK, `SET_NULL`). It is
+kept after approval as the record of what was asked for. New open
+endpoint `GET /api/auth/offices/` returns active office ids and names
+only. `register` refuses an unknown or inactive office. DB backed up to
+`db.sqlite3.bak-20261005-pre-0037`. The migration was tested on a copy,
+then applied. 5 tests (`tests_signup_office.py`).
+
+Note: if an applicant's office is later merged or deactivated, the
+request still names it, and the admin assigns wherever is right.
+
 ## 5 October 2026 — Manuals as a list
 
 "My Manuals" (`StaffManuals`, used by the staff and QMS portals) was a

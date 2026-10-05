@@ -119,6 +119,7 @@ export default function UserManagement() {
                     <th>Username</th>
                     <th>Full name</th>
                     <th>Email</th>
+                    <th>Applied to</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -128,6 +129,7 @@ export default function UserManagement() {
                       <td className="table-strong">{user.username}</td>
                       <td>{user.full_name}</td>
                       <td>{user.email}</td>
+                      <td>{user.requested_office || <span className="subtle">—</span>}</td>
                       <td>
                         <div className="table-actions">
                           <button className="btn btn-success btn-sm" onClick={() => handleApprove(user.id, user.username)}>

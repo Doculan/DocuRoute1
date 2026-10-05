@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import logo from '../assets/QMS.png';
 
@@ -23,7 +23,17 @@ export default function Signup({ onBackToLogin }) {
     email: "",
     password: "",
     confirmPassword: "",
+    requested_office_id: "",
   });
+  // Active offices, for the application. Best-effort: if the list cannot
+  // load, the field is simply left out and the admin assigns the office.
+  const [offices, setOffices] = useState([]);
+
+  useEffect(() => {
+    axios.get("/api/auth/offices/")
+      .then((res) => setOffices(res.data))
+      .catch(() => setOffices([]));
+  }, []);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -50,6 +60,7 @@ export default function Signup({ onBackToLogin }) {
         username: formData.username,
         email: formData.email,
         password: formData.password,
+        requested_office_id: formData.requested_office_id || null,
       });
       setSuccess(true);
     } catch (err) {
@@ -120,6 +131,30 @@ export default function Signup({ onBackToLogin }) {
                 access. Documents print position titles, never names.
               </p>
             </div>
+
+            {offices.length > 0 && (
+              <div className="field">
+                <label className="label" htmlFor="su-office">
+                  Office you&apos;re applying to <span className="subtle">(optional)</span>
+                </label>
+                <select
+                  id="su-office"
+                  className="select"
+                  name="requested_office_id"
+                  value={formData.requested_office_id}
+                  onChange={handleChange}
+                >
+                  <option value="">Not sure / leave to the administrator</option>
+                  {offices.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+                <p className="subtle text-xs" style={{ margin: 0 }}>
+                  An application only: the system administrator confirms your
+                  office and position when approving the account.
+                </p>
+              </div>
+            )}
 
             <div className="field">
               <label className="label" htmlFor="su-username">Username</label>

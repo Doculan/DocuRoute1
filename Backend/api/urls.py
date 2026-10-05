@@ -13,6 +13,7 @@ from . import structure_views as structure
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
+    signup_offices,
     login,
     confirm_password,
     pending_users,
@@ -110,6 +111,7 @@ urlpatterns = [
 
     # Auth
     path('auth/register/', register),
+    path('auth/offices/', signup_offices),
     path('auth/confirm-password/', confirm_password),
     path('auth/login/', login),
     # Exchanges the refresh token for a new access token, so a session does not

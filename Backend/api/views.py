@@ -565,15 +565,40 @@ def register(request):
     if CustomUser.objects.filter(username=username).exists():
         return Response({'error': 'Username already taken'}, status=400)
 
+    # Optional: the office they say they work in. An application only -
+    # the system admin assigns the actual post on approval.
+    requested_office = None
+    office_id = request.data.get('requested_office_id')
+    if office_id not in (None, ''):
+        try:
+            requested_office = Office.objects.get(pk=int(office_id), is_active=True)
+        except (Office.DoesNotExist, TypeError, ValueError):
+            return Response({'error': 'Choose an office from the list.'}, status=400)
+
     CustomUser.objects.create_user(
         username=username,
         password=password,
         email=email,
         full_name=full_name,
+        requested_office=requested_office,
         is_approved=False
     )
 
     return Response({'message': 'Registration successful. Wait for admin approval.'}, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def signup_offices(request):
+    """The offices someone signing up can say they work in.
+
+    Open, because the person is not signed in yet. Names only, of active
+    offices - nothing about who works where.
+    """
+    return Response([
+        {'id': o.id, 'name': o.name}
+        for o in Office.objects.filter(is_active=True).order_by('name')
+    ])
 
 
 @api_view(['POST'])
@@ -608,11 +633,14 @@ def login(request):
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def pending_users(request):
-    users = CustomUser.objects.filter(is_approved=False)
+    users = CustomUser.objects.filter(is_approved=False).select_related('requested_office')
     # The full name the person gave at sign-up: whoever approves has to know
-    # who is asking.
+    # who is asking - and the office they applied to, which the approver
+    # confirms or corrects when assigning the post.
     data = [{'id': u.id, 'username': u.username, 'email': u.email,
-             'full_name': u.full_name} for u in users]
+             'full_name': u.full_name,
+             'requested_office': u.requested_office.name if u.requested_office else None}
+            for u in users]
     return Response(data)
 
 

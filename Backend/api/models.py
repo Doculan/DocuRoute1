@@ -458,6 +458,15 @@ class CustomUser(AbstractUser):
 
     is_approved = models.BooleanField(default=False)
 
+    # The office someone said they work in when signing up - an
+    # application, not a position. It grants nothing: the system admin
+    # reads it when approving and assigns the actual post. Kept after
+    # approval as the record of what was asked for.
+    requested_office = models.ForeignKey(
+        'Office', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='applicants',
+    )
+
     def get_full_name(self):
         """`full_name`, which sign-up and the account page fill in.
 
