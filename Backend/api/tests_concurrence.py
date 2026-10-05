@@ -117,6 +117,7 @@ class ConcurrenceFixture(TestCase):
         """A proposal ready to submit: changed, reasoned and checked."""
         proposal_id = self.client.post(
             '/api/proposals/', {'manual_id': self.manual.id}, format='json',
+            HTTP_X_REAUTH_TOKEN=self.token(self.acc_enc),
         ).data['id']
         self.client.patch(
             f'/api/proposals/{proposal_id}/',
@@ -387,6 +388,7 @@ class FrozenParticipantTests(ConcurrenceFixture):
         client = self.as_(vp_head)
         proposal_id = client.post(
             '/api/proposals/', {'manual_id': self.manual.id}, format='json',
+            HTTP_X_REAUTH_TOKEN=self.token(vp_head),
         ).data['id']
         client.patch(f'/api/proposals/{proposal_id}/',
                      {'overall_reason': REASON}, format='json')

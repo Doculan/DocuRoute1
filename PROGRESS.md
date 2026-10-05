@@ -3,6 +3,23 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — Starting a proposal asks for the password
+
+**Decided (user):** whoever starts a new proposal, Encoder included,
+confirms with their password. This reverses CLAUDE.md's "not on drafting"
+for this one action, and the re-authentication table is updated.
+Reopening an open draft does not ask (the server answers `already_open`
+before the check), and nor do editing, checking or first uploads. The
+Head's submit, concur/return and withdraw still ask every time.
+
+A "once per sitting" variant (one password covering 15 minutes) was built
+and discarded at the user's request. Per action stays.
+
+The screen tries without a token first, so reopening needs no prompt. On
+`reauth_required` it shows "Start a proposal?" with the password field.
+The five test sites that create proposals now send a token. 4 new tests
+(`StartingNeedsThePassword`).
+
 ## 5 October 2026 — Merge and split sections after upload
 
 The admin can **merge a section with the next one** or **split a section

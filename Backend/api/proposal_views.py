@@ -286,6 +286,14 @@ def proposals(request):
     if existing:
         return _already_open(manual, office, existing)
 
+    # Starting a proposal commits the office to a change, so it asks for
+    # the password (user's decision, 5 Oct 2026). Only here: reopening an
+    # open draft, editing it and checking it do not ask.
+    from .views import reauth_failure
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
     try:
         with transaction.atomic():
             proposal = Proposal.objects.create(

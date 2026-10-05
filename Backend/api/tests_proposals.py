@@ -28,6 +28,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import proposal_views
+from api.views import issue_reauth_token
 from api.models import (
     AuditEvent, CustomUser, Manual, ManualSection, ManualSeries,
     ManualSeriesOffice, Office, OfficeLink, Position, PositionAssignment,
@@ -118,7 +119,11 @@ class ProposalFixture(TestCase):
         body = {'manual_id': self.manual.id}
         if office is not None:
             body['office_id'] = office.id
-        return (client or self.client).post('/api/proposals/', body, format='json')
+        client = client or self.client
+        # Starting asks for the password; the token is for whoever is signed in.
+        token = issue_reauth_token(client.handler._force_user)
+        return client.post('/api/proposals/', body, format='json',
+                           HTTP_X_REAUTH_TOKEN=token)
 
     def edit(self, proposal_id, section, text, client=None):
         return (client or self.client).put(
@@ -723,13 +728,14 @@ class SimultaneousStartTests(ProposalFixture):
             return found
 
         results = []
+        token = issue_reauth_token(self.drafter)
 
         def start():
             try:
                 client = APIClient()
                 client.force_authenticate(user=self.drafter)
                 response = client.post('/api/proposals/', {'manual_id': self.manual.id},
-                                       format='json')
+                                       format='json', HTTP_X_REAUTH_TOKEN=token)
                 results.append((response.status_code, response.data.get('reason')))
             finally:
                 connections['default'].close()
@@ -756,3 +762,34 @@ class SimultaneousStartTests(ProposalFixture):
 
         self.assertEqual(sorted(results), [(201, None), (409, 'already_open')])
         self.assertEqual(drafts, 1)
+
+
+class StartingNeedsThePassword(ProposalFixture):
+    """Starting a proposal asks for the password; nothing after it does."""
+
+    def test_starting_without_it_is_refused_and_creates_nothing(self):
+        response = self.client.post(
+            '/api/proposals/', {'manual_id': self.manual.id}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['reason'], 'reauth_required')
+        self.assertFalse(Proposal.objects.exists())
+
+    def test_an_encoder_starts_one_with_it(self):
+        self.assertEqual(self.start().status_code, 201)
+
+    def test_reopening_an_open_draft_does_not_ask(self):
+        proposal_id = self.start().data['id']
+        response = self.client.post(
+            '/api/proposals/', {'manual_id': self.manual.id}, format='json')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['reason'], 'already_open')
+        self.assertEqual(response.data['proposal_id'], proposal_id)
+
+    def test_editing_and_checking_do_not_ask(self):
+        proposal_id = self.start().data['id']
+        response = self.edit(proposal_id, self.s1,
+                             'The Cashier shall release the cheque within one day.')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(
+            f'/api/proposals/{proposal_id}/sections/{self.s1.id}/check/', {}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)

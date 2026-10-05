@@ -111,13 +111,13 @@ Require the password again (the existing short-lived re-auth token, held in memo
 
 | Area | Actions |
 |---|---|
-| **Proposals** | Submitting a proposal for concurrence; a Head recording the office's concurrence or return; withdrawing a proposal |
+| **Proposals** | Starting a new proposal (anyone drafting, including an Encoder; decided 5 Oct 2026 — reopening an open draft does not ask); submitting a proposal for concurrence; a Head recording the office's concurrence or return; withdrawing a proposal |
 | **Signed copies** | Replacing a signed scan that has already been uploaded, with a reason |
 | **QMS** | IMR accept or deny; custodian making a change effective |
 | **Manuals** | Any direct edit to manual content (outside a proposal); deleting a manual or section |
 | **Organisation** | Merging, moving or deactivating an office; changing a manual's owner or its office relationships (concurring / reader); assigning or ending Head, IMR or Custodian positions |
 
-**Not** on drafting, editing a section box, running the AI check, commenting, uploading a signed copy for the first time, or viewing — prompts on routine actions teach people to type the password without reading.
+**Not** on drafting once started, editing a section box, running the AI check, commenting, uploading a signed copy for the first time, or viewing — prompts on routine actions teach people to type the password without reading.
 
 Uploading a scan is ordinary work on paper that has already been signed; **replacing** one changes the evidence record, which is why only the second asks.
 

@@ -49,6 +49,8 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // The document a new proposal is waiting on the password for.
+  const [confirmStart, setConfirmStart] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +86,9 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
       } catch (err) {
         const body = err.response?.data;
         if (body?.reason === "already_open") setOpen(body.proposal_id);
+        // Starting a new one asks for the password; reopening does not,
+        // which is why the first try goes without it.
+        else if (body?.reason === "reauth_required") setConfirmStart(startManualId);
         else setError(body?.error || "Could not start a proposal.");
       } finally {
         onDone?.();
@@ -91,6 +96,21 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
       }
     })();
   }, [startManualId, onDone, load]);
+
+  const start = async (token) => {
+    const manualId = confirmStart;
+    setConfirmStart(null);
+    try {
+      const { data } = await axios.post(
+        `${BASE_URL}/api/proposals/`, { manual_id: manualId }, confirmed(token)
+      );
+      setOpen(data.id);
+    } catch (err) {
+      const body = err.response?.data;
+      if (body?.reason === "already_open") setOpen(body.proposal_id);
+      else setError(body?.error || "Could not start a proposal.");
+    }
+  };
 
   // Arriving from a notification.
   useEffect(() => {
@@ -123,6 +143,16 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
 
   return (
     <div>
+      {confirmStart && (
+        <ConfirmDestructive
+          title="Start a proposal?"
+          body="Your office takes on a change to this document. You can withdraw it later; the record stays."
+          confirmLabel="Start proposal"
+          onConfirm={start}
+          onCancel={() => setConfirmStart(null)}
+        />
+      )}
+
       <header className="page-head">
         <div>
           <h1 className="page-title">Proposals</h1>

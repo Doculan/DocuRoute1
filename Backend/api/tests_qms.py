@@ -194,7 +194,8 @@ class HoldTests(QmsFixture):
         """Found in the Phase 4 survey: the hold used to end at the lock."""
         client = self.as_(self.bud_enc)
         other = client.post('/api/proposals/', {'manual_id': self.manual.id},
-                            format='json').data['id']
+                            format='json',
+                            HTTP_X_REAUTH_TOKEN=self.token(self.bud_enc)).data['id']
         response = client.put(f'/api/proposals/{other}/sections/{self.s1.id}/',
                               {'new_text': 'A different wording.'}, format='json')
         self.assertEqual(response.status_code, 409)
