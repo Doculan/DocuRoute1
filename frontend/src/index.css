@@ -3372,3 +3372,51 @@ a:hover { color: var(--brand-500); }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+/* ============================================================
+   My account
+   ============================================================ */
+
+.account { max-width: 640px; }
+.account-card { display: grid; gap: 0.85rem; margin-bottom: 1rem; }
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.account-heading {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.account-hint { margin: 0; font-size: 0.75rem; color: var(--text-subtle); }
+.account-actions { display: flex; align-items: center; gap: 0.75rem; }
+.account-ok { font-size: 0.78rem; color: var(--success); }
+.account-positions { list-style: none; margin: 0; padding: 0; }
+.account-positions li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0;
+  font-size: 0.82rem;
+}
+.account-positions li + li { border-top: 1px solid var(--rule-soft); }
+
+/* The name block in each sidebar opens My account. */
+button.sidebar-user {
+  width: calc(100% + 0.6rem);
+  padding: 0.3rem;
+  margin: 0 -0.3rem 0.65rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.sidebar-user:hover,
+button.sidebar-user.is-active { background: rgba(255, 255, 255, 0.08); }

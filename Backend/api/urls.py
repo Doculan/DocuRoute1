@@ -7,6 +7,7 @@ from . import concurrence_views as concurrence
 from . import package_views as package
 from . import qms_views as qms
 from . import notification_views as inbox
+from . import account_views as account
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
@@ -94,6 +95,8 @@ urlpatterns = [
     path('manuals/<int:manual_id>/status/baseline/correct/', qms.correct_baseline),
     path('qms/queue/', qms.queue),
     path('auth/me/', qms.me),
+    path('auth/profile/', account.profile),
+    path('auth/password/', account.change_password),
     path('proposals/<int:proposal_id>/scans/', package.upload_scan),
     path('proposals/<int:proposal_id>/scans/<int:attachment_id>/replace/',
          package.replace_scan),

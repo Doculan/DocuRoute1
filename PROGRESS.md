@@ -3,6 +3,25 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — My account
+
+Each portal's sidebar name block opens **My account**. There a person can
+change their full name and email, and their password (the current password
+is required, and Django's validators apply). Username, offices and
+positions are shown read-only: the username is the login, and positions
+are the system admin's. API: `GET/PATCH /api/auth/profile/`,
+`POST /api/auth/password/`. Login now returns `full_name`, which the
+sidebar shows. No schema change.
+
+**Bug fixed on the way:** `CustomUser.get_full_name()` was Django's,
+reading `first_name`/`last_name`, which nothing sets. So every name on the
+screens (proposal history, concurrence records, IMR decisions, `auth/me`)
+came out blank, although 14 of 15 accounts have a `full_name`. It now
+returns `full_name`, falling back to first/last. Names are read live, so a
+renamed person shows under the new name on past records too. Generated
+documents are unaffected: they print titles only. 16 tests
+(`tests_account.py`).
+
 ## 5 October 2026 — Concurrence notifications (first slice of P5)
 
 Bug reported: after a concurring office concurred or returned a proposal,

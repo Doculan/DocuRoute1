@@ -27,6 +27,8 @@ export default function Login({ onLoginSuccess }) {
       // replaces this at 1c.
       localStorage.setItem("system_role", response.data.system_role || "user");
       localStorage.setItem("username", response.data.username);
+      // The name the sidebar shows; My account updates it.
+      localStorage.setItem("display_name", response.data.full_name || response.data.username);
 
       onLoginSuccess(response.data.role);
     } catch (err) {

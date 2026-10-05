@@ -598,6 +598,8 @@ def login(request):
         # Which portal, and which nav groups within it.
         'system_role': user.system_role,
         'username': user.username,
+        # What the sidebar shows; the username when no name was given.
+        'full_name': user.get_full_name(),
     })
 
 

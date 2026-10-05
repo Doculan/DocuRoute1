@@ -11,6 +11,7 @@ import Series from "./Series";
 import People from "./People";
 import Proposals from "./Proposals";
 import Topbar from "../Topbar";
+import Account from "../Account";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
 import officesIcon from '../../assets/nav/offices.svg';
@@ -89,6 +90,7 @@ const CRUMBS = {
   proposals: "Proposals",
   announcements: "Announcements",
   evaluation: "Model health",
+  account: "My account",
 };
 
 export default function AdminDashboard({ onLogout }) {
@@ -100,7 +102,13 @@ export default function AdminDashboard({ onLogout }) {
   // same however you arrive - this only says which manual to open on.
   const [drillManual, setDrillManual] = useState(null);
   const [pending, setPending] = useState({ users: 0 });
-  const username = localStorage.getItem("username") || "Admin";
+  const [displayName, setDisplayName] = useState(
+    () => localStorage.getItem("display_name") || localStorage.getItem("username") || "Admin"
+  );
+  const renamed = (name) => {
+    localStorage.setItem("display_name", name);
+    setDisplayName(name);
+  };
   const systemRole = localStorage.getItem("system_role") || "user";
   const navGroups = NAV_GROUPS.filter(
     (g) => !g.systemAdminOnly || systemRole === "system_admin"
@@ -144,6 +152,7 @@ export default function AdminDashboard({ onLogout }) {
       case "people": return <People />;
       case "proposals": return <Proposals />;
       case "evaluation": return <SVMEvaluation />;
+      case "account": return <Account onNameChange={renamed} />;
       default: return <AdminHome onGo={goTo} />;
     }
   };
@@ -231,13 +240,18 @@ export default function AdminDashboard({ onLogout }) {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-avatar">{username.slice(0, 2)}</div>
+          <button
+            type="button"
+            className={`sidebar-user${activePage === "account" ? " is-active" : ""}`}
+            title="My account"
+            onClick={() => goTo("account")}
+          >
+            <div className="sidebar-avatar">{displayName.slice(0, 2)}</div>
             <div style={{ minWidth: 0 }}>
-              <div className="sidebar-username">{username}</div>
+              <div className="sidebar-username">{displayName}</div>
               <div className="sidebar-role">Administrator</div>
             </div>
-          </div>
+          </button>
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
         </div>
       </aside>

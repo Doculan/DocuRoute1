@@ -458,6 +458,15 @@ class CustomUser(AbstractUser):
 
     is_approved = models.BooleanField(default=False)
 
+    def get_full_name(self):
+        """`full_name`, which sign-up and the account page fill in.
+
+        Django's own version reads `first_name` and `last_name`, which
+        nothing in the application sets - so every name on the screens
+        came out blank. Those two remain the fallback.
+        """
+        return self.full_name.strip() or super().get_full_name()
+
     def __str__(self):
         return self.username
 

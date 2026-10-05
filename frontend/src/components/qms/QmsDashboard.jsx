@@ -4,6 +4,7 @@ import StaffManuals from "../staff/StaffManuals";
 import StaffSections from "../staff/StaffSections";
 import QmsRequests from "./QmsRequests";
 import Topbar from "../Topbar";
+import Account from "../Account";
 import logo from "../../assets/QMS.png";
 import manualsIcon from "../../assets/nav/manuals.svg";
 import reviewIcon from "../../assets/nav/review.svg";
@@ -12,7 +13,7 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
-const CRUMBS = { manuals: "Manuals", requests: "Requests" };
+const CRUMBS = { manuals: "Manuals", requests: "Requests", account: "My account" };
 
 /**
  * The QMS portal: the IMR and the Document Custodian.
@@ -53,7 +54,13 @@ export default function QmsDashboard({ onLogout }) {
     setOpenRequest(null);
   };
 
+  const renamed = (name) => {
+    localStorage.setItem("display_name", name);
+    setMe((prev) => ({ ...prev, name }));
+  };
+
   const renderPage = () => {
+    if (activePage === "account") return <Account onNameChange={renamed} />;
     if (activePage === "requests") {
       return <QmsRequests onCount={onCount} openId={openRequest} onOpen={setOpenRequest} />;
     }
@@ -64,7 +71,8 @@ export default function QmsDashboard({ onLogout }) {
     );
   };
 
-  const name = me?.name || localStorage.getItem("username") || "";
+  const name = me?.name || localStorage.getItem("display_name")
+    || localStorage.getItem("username") || "";
   // The role in a word or two; the full title is long, and the sidebar is
   // not where it is read.
   const role = [me?.is_imr && "IMR", me?.is_custodian && "Document Custodian"]
@@ -96,13 +104,18 @@ export default function QmsDashboard({ onLogout }) {
           </button>
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-user">
+          <button
+            type="button"
+            className={`sidebar-user${activePage === "account" ? " is-active" : ""}`}
+            title="My account"
+            onClick={() => go("account")}
+          >
             <div className="sidebar-avatar">{name.slice(0, 2)}</div>
             <div style={{ minWidth: 0 }}>
               <div className="sidebar-username">{name}</div>
               <div className="sidebar-role">{role}</div>
             </div>
-          </div>
+          </button>
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
         </div>
       </aside>

@@ -8,6 +8,7 @@ import StaffHelp from "./StaffHelp";
 import StaffProposals from "./StaffProposals";
 import Topbar from "../Topbar";
 import NotificationBell from "../NotificationBell";
+import Account from "../Account";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
@@ -51,6 +52,7 @@ const CRUMBS = {
   sections: "Sections",
   proposals: "Proposals",
   help: "Help",
+  account: "My account",
 };
 
 export default function StaffDashboard({ onLogout }) {
@@ -69,7 +71,13 @@ export default function StaffDashboard({ onLogout }) {
   // Bumped whenever a proposal may have changed, so the bell re-reads.
   const [bellKey, setBellKey] = useState(0);
 
-  const username = localStorage.getItem("username") || "Staff";
+  const [displayName, setDisplayName] = useState(
+    () => localStorage.getItem("display_name") || localStorage.getItem("username") || "Staff"
+  );
+  const renamed = (name) => {
+    localStorage.setItem("display_name", name);
+    setDisplayName(name);
+  };
 
   // The badge is the only reason this lives up here: it has to be right on
   // the nav whichever page you are looking at. The dashboard already knows
@@ -163,6 +171,8 @@ export default function StaffDashboard({ onLogout }) {
         );
       case "help":
         return <StaffHelp />;
+      case "account":
+        return <Account onNameChange={renamed} />;
       default:
         return <StaffManuals onSelectManual={openManual} />;
     }
@@ -201,13 +211,18 @@ export default function StaffDashboard({ onLogout }) {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-avatar">{username.slice(0, 2)}</div>
+          <button
+            type="button"
+            className={`sidebar-user${activePage === "account" ? " is-active" : ""}`}
+            title="My account"
+            onClick={() => handleNav("account")}
+          >
+            <div className="sidebar-avatar">{displayName.slice(0, 2)}</div>
             <div style={{ minWidth: 0 }}>
-              <div className="sidebar-username">{username}</div>
+              <div className="sidebar-username">{displayName}</div>
               <div className="sidebar-role">Staff</div>
             </div>
-          </div>
+          </button>
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
         </div>
       </aside>
