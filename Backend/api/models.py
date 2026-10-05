@@ -1395,6 +1395,44 @@ class Notification(models.Model):
         return f"{self.user} <- {self.event}"
 
 
+class TrailReport(models.Model):
+    """One printed audit trail: who generated it, when, and as what.
+
+    Kept apart from `AuditEvent` on purpose. That table is the process -
+    what happened to the request - and every printout would otherwise
+    change the next one. It also demands an office, which a system admin
+    usually does not have.
+
+    The serial is printed on every page of the report. A copy found in a
+    folder a year later can be looked up here: when it was generated, by
+    which position, what the request's status was then, and the SHA-256
+    of the file as issued. The file itself is not kept - it can be
+    generated again from the record.
+    """
+
+    serial = models.CharField(max_length=32, unique=True)
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.PROTECT, related_name='trail_reports',
+    )
+    generated_by = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, related_name='trail_reports',
+    )
+    # The position title as it read at the time, or the system role for a
+    # system admin. Printed on the report; the person is not.
+    generated_as = models.CharField(max_length=255)
+    # Required of a system admin: generating is by exception for them.
+    reason = models.TextField(blank=True)
+    status_at_time = models.CharField(max_length=32)
+    sha256 = models.CharField(max_length=64, blank=True)
+    generated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-generated_at', '-id']
+
+    def __str__(self):
+        return f"{self.serial} ({self.proposal_id})"
+
+
 class QmsDecision(models.Model):
     """What the IMR or the Document Custodian decided about a request.
 

@@ -647,6 +647,12 @@ def proposal_full(request, proposal_id):
     data['can_imr_decide'] = can_imr_decide(request.user, proposal)
     data['can_custodian_return'] = can_custodian_return(request.user, proposal)
     data['can_make_effective'] = can_make_effective(request.user, proposal)
+    from .trail_views import report_access
+    kind, _ = report_access(request.user, proposal)
+    data['trail_report'] = {
+        'can_generate': kind is not None,
+        'needs_reason': kind == 'admin',
+    }
     return Response(data)
 
 

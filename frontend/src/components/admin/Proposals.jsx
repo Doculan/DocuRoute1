@@ -4,6 +4,7 @@ import AiNote from "../AiNote";
 import DiffView from "../DiffView";
 import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
+import TrailReport from "../TrailReport";
 import {
   IN_PROGRESS, STATUS_LABEL, WITH_PACKAGE, statusTone,
 } from "../proposalStatus";
@@ -177,6 +178,8 @@ export function ProposalDetail({
       </header>
 
       {renderActions && renderActions(data, load)}
+
+      <TrailReport proposalId={proposalId} access={data.trail_report} />
 
       <QmsDecisions decisions={data.qms_decisions} documentStatus={data.document_status} />
 

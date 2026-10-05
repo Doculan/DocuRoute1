@@ -3420,3 +3420,33 @@ button.sidebar-user {
 }
 button.sidebar-user:hover,
 button.sidebar-user.is-active { background: rgba(255, 255, 255, 0.08); }
+
+/* ============================================================
+   Audit trail report
+   ============================================================ */
+
+.trail-report { display: grid; gap: 0.6rem; margin: 0 0 1.25rem; }
+.trail-report-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.trail-report-ok { font-size: 0.78rem; color: var(--success); }
+.trail-report-ask {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 480px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.trail-report-log summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.trail-report-log ul { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.trail-report-log li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0;
+  font-size: 0.78rem;
+}
+.trail-report-log li + li { border-top: 1px solid var(--rule-soft); }

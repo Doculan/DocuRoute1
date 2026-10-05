@@ -3,6 +3,7 @@ import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "../admin/ConfirmDestructive";
 import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
+import TrailReport from "../TrailReport";
 import { STATUS_LABEL, WITH_PACKAGE, statusTone } from "../proposalStatus";
 // DocDiff, not DiffView: this is the submitter's view of their own
 // change, marked the way a person with a red pen would mark it.
@@ -265,6 +266,8 @@ function Proposal({ proposalId, onBack, onSay }) {
           records it.
         </div>
       )}
+
+      <TrailReport proposalId={proposalId} access={data.trail_report} />
 
       <QmsDecisions decisions={data.qms_decisions} documentStatus={data.document_status} />
 

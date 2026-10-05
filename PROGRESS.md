@@ -3,6 +3,57 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — Audit trail report
+
+A Word report of one request's full trail, for official reporting.
+It is laid out on F-QMS-001: the request and reason, concurrence (with
+returns), IMR decision, approving authority, document status, signed
+copies on file, then the complete chronological trail.
+
+**Decisions (user, 5 Oct):**
+- **Position titles only, never names** (principle 7). The serial leads
+  to the log, which holds who generated it.
+- **The system admin may generate it, but must give a reason**, which is
+  logged. An admin who also holds a post in the trail generates under that
+  post and is not asked.
+- **Unfinished requests may be reported**, stamped
+  `IN PROGRESS — NOT IN EFFECT`.
+
+**Corrections to the original brief:**
+- The IMR and the Document Custodian are separate positions. Both may
+  generate.
+- Outcomes are Effective, Denied by the IMR, or Withdrawn. Returns are
+  events within the trail, not outcomes. IMR acceptance is not approval.
+- The report says "signed copy recorded", never "signed".
+
+**Who may generate:** the IMR or Custodian (any request); an office in the
+frozen trail (requester, concurring, approving), meaning anyone holding a
+current post there; the system admin, with a reason. Rule:
+`trail_views.report_access`.
+
+**Every page** carries the status stamp (red unless Effective), the serial
+`AT-YYYY-XXXXXXXX`, proposal and DCR number, generation time, the
+generating position, and page X of Y. Table rows never split, and table
+headings repeat.
+
+**Logging:** migration `0035` adds `TrailReport` (serial, proposal, who,
+as what, reason, status at the time, SHA-256 of the file). It is kept out
+of `AuditEvent` on purpose: that table needs an office, and prints would
+alter the trail they print. The file is not stored. A failed build leaves
+no row. API: `POST /api/proposals/<id>/trail-report/` (returns the .docx),
+`GET …/trail-report/log/`, `GET /api/trail-reports/<serial>/` (look up a
+found copy).
+
+**Verified:** samples rendered through Word to PDF from real proposals 1
+(withdrawn) and 2 (awaiting signature). DB backed up to
+`db.sqlite3.bak-20261005-pre-0035`. The migration was applied, reversed and
+reapplied on a copy, then applied for real. 21 tests
+(`tests_trail_report.py`).
+
+**Open:** the system admin can still open every proposal on screen
+routinely, so only the printed report is "by exception". Raise this if an
+examiner would ask.
+
 ## 5 October 2026 — My account
 
 Each portal's sidebar name block opens **My account**. There a person can

@@ -8,6 +8,7 @@ from . import package_views as package
 from . import qms_views as qms
 from . import notification_views as inbox
 from . import account_views as account
+from . import trail_views as trail
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
@@ -88,6 +89,9 @@ urlpatterns = [
     path('notifications/', inbox.inbox),
     path('notifications/read/', inbox.mark_read),
     path('proposals/<int:proposal_id>/package/', package.package),
+    path('proposals/<int:proposal_id>/trail-report/', trail.generate),
+    path('proposals/<int:proposal_id>/trail-report/log/', trail.log),
+    path('trail-reports/<str:serial>/', trail.verify),
     path('proposals/<int:proposal_id>/imr/', qms.imr_decide),
     path('proposals/<int:proposal_id>/custodian/return/', qms.custodian_return),
     path('proposals/<int:proposal_id>/custodian/effective/', qms.make_effective),
