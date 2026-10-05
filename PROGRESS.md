@@ -3,6 +3,17 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — Manuals as a list
+
+"My Manuals" (`StaffManuals`, used by the staff and QMS portals) was a
+grid of cards, which crowds once there are many documents. It is now one
+row per document: title, series and owner on the left; the office's
+relationship, revision, effectivity date and section count on the right.
+Upload date and uploader are dropped (they belong to the admin's list,
+which was already a list and is unchanged). A filter box (title, series,
+owner) appears past 8 documents. Rows stack on narrow screens. Frontend
+only.
+
 ## 5 October 2026 — Starting a proposal asks for the password
 
 **Decided (user):** whoever starts a new proposal, Encoder included,

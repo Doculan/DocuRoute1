@@ -9,14 +9,26 @@ import { formatDate, formatRevision } from "../documentStatus";
 // keeps the browser on one origin, so CORS never enters into it.
 const BASE_URL = "";
 
+// Past this many documents, a filter box earns its place.
+const FILTER_FROM = 8;
+
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
+/**
+ * The documents a person reads: one row each.
+ *
+ * A list rather than cards, so twenty documents fit on a screen. Each row
+ * carries what a reader decides by - the title, its series, what it is to
+ * their office, and which revision is in force. Upload details live with
+ * the admin.
+ */
 export default function StaffManuals({ onSelectManual }) {
   const [manuals, setManuals]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
+  const [query, setQuery]       = useState("");
 
   useEffect(() => {
     fetchManuals();
@@ -39,6 +51,13 @@ export default function StaffManuals({ onSelectManual }) {
   if (loading) {
     return <div className="loading-row"><span className="spinner" /> Loading your manuals…</div>;
   }
+
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? manuals.filter((m) =>
+        [m.title, m.series, m.series_title, m.owner]
+          .some((v) => (v || "").toLowerCase().includes(needle)))
+    : manuals;
 
   return (
     <div>
@@ -63,67 +82,65 @@ export default function StaffManuals({ onSelectManual }) {
           </p>
         </div>
       ) : (
-        <div className="grid-auto stagger">
-          {manuals.map((manual) => (
-            <article
-              key={manual.id}
-              className="card card-pad card-hover card-interactive card-rail"
-              style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}
-              onClick={() => onSelectManual(manual.id, manual.title)}
-            >
-              {/* No emoji: this is a controlled document, and a clipboard
-                  glyph is the sort of thing that would look wrong printed.
-                  The version tag carries the same "this is a record" signal
-                  and is true information. */}
-              {/* A fixed height, so a card with a revision badge lines up
-                  with one that has none. */}
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", minHeight: "1.5rem" }}>
-                <span className="doc-kicker">Manual</span>
-                {manual.status && (
-                  <span className="badge badge-id">{formatRevision(manual.status.revision)}</span>
-                )}
-              </div>
+        <>
+          {manuals.length > FILTER_FROM && (
+            <input
+              type="search"
+              className="input manual-filter"
+              placeholder="Filter by title, series or owner"
+              aria-label="Filter manuals"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
 
-              {/* The document's own name, set as the document. */}
-              <h3 className="doc-name">{manual.title}</h3>
+          {shown.length === 0 ? (
+            <p className="subtle text-sm">No manuals match “{query}”.</p>
+          ) : (
+            <ul className="manual-list">
+              {shown.map((manual) => (
+                <li key={manual.id}>
+                  <button
+                    type="button"
+                    className="manual-row"
+                    onClick={() => onSelectManual(manual.id, manual.title)}
+                  >
+                    <span className="manual-row-main">
+                      <span className="manual-row-title">{manual.title}</span>
+                      <span className="manual-row-sub">
+                        {[
+                          manual.series && `${manual.series} — ${manual.series_title}`,
+                          manual.owner && `Owner: ${manual.owner}`,
+                        ].filter(Boolean).join(" · ") || "Not yet assigned to a series"}
+                      </span>
+                    </span>
 
-              <dl className="col" style={{ gap: "0.35rem", margin: 0 }}>
-                {/* What this document is to your offices. */}
-                {manual.relationship && (
-                  <MetaRow label="Your office" value={manual.relationship} />
-                )}
-                {manual.series && (
-                  <MetaRow label="Series" value={`${manual.series} — ${manual.series_title}`} />
-                )}
-                {manual.owner && <MetaRow label="Owner" value={manual.owner} />}
-                {manual.status && (
-                  <MetaRow label="Effective" value={formatDate(manual.status.effective_on)} />
-                )}
-                <MetaRow label="Sections" value={manual.section_count} />
-                <MetaRow label="Uploaded" value={new Date(manual.uploaded_at).toLocaleDateString()} />
-                <MetaRow label="By" value={manual.uploaded_by} />
-              </dl>
-
-              <button
-                className="btn btn-deep btn-block"
-                style={{ marginTop: "auto" }}
-                onClick={(e) => { e.stopPropagation(); onSelectManual(manual.id, manual.title); }}
-              >
-                View sections →
-              </button>
-            </article>
-          ))}
-        </div>
+                    <span className="manual-row-meta">
+                      {manual.relationship && (
+                        <span className="badge">{manual.relationship}</span>
+                      )}
+                      {manual.status && (
+                        <span className="badge badge-id">
+                          {formatRevision(manual.status.revision)}
+                        </span>
+                      )}
+                      {manual.status && (
+                        <span className="manual-row-fact">
+                          Effective {formatDate(manual.status.effective_on)}
+                        </span>
+                      )}
+                      <span className="manual-row-fact">
+                        {manual.section_count} section{manual.section_count === 1 ? "" : "s"}
+                      </span>
+                      <span className="manual-row-go" aria-hidden="true">→</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
-    </div>
-  );
-}
-
-function MetaRow({ label, value }) {
-  return (
-    <div className="row text-sm" style={{ justifyContent: "space-between", gap: "1rem" }}>
-      <dt className="subtle" style={{ fontWeight: 600 }}>{label}</dt>
-      <dd className="strong" style={{ margin: 0, textAlign: "right" }}>{value}</dd>
     </div>
   );
 }
