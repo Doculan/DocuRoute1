@@ -3,6 +3,38 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 5 October 2026 — Merge and split sections after upload
+
+The admin can **merge a section with the next one** or **split a section
+at a line**, to correct extraction after upload. This is not a revision:
+no request, no DCR, no revision number, no document status.
+
+**Allowed only before the document is under control** (user, 5 Oct): no
+recorded status, and no request has ever touched the sections involved.
+After that, merging deletes a section that requests, signed copies and
+feedback point at. It is then a change to the controlled record and goes
+through a request, which keeps plan §6 item 10 true. On the live data, 15
+of 19 documents are fully open. FAM 6.03, 8.01, 8.02 and 8.03 each have
+one section a request has touched.
+
+- **Merge:** adjacent sections only. The next section's heading stays in
+  the text. Its sub-sections move to the survivor (the parent link
+  cascades, so deleting it as it stood would have taken them).
+- **Split:** at a chosen line. That line can become the new section's
+  title (the missed heading), or the admin types one. The new section
+  keeps the parent and page.
+- Order is renumbered. The password is required. Each change is recorded
+  in the surviving section's history with the new source `structure`
+  (migration `0036`, a choices change only) and the text before.
+- A warning appears when a section ends up over about 1,200 characters,
+  which is roughly what the AI check reads.
+
+The upload preview's merge (before confirming) is unchanged. API:
+`POST /api/sections/<id>/merge-next/`, `POST /api/sections/<id>/split/`.
+`list_sections` returns `restructurable_ids` to admins. DB backed up to
+`db.sqlite3.bak-20261005-pre-0036`. The migration was tested on a copy,
+then applied. 15 tests (`tests_structure.py`).
+
 ## 5 October 2026 — Audit trail report
 
 A Word report of one request's full trail, for official reporting.

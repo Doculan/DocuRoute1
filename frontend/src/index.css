@@ -3450,3 +3450,48 @@ button.sidebar-user.is-active { background: rgba(255, 255, 255, 0.08); }
   font-size: 0.78rem;
 }
 .trail-report-log li + li { border-top: 1px solid var(--rule-soft); }
+
+/* ============================================================
+   Merge / split sections (extraction correction)
+   ============================================================ */
+
+.structure { margin: 0 0 1rem; }
+.structure-panel {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 640px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.structure-lead { margin: 0; font-size: 0.82rem; color: var(--text-muted); }
+.structure-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-sm);
+}
+.structure-line {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+  background: none;
+  text-align: left;
+  font-family: var(--font-doc);
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.structure-lines li:first-child .structure-line { border-top: 0; }
+.structure-line:hover { background: var(--surface-sunk); }
+.structure-line.is-picked {
+  background: var(--brand-50);
+  box-shadow: inset 0 2px 0 var(--brand-600);
+}
+.structure-check { display: flex; gap: 0.45rem; align-items: center; font-size: 0.8rem; }

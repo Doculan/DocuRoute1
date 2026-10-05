@@ -745,6 +745,10 @@ class SectionHistory(models.Model):
         ('proposal', 'Change request made effective'),
         ('direct', 'Direct edit by an admin'),
         ('extraction', 'Re-extracted from the master copy'),
+        # Sections merged or split to match the master copy, before the
+        # document came under control. Not a revision - see
+        # `structure_views.py`.
+        ('structure', 'Extraction corrected (merged or split)'),
         ('unknown', 'Recorded before edits were attributed'),
     ]
 

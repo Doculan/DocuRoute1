@@ -1707,6 +1707,7 @@ def list_sections(request, manual_id):
     } for s in sections_qs]
 
     from .qms_views import can_correct_baseline, can_record_baseline
+    from . import structure_views
     return Response({
         # v3's counters, still sent for the admin's screens. Readers are
         # shown `status` instead.
@@ -1717,6 +1718,12 @@ def list_sections(request, manual_id):
         'can_record_baseline': can_record_baseline(request.user, manual),
         'can_correct_baseline': can_correct_baseline(request.user, manual),
         'sections': data,
+        # Which sections an admin may still merge or split to correct
+        # extraction. Empty once the document is under control.
+        'restructurable_ids': (
+            sorted(structure_views.restructurable_ids(manual))
+            if access.is_admin(request.user) else []
+        ),
         'file_url': manual.file.url if manual.file else None,
         'file_name': manual.file.name if manual.file else None,
     })

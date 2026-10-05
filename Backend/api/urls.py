@@ -9,6 +9,7 @@ from . import qms_views as qms
 from . import notification_views as inbox
 from . import account_views as account
 from . import trail_views as trail
+from . import structure_views as structure
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
@@ -134,6 +135,8 @@ urlpatterns = [
     path('manuals/<int:manual_id>/sections/create/', create_section),
     path('sections/<int:section_id>/update/', update_section),
     path('sections/<int:section_id>/delete/', delete_section),
+    path('sections/<int:section_id>/merge-next/', structure.merge_next),
+    path('sections/<int:section_id>/split/', structure.split),
     path('sections/<int:section_id>/history/', section_history),  # ✅ NEW
 
     # Staff endpoints
