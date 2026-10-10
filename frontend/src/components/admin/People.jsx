@@ -49,6 +49,7 @@ export default function People() {
 
   const [assigning, setAssigning] = useState(null);   // person
   const [pending, setPending] = useState(null);       // a guarded action
+  const [pendingApprove, setPendingApprove] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -73,14 +74,16 @@ export default function People() {
     setTimeout(() => setMessage(""), 4500);
   };
 
-  const approve = async (person) => {
+  const approve = async (token) => {
+    const person = pendingApprove;
+    setPendingApprove(null);
     try {
-      await axios.post(
-        `${BASE_URL}/api/org/people/${person.id}/approve/`, {}, getAuth()
+      const { data } = await axios.post(
+        `${BASE_URL}/api/org/people/${person.id}/approve/`, {}, confirmedAuth(token)
       );
-      say(person.requested_office
-        ? `${person.username} approved. They hold no post yet — assign one at ${person.requested_office.name} if that is right.`
-        : `${person.username} approved. They hold no post yet.`);
+      // The office chosen at sign-up stands: approval makes them an
+      // Encoder or Head there, unless placement needs manual resolution.
+      say(`${data.message}${data.note ? ` ${data.note}` : ""}`);
       await load();
     } catch (err) {
       setError(err.response?.data?.error || "Could not approve.");
@@ -168,11 +171,17 @@ export default function People() {
                 </div>
                 <div className="text-xs" style={{ marginTop: "0.2rem" }}>
                   {p.requested_office
-                    ? <>Applied to <strong>{p.requested_office.name}</strong></>
-                    : <span className="subtle">No office given</span>}
+                    ? <>Requested <strong>{p.requested_position_label}</strong> at <strong>{p.requested_office.name}</strong></>
+                    : <span className="subtle">Not sure — assign an office after approving</span>}
                 </div>
+                {p.approval_warning && <div className="text-xs" role="status">{p.approval_warning}</div>}
+                {p.date_joined && (
+                  <div className="subtle text-xs">
+                    Signed up {new Date(p.date_joined).toLocaleString()}
+                  </div>
+                )}
               </div>
-              <button className="btn btn-primary btn-sm" onClick={() => approve(p)}>
+              <button className="btn btn-primary btn-sm" onClick={() => setPendingApprove(p)}>
                 Approve
               </button>
             </div>
@@ -261,6 +270,19 @@ export default function People() {
           offices={offices.filter((o) => o.is_active)}
           onSave={assign}
           onCancel={() => setAssigning(null)}
+        />
+      )}
+
+      {pendingApprove && (
+        <ConfirmDestructive
+          title={`Approve ${pendingApprove.full_name || pendingApprove.username}?`}
+          body={pendingApprove.approval_warning || (pendingApprove.requested_office
+            ? `This grants access as ${pendingApprove.requested_position_label} at ${pendingApprove.requested_office.name}.`
+            : "This approves system access. Assign their office and position afterwards.")}
+          passwordHint="Confirm because accepting grants system access and may assign an office position."
+          confirmLabel="Approve"
+          onConfirm={approve}
+          onCancel={() => setPendingApprove(null)}
         />
       )}
 

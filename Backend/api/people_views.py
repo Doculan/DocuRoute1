@@ -27,10 +27,12 @@ and nothing in this module would have to change to add it.
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.exceptions import APIException
 
 from .models import CustomUser, Office, Position, PositionAssignment
 from .organisation_views import IsSystemAdmin
@@ -40,6 +42,32 @@ from .views import reauth_failure
 # a document. Assigning or ending one asks for the password; an Encoder
 # drafts, which is ordinary work.
 GUARDED_KINDS = (Position.HEAD, Position.IMR, Position.DOCUMENT_CUSTODIAN)
+
+
+class ApprovalConflict(APIException):
+    status_code = 409
+
+
+def _head_is_held(office, person):
+    # Unended appointments include reserved future posts. Dated appointments
+    # ending today or later still authorize their holder through access.py.
+    return PositionAssignment.objects.filter(
+        position__office=office, position__kind=Position.HEAD,
+    ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=timezone.localdate())).exclude(user=person).exists()
+
+
+def application_details(person):
+    office = person.requested_office
+    warning = ''
+    if office and not office.is_active:
+        warning = f'{office.name} is no longer active; an office must be assigned manually.'
+    elif office and person.requested_position_kind == Position.HEAD and _head_is_held(office, person):
+        warning = f'Unable to add as Head: {office.name} already has a Head. The applicant stays pending.'
+    return {
+        'requested_position_kind': person.requested_position_kind,
+        'requested_position_label': person.get_requested_position_kind_display(),
+        'approval_warning': warning,
+    }
 
 
 def _assignment_payload(assignment):
@@ -64,6 +92,7 @@ def _person_payload(person, assignments=None):
         ).all()
     current = [a for a in assignments if a.is_current]
     return {
+        **application_details(person),
         'id': person.id,
         'username': person.username,
         'full_name': person.full_name,
@@ -71,8 +100,9 @@ def _person_payload(person, assignments=None):
         'system_role': person.system_role,
         'is_approved': person.is_approved,
         'is_active': person.is_active,
-        # What they applied for at sign-up; the posts below are what the
-        # system admin actually assigned.
+        'date_joined': person.date_joined,
+        # The office chosen at sign-up. Approval places them there as an
+        # Encoder or Head; the posts below are what they actually hold.
         'requested_office': (
             {'id': person.requested_office_id, 'name': person.requested_office.name}
             if person.requested_office_id else None
@@ -121,21 +151,97 @@ def people(request):
     })
 
 
+def place_in_requested_office(person, approved_by):
+    """On approval, make the office chosen at sign-up the person's post.
+
+    The applicant's choice stands (user's decision, 10 Oct 2026): they
+    receive the requested Encoder or Head post after re-authentication.
+    An occupied Head post refuses the entire approval. Unresolved offices
+    are approved without a post, with an explicit manual-assignment note.
+
+    Returns `(assignment or None, note)`, the note saying why not.
+    """
+    if person.requested_office_id is None:
+        return None, 'No office was chosen at sign-up; assign one by hand.'
+    office = Office.objects.select_for_update().get(pk=person.requested_office_id)
+    if not office.is_active:
+        return None, f'{office.name} is no longer active; assign an office by hand.'
+    today = timezone.localdate()
+    kind = person.requested_position_kind
+    if kind not in (Position.ENCODER, Position.HEAD):
+        raise ApprovalConflict({'error': 'The requested position is invalid.', 'reason': 'invalid_position'})
+    if kind == Position.HEAD and _head_is_held(office, person):
+        raise ApprovalConflict({
+            'error': f'Unable to add as Head: {office.name} already has a Head. The applicant stays pending.',
+            'reason': 'already_held',
+        })
+    already = PositionAssignment.objects.filter(
+        user=person, position__office=office, position__kind=kind,
+        position__is_active=True, starts_on__lte=today,
+    ).exclude(ends_on__lt=today).first()
+    if already:
+        return already, ''
+
+    position, _ = Position.objects.get_or_create(office=office, kind=kind)
+    if not position.is_active:
+        return None, f'The {position.get_kind_display()} position at {office.name} is inactive; assign a post manually.'
+    try:
+        with transaction.atomic():
+            assignment = PositionAssignment.objects.create(
+                user=person, position=position, starts_on=today, assigned_by=approved_by,
+            )
+    except IntegrityError:
+        if kind != Position.HEAD:
+            raise
+        raise ApprovalConflict({
+            'error': f'Unable to add as Head: {office.name} already has a Head. The applicant stays pending.',
+            'reason': 'already_held',
+        })
+    return assignment, ''
+
+
+def approve(person, approved_by, full_name=None):
+    """Approve an account and place it in its chosen office. One path for
+    both approval screens."""
+    with transaction.atomic():
+        # Refresh under a lock so a repeated request cannot restore an ended
+        # assignment or place someone twice after another admin's approval.
+        locked = CustomUser.objects.select_for_update().get(pk=person.pk)
+        if locked.is_approved:
+            person.is_approved = True
+            return None, 'Already approved; existing assignments were left unchanged.'
+        placement = place_in_requested_office(locked, approved_by)
+        person.is_approved = True
+        fields = ['is_approved']
+        if full_name is not None:
+            person.full_name = full_name
+            fields.append('full_name')
+        person.save(update_fields=fields)
+        return placement
+
+
 @api_view(['POST'])
 @permission_classes([IsSystemAdmin])
 def approve_person(request, person_id):
-    """Let someone in. Not guarded: approving is reversible by
-    deactivating, and a prompt here would be a prompt on routine work."""
+    """Approve the account and requested post after confirming the admin."""
+    failure = reauth_failure(request)
+    if failure:
+        return failure
     try:
         person = CustomUser.objects.get(id=person_id)
     except CustomUser.DoesNotExist:
         return Response({'error': 'Person not found'}, status=404)
 
-    person.is_approved = True
-    if 'full_name' in request.data:
-        person.full_name = (request.data.get('full_name') or '').strip()
-    person.save(update_fields=['is_approved', 'full_name'])
-    return Response(_person_payload(person))
+    full_name = (request.data.get('full_name') or '').strip() if 'full_name' in request.data else None
+    assignment, note = approve(person, request.user, full_name=full_name)
+    data = _person_payload(person)
+    data['placed'] = assignment is not None
+    data['note'] = note
+    data['message'] = (
+        f'{person.username} approved as {assignment.position.get_kind_display()} at {assignment.position.office.name}.'
+        if assignment else f'{person.username} approved.'
+    )
+    return Response(data)
 
 
 @api_view(['POST'])

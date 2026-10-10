@@ -9,11 +9,12 @@ from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db.models import Q
+from django.db import transaction
 from datetime import timedelta
 from .models import (
     Announcement, AnnouncementDismissal, Concurrence, CustomUser,
     Manual, ManualSection, Office, OfficeLink,
-    Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
+    Position, Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
 )
 from ml.ocr_engine import extract_text
 from api import access, document_status
@@ -565,8 +566,10 @@ def register(request):
     if CustomUser.objects.filter(username=username).exists():
         return Response({'error': 'Username already taken'}, status=400)
 
-    # Optional: the office they say they work in. An application only -
-    # the system admin assigns the actual post on approval.
+    # The chosen office/post is assigned only on password-confirmed approval.
+    kind = request.data.get('requested_position_kind', Position.ENCODER)
+    if kind not in (Position.ENCODER, Position.HEAD):
+        return Response({'error': 'Choose Encoder or Head.', 'reason': 'invalid_position'}, status=400)
     requested_office = None
     office_id = request.data.get('requested_office_id')
     if office_id not in (None, ''):
@@ -581,6 +584,7 @@ def register(request):
         email=email,
         full_name=full_name,
         requested_office=requested_office,
+        requested_position_kind=kind,
         is_approved=False
     )
 
@@ -633,13 +637,15 @@ def login(request):
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def pending_users(request):
+    from .people_views import application_details
     users = CustomUser.objects.filter(is_approved=False).select_related('requested_office')
-    # The full name the person gave at sign-up: whoever approves has to know
-    # who is asking - and the office they applied to, which the approver
-    # confirms or corrects when assigning the post.
-    data = [{'id': u.id, 'username': u.username, 'email': u.email,
+    # Everything the person gave at sign-up except the password: whoever
+    # approves has to know who is asking - and the office they chose, which
+    # approval places them in.
+    data = [{**application_details(u), 'id': u.id, 'username': u.username, 'email': u.email,
              'full_name': u.full_name,
-             'requested_office': u.requested_office.name if u.requested_office else None}
+             'requested_office': u.requested_office.name if u.requested_office else None,
+             'date_joined': u.date_joined}
             for u in users]
     return Response(data)
 
@@ -656,13 +662,23 @@ def approved_users(request):
 @api_view(['PATCH'])
 @permission_classes([IsAdminRole])
 def approve_user(request, user_id):
+    failure = reauth_failure(request)
+    if failure:
+        return failure
     try:
         user = CustomUser.objects.get(id=user_id)
     except CustomUser.DoesNotExist:
         return Response({'error': 'User not found'}, status=404)
-    user.is_approved = True
-    user.save()
-    return Response({'message': f'{user.username} has been approved.'})
+    # The same path as the People screen: approved into the office chosen
+    # at sign-up.
+    from .people_views import approve
+    assignment, note = approve(user, request.user)
+    message = f'{user.username} has been approved.'
+    if assignment is not None:
+        message = (f'{user.username} has been approved as {assignment.position.get_kind_display()} at '
+                   f'{assignment.position.office.name}.')
+    return Response({'message': message, 'placed': assignment is not None,
+                     'note': note})
 
 
 @api_view(['DELETE'])
@@ -678,11 +694,17 @@ def reject_user(request, user_id):
     if failure:
         return failure
 
-    try:
-        user = CustomUser.objects.get(id=user_id)
-    except CustomUser.DoesNotExist:
-        return Response({'error': 'User not found'}, status=404)
-    user.delete()
+    with transaction.atomic():
+        try:
+            user = CustomUser.objects.select_for_update().get(id=user_id)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'User not found'}, status=404)
+        if user.is_approved:
+            return Response({
+                'error': 'This account is already approved. Deactivate it from People instead.',
+                'reason': 'already_approved',
+            }, status=409)
+        user.delete()
     return Response({'message': 'User rejected and removed.'})
 
 

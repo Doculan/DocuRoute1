@@ -3,6 +3,39 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 10 October 2026 — Approval assigns the chosen office and position
+
+Completed the unfinished signup/approval change. Applicants choose an
+active office (or "Not sure") and **Encoder or Head**. Both approval
+screens use the same transactional placement helper and require the
+admin's password through the existing re-authentication token.
+
+- Available post: approve and assign the chosen office/position together.
+- Occupied Head post: show a warning and refuse approval with HTTP 409.
+  The applicant stays pending; no assignment, Encoder fallback, name
+  change, or change to the incumbent. The admin can reject the application
+  or ask the person to reapply.
+- "Not sure", a retired office, or an inactive position: approve without
+  a post and explicitly request manual placement.
+- Repeated approval leaves existing assignments alone. Stale rejection
+  of an already approved account is refused rather than deleting it.
+- Applicant details include name, username, email, office, position and
+  signup date; passwords and hashes are never returned.
+
+Migration `0038` adds `requested_position_kind`; existing applications
+and clients that omit the new field default to Encoder. Existing office
+and position assignments are unchanged. Backed up SQLite outside the
+repository, migrated a copy and compared all existing user, office,
+position and assignment rows before migrating the local database.
+Integrity checks passed. No real applications were approved or rejected.
+
+Validation: 84 signup, People and admin-safeguard tests passed; frontend
+production build passed. Chrome checks with mocked API responses passed
+for Head signup, details, both password-confirmed approval screens,
+occupied refusal, vacant success, cancellation and rejection. Focused
+lint has the same two errors and one warning already present in HEAD.
+See `Backend/api/SIGNUP_APPROVAL_REPORT_2026-10-10.md` for details.
+
 ## 5 October 2026 — Applying to an office at sign-up
 
 Sign-up has an optional "Office you're applying to" dropdown of active

@@ -24,6 +24,7 @@ export default function Signup({ onBackToLogin }) {
     password: "",
     confirmPassword: "",
     requested_office_id: "",
+    requested_position_kind: "encoder",
   });
   // Active offices, for the application. Best-effort: if the list cannot
   // load, the field is simply left out and the admin assigns the office.
@@ -61,6 +62,7 @@ export default function Signup({ onBackToLogin }) {
         email: formData.email,
         password: formData.password,
         requested_office_id: formData.requested_office_id || null,
+        requested_position_kind: formData.requested_position_kind,
       });
       setSuccess(true);
     } catch (err) {
@@ -135,7 +137,7 @@ export default function Signup({ onBackToLogin }) {
             {offices.length > 0 && (
               <div className="field">
                 <label className="label" htmlFor="su-office">
-                  Office you&apos;re applying to <span className="subtle">(optional)</span>
+                  Your office
                 </label>
                 <select
                   id="su-office"
@@ -144,17 +146,29 @@ export default function Signup({ onBackToLogin }) {
                   value={formData.requested_office_id}
                   onChange={handleChange}
                 >
-                  <option value="">Not sure / leave to the administrator</option>
+                  <option value="">Not sure — let the administrator assign me</option>
                   {offices.map((o) => (
                     <option key={o.id} value={o.id}>{o.name}</option>
                   ))}
                 </select>
                 <p className="subtle text-xs" style={{ margin: 0 }}>
-                  An application only: the system administrator confirms your
-                  office and position when approving the account.
+                  Once an administrator approves your account, you join this
+                  office in your chosen position, subject to availability. Not sure? The administrator assigns
+                  your office instead.
                 </p>
               </div>
             )}
+            <div className="field">
+              <label className="label" htmlFor="su-position">Your position</label>
+              <select id="su-position" className="select" name="requested_position_kind"
+                value={formData.requested_position_kind} onChange={handleChange}>
+                <option value="encoder">Encoder</option>
+                <option value="head">Head</option>
+              </select>
+              <p className="subtle text-xs" style={{ margin: 0 }}>
+                An office can have only one Head. Your administrator confirms your application.
+              </p>
+            </div>
 
             <div className="field">
               <label className="label" htmlFor="su-username">Username</label>

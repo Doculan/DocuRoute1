@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
@@ -11,6 +11,9 @@ export default function UserManagement() {
   // Rejecting deletes the account. It sits next to Approve, which is
   // exactly why it should not be a single click.
   const [pendingReject, setPendingReject] = useState(null);
+  const [pendingApprove, setPendingApprove] = useState(null);
+  // Which applicant's details are open.
+  const [openDetails, setOpenDetails] = useState(null);
 
   const token = localStorage.getItem("access_token");
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
@@ -39,15 +42,19 @@ export default function UserManagement() {
     setTimeout(() => setMessage(""), 3000);
   };
 
-  const handleApprove = async (userId, username) => {
+  const handleApprove = async (confirmationToken) => {
+    const { id: userId, username } = pendingApprove;
+    setPendingApprove(null);
     try {
-      await axios.patch(
+      const { data } = await axios.patch(
         `/api/admin/approve-user/${userId}/`,
-        {}, authHeaders
+        {}, { headers: { ...authHeaders.headers, ...reauthHeader(confirmationToken) } }
       );
-      showMessage(`✅ ${username} approved.`);
+      // Approval places them in the office they chose; the note says when
+      // it could not (no office chosen, or the office has been retired).
+      showMessage(`✅ ${data.message || `${username} approved.`}${data.note ? ` ${data.note}` : ""}`);
       fetchUsers();
-    } catch { showMessage("❌ Failed to approve."); }
+    } catch (err) { showMessage(err.response?.data?.error || "Failed to approve."); }
   };
 
   const handleReject = async (token) => {
@@ -119,20 +126,30 @@ export default function UserManagement() {
                     <th>Username</th>
                     <th>Full name</th>
                     <th>Email</th>
-                    <th>Applied to</th>
+                    <th>Office</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pendingUsers.map((user) => (
-                    <tr key={user.id}>
+                    <Fragment key={user.id}>
+                    <tr>
                       <td className="table-strong">{user.username}</td>
                       <td>{user.full_name}</td>
                       <td>{user.email}</td>
-                      <td>{user.requested_office || <span className="subtle">—</span>}</td>
+                      <td>
+                        {user.requested_office || <span className="subtle">Not sure</span>}
+                        <div className="subtle text-xs">{user.requested_position_label}</div>
+                        {user.approval_warning && <div className="text-xs" role="status">{user.approval_warning}</div>}
+                      </td>
                       <td>
                         <div className="table-actions">
-                          <button className="btn btn-success btn-sm" onClick={() => handleApprove(user.id, user.username)}>
+                          <button className="btn btn-ghost btn-sm"
+                                  aria-expanded={openDetails === user.id}
+                                  onClick={() => setOpenDetails(openDetails === user.id ? null : user.id)}>
+                            {openDetails === user.id ? "Hide" : "Details"}
+                          </button>
+                          <button className="btn btn-success btn-sm" onClick={() => setPendingApprove(user)}>
                             Approve
                           </button>
                           <button className="btn btn-danger-soft btn-sm" onClick={() => setPendingReject({ id: user.id, username: user.username })}>
@@ -141,6 +158,28 @@ export default function UserManagement() {
                         </div>
                       </td>
                     </tr>
+                    {openDetails === user.id && (
+                      <tr>
+                        <td colSpan={5}>
+                          {/* Everything they gave at sign-up, except the password. */}
+                          <dl className="detail-grid" style={{ margin: "0.25rem 0" }}>
+                            <dt>Full name</dt><dd>{user.full_name || "—"}</dd>
+                            <dt>Username</dt><dd>{user.username}</dd>
+                            <dt>Email</dt><dd>{user.email || "—"}</dd>
+                            <dt>Office chosen</dt>
+                            <dd>
+                              {user.requested_office
+                                ? <>{user.requested_office}</>
+                                : <span className="subtle">Not sure — assign an office after approving</span>}
+                            </dd>
+                            <dt>Position chosen</dt><dd>{user.requested_position_label}</dd>
+                            <dt>Signed up</dt>
+                            <dd>{user.date_joined ? new Date(user.date_joined).toLocaleString() : "—"}</dd>
+                          </dl>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -178,6 +217,19 @@ export default function UserManagement() {
             </table>
           </div>
         </div>
+      )}
+
+      {pendingApprove && (
+        <ConfirmDestructive
+          title={`Approve ${pendingApprove.full_name || pendingApprove.username}?`}
+          body={pendingApprove.approval_warning || (pendingApprove.requested_office
+            ? `This grants access as ${pendingApprove.requested_position_label} at ${pendingApprove.requested_office}.`
+            : "This approves system access. Assign their office and position in People afterwards.")}
+          passwordHint="Confirm because accepting grants system access and may assign an office position."
+          confirmLabel="Approve"
+          onConfirm={handleApprove}
+          onCancel={() => setPendingApprove(null)}
+        />
       )}
 
       {pendingReject && (

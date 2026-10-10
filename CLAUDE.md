@@ -99,6 +99,8 @@ Three system roles decide **which portal** a person uses. Positions decide **wha
 
 One person may hold several positions (the university has **concurrent heads** — one person heading two offices). Assignments carry start and end dates, and can be marked **acting / OIC**, since several offices are led by an officer-in-charge. **Exactly one current Head per office**; several Encoders allowed.
 
+**The office and position chosen at sign-up are final** (decided 10 Oct 2026): applicants choose **Encoder or Head**, and password-confirmed approval assigns that post. If the office already has a Head, refuse the entire approval: the applicant stays pending, without an assignment or fallback to Encoder. The admin can reject them or ask them to reapply. "Not sure", a retired office, or an inactive position requires manual placement after approval. Both approval screens show the requested post and any Head conflict; applicant passwords are never returned.
+
 **QMS office:** the two QMS offices shown on the 2022 chart (administrative services / ISO, and academic services / accreditation) are reported to have **recently merged into a single QMS office** — to be confirmed with the QMS office, including its official name and parent. Design for **one** home for the IMR and Document Custodian positions; do not build per-series resolution. The model must not prevent it if the offices ever split again.
 
 The system admin should not also be able to decide or file requests unless deliberately given a QMS position — configuring the system and controlling documents are separate responsibilities.
@@ -111,6 +113,7 @@ Require the password again (the existing short-lived re-auth token, held in memo
 
 | Area | Actions |
 |---|---|
+| **Accounts** | Approving an applicant and their requested post (both approval screens); rejecting and deleting a pending application |
 | **Proposals** | Starting a new proposal (anyone drafting, including an Encoder; decided 5 Oct 2026 — reopening an open draft does not ask); submitting a proposal for concurrence; a Head recording the office's concurrence or return; withdrawing a proposal |
 | **Signed copies** | Replacing a signed scan that has already been uploaded, with a reason |
 | **QMS** | IMR accept or deny; custodian making a change effective |

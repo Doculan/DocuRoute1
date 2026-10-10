@@ -23,6 +23,7 @@ const BASE_URL = "";
 export default function ConfirmDestructive({
   title, body, confirmLabel = "Delete", alternative = null,
   onConfirm, onCancel,
+  passwordHint = "Asked because this cannot be undone from the portal.",
 }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -86,7 +87,7 @@ export default function ConfirmDestructive({
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
               />
               <p className="subtle text-xs" style={{ margin: 0 }}>
-                Asked because this cannot be undone from the portal.
+                {passwordHint}
               </p>
             </div>
 

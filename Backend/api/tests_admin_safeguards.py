@@ -178,15 +178,14 @@ class ReauthenticationTests(TestCase):
         announcement.refresh_from_db()
         self.assertFalse(announcement.active)
 
-    def test_approving_a_user_needs_no_confirmation(self):
-        """The guard is for what cannot be undone. Asking on a reversible
-        action is not extra safety - it is what makes people stop reading
-        the prompt."""
+    def test_approving_a_user_requires_confirmation(self):
+        """Approval can now assign a Head, so every acceptance is guarded."""
         applicant = CustomUser.objects.create_user(
             username="approve-me", password="pw", role="staff", is_approved=False,
         )
         response = self.client.patch(f"/api/admin/approve-user/{applicant.id}/")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['reason'], 'reauth_required')
 
 
 class SectionEditAttributionTests(TestCase):
