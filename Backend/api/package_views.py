@@ -123,11 +123,16 @@ def _file_payload(attachment):
     }
 
 
-def _can_upload(user, proposal):
-    """A current Encoder or Head of the office that made the request."""
+def _upload_position(user, proposal, kind):
+    """The requesting office uploads scans; the IMR may file the final DCR."""
+    if kind == Attachment.APPROVED_DCR:
+        from .qms_views import conflicting_office, qms_position
+        imr = qms_position(user, Position.IMR)
+        if imr is not None and conflicting_office(user, proposal) is None:
+            return imr
     return _held_position(
         user, proposal.initiating_office, kinds=[Position.ENCODER, Position.HEAD],
-    ) is not None
+    )
 
 
 def package_payload(proposal, user):
@@ -143,10 +148,10 @@ def package_payload(proposal, user):
     order = {k: i for i, (k, _) in enumerate(Attachment.KIND_CHOICES)}
     generated.sort(key=lambda f: order[f['kind']])
 
-    office = _can_upload(user, proposal)
     returned = latest_return(proposal) if proposal.status == Proposal.PACKAGE_RETURNED else None
     scans = {}
     for kind in Attachment.SCAN_KINDS:
+        uploader = _upload_position(user, proposal, kind)
         of_kind = [a for a in rows if a.kind == kind]
         current = next((a for a in of_kind if a.is_current), None)
         # The approving authority's copy has no row until it can exist:
@@ -160,9 +165,9 @@ def package_payload(proposal, user):
             'current': _file_payload(current) if current else None,
             'earlier': [_file_payload(a) for a in reversed(of_kind) if not a.is_current],
             # Per copy, because each has its own moment (see stage_refusal).
-            'can_upload': bool(office and current is None
+            'can_upload': bool(uploader and current is None
                                and stage_refusal(proposal, kind, 'upload') is None),
-            'can_replace': bool(office and current is not None
+            'can_replace': bool(uploader and current is not None
                                 and stage_refusal(proposal, kind, 'replace') is None),
             'returned': bool(returned and kind in returned.returned_kinds),
         }
@@ -175,10 +180,8 @@ def package_payload(proposal, user):
         'scans': scans,
         'outstanding': documents.scans_outstanding(proposal, version) if version else [],
         # Whether this person may upload or replace anything at all here.
-        'can_upload': any(row['can_upload'] for row in scans.values()) or bool(
-            office and proposal.status in Proposal.SCAN_STATUSES),
-        'can_replace': any(row['can_replace'] for row in scans.values()) or bool(
-            office and proposal.status in Proposal.SCAN_STATUSES),
+        'can_upload': any(row['can_upload'] for row in scans.values()),
+        'can_replace': any(row['can_replace'] for row in scans.values()),
         'max_bytes': MAX_SCAN_BYTES,
     }
 
@@ -215,11 +218,12 @@ def download(request, proposal_id, attachment_id):
 
 # --- writing -------------------------------------------------
 
-def _refuse_writing(request, proposal):
-    """Who may upload: the requesting office. `None` when the answer is yes."""
-    if not can_see(request.user, proposal) or not _can_upload(request.user, proposal):
+def _refuse_writing(request, proposal, kind):
+    """Permission is specific to the copy, not just the QMS office."""
+    if not can_see(request.user, proposal) or not _upload_position(request.user, proposal, kind):
         return Response({
-            'error': f'Signed copies are uploaded by {proposal.initiating_office.name}.',
+            'error': (f'Signed copies are uploaded by {proposal.initiating_office.name}. '
+                      'The IMR may also upload the DCR signed by the approving authority.'),
             'reason': 'not_in_office',
         }, status=403)
     return None
@@ -276,13 +280,12 @@ def _store(proposal, version, kind, upload, data, content_type, extension, user,
            supersedes=None, reason=''):
     from django.core.files.base import ContentFile
     filename = (upload.name or f'scan{extension}')[-255:]
-    office = proposal.initiating_office
-    held = _held_position(user, office, kinds=[Position.ENCODER, Position.HEAD])
+    held = _upload_position(user, proposal, kind)
     attachment = Attachment(
         proposal=proposal, version=version, kind=kind, slot='',
         original_filename=filename, content_type=content_type,
         size_bytes=len(data), created_by=user,
-        created_as=position_title(office.name, held.kind) if held else office.name,
+        created_as=position_title(held.office.name, held.kind),
         supersedes=supersedes, replacement_reason=reason,
     )
     # The extension from the bytes, not the name: the stored path is ours.
@@ -297,11 +300,13 @@ def _to_custodian_if_approved(proposal, version, kind, user):
         return
     proposal.status = Proposal.WITH_CUSTODIAN
     proposal.save(update_fields=['status'])
+    held = _upload_position(user, proposal, kind)
     _record(proposal, version, AuditEvent.APPROVAL_UPLOADED, user,
-            proposal.initiating_office, detail='With the Document Custodian')
+            held.office, position=held,
+            detail='Completed signed DCR uploaded; awaiting Document Custodian acceptance.')
 
 
-def _back_to_custodian_if_fixed(proposal, version, user):
+def _back_to_custodian_if_fixed(proposal, version, user, position):
     """Every copy the custodian returned is replaced since: back to them."""
     if proposal.status != Proposal.PACKAGE_RETURNED:
         return
@@ -317,7 +322,7 @@ def _back_to_custodian_if_fixed(proposal, version, user):
     proposal.status = Proposal.WITH_CUSTODIAN
     proposal.save(update_fields=['status'])
     _record(proposal, version, AuditEvent.PACKAGE_COMPLETE, user,
-            proposal.initiating_office,
+            position.office, position=position,
             detail='Every returned copy replaced; back with the Document Custodian')
 
 
@@ -340,11 +345,11 @@ def upload_scan(request, proposal_id):
     proposal, error = _load(request, proposal_id)
     if error:
         return error
-    refused = _refuse_writing(request, proposal)
+    kind = request.data.get('kind')
+    refused = _refuse_writing(request, proposal, kind)
     if refused:
         return refused
 
-    kind = request.data.get('kind')
     if kind not in Attachment.SCAN_KINDS:
         return Response({'error': 'Say which signed copy this is.', 'reason': 'unknown_kind'},
                         status=400)
@@ -371,8 +376,9 @@ def upload_scan(request, proposal_id):
     try:
         with transaction.atomic():
             _store(proposal, version, kind, upload, data, content_type, extension, request.user)
+            held = _upload_position(request.user, proposal, kind)
             _record(proposal, version, AuditEvent.SCAN_UPLOADED, request.user,
-                    proposal.initiating_office,
+                    held.office, position=held,
                     detail=f'{_SCAN_LABEL[kind]}: {upload.name}')
             _complete_if_ready(proposal, version, request.user)
             _to_custodian_if_approved(proposal, version, kind, request.user)
@@ -395,13 +401,12 @@ def replace_scan(request, proposal_id, attachment_id):
     proposal, error = _load(request, proposal_id)
     if error:
         return error
-    refused = _refuse_writing(request, proposal)
-    if refused:
-        return refused
-
     old = Attachment.objects.filter(pk=attachment_id, proposal=proposal).first()
     if old is None:
         return Response({'error': 'File not found', 'reason': 'not_found'}, status=404)
+    refused = _refuse_writing(request, proposal, old.kind)
+    if refused:
+        return refused
     if old.kind not in Attachment.SCAN_KINDS:
         return Response({
             'error': 'Generated documents are never replaced; the content they were made from is frozen.',
@@ -439,10 +444,11 @@ def replace_scan(request, proposal_id, attachment_id):
         old.save(update_fields=['superseded_at'])
         _store(proposal, old.version, old.kind, upload, data, content_type, extension,
                request.user, supersedes=old, reason=reason)
+        held = _upload_position(request.user, proposal, old.kind)
         _record(proposal, old.version, AuditEvent.SCAN_REPLACED, request.user,
-                proposal.initiating_office,
+                held.office, position=held,
                 detail=f'{_SCAN_LABEL[old.kind]}: {reason}')
-        _back_to_custodian_if_fixed(proposal, old.version, request.user)
+        _back_to_custodian_if_fixed(proposal, old.version, request.user, held)
 
     proposal.refresh_from_db()
     return Response(package_payload(proposal, request.user))

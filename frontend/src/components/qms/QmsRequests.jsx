@@ -31,7 +31,7 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
     try {
       const { data } = await axios.get("/api/qms/queue/", getAuth());
       setQueue(data);
-      onCount?.(data.imr.length + data.custodian.length);
+      onCount?.(data.imr.length + (data.approval?.length || 0) + data.custodian.length);
       setError("");
     } catch (err) {
       setError(err.response?.data?.error || "Could not load the requests.");
@@ -46,6 +46,7 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
         proposalId={openId}
         backLabel="Requests"
         onBack={() => { onOpen(null); load(); }}
+        onPackageChanged={load}
         renderActions={(data, reload) => (
           <>
             {data.can_imr_decide && (
@@ -53,7 +54,7 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
                 proposalId={openId}
                 onDecided={(decision) => {
                   setMessage(decision === "accept"
-                    ? "Accepted. It goes to the approving authority next."
+                    ? "Accepted. Once the approving authority has signed the DCR, upload the completed copy here."
                     : "Denied. Every office involved can read your reason.");
                   reload();
                   load();
@@ -91,6 +92,7 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
 
   const groups = [
     { key: "imr", title: "Waiting for your decision", rows: queue.imr },
+    { key: "approval", title: "Awaiting signed DCR", rows: queue.approval || [] },
     { key: "custodian", title: "With you as Document Custodian", rows: queue.custodian },
   ].filter((g) => g.rows.length > 0);
 

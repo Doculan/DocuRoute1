@@ -3,6 +3,35 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 11 October 2026 — IMR can file the completed signed DCR
+
+After IMR acceptance, the current IMR can upload the DCR bearing the
+approving authority's signature directly from QMS. The requesting office
+can still upload it. Both paths send the package to the Document Custodian
+and notify the requesting office and current custodian. Uploading records
+who filed it and in which position; it does not verify a signature.
+
+The IMR's queue now includes accepted proposals awaiting a signed DCR,
+and DCRs returned by the custodian for correction. Only the returned final
+DCR is replaceable by the IMR, with a reason and password confirmation;
+earlier scans remain the requesting office's responsibility. Sharing the
+QMS office does not confer IMR upload rights or custodian decision rights.
+The proposal header, package and QMS queue refresh after an upload.
+
+No schema change or existing proposal changes. The audit report continues
+to say IN PROGRESS until effectivity; its status and uploader details
+reflect the completed handoff when a new report is generated.
+
+Validation: the 122-test package, QMS, custodian, audit-report and
+notification suite passed. The final notification change was checked
+again with 29 related cases plus two added ended-appointment regressions;
+the latter passed after correcting their fixture date ranges. Frontend
+production build and a Chrome check with mocked API responses passed,
+including immediate header/queue refresh after upload. Focused lint has
+three pre-existing effect-state findings, confirmed against HEAD; no new
+findings. Tests used a disposable database/media folder, a test-only fast
+password hasher, and no live proposal actions.
+
 ## 10 October 2026 — Approval assigns the chosen office and position
 
 Completed the unfinished signup/approval change. Applicants choose an

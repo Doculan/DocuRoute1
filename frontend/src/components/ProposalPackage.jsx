@@ -34,7 +34,7 @@ function when(value) {
  * a media URL: a signed DCR is not for anyone who guesses its address.
  *
  * Whether this person may upload is the server's answer, so the system
- * admin and QMS staff see the same package with nothing to press.
+ * admin sees a read-only package; the IMR can upload the completed DCR.
  */
 export default function ProposalPackage({ proposalId, onChanged }) {
   const [pkg, setPkg] = useState(null);
@@ -194,13 +194,13 @@ function Status({ pkg }) {
     return (
       <div className="alert alert-success">
         {office
-          ? "Accepted by the IMR. Once the approving authority has signed the DCR, upload it."
+          ? "Accepted by the IMR. Upload the completed DCR with the approving authority's signature to send it to the Document Custodian."
           : "Accepted by the IMR. Waiting for the approving authority's signature."}
       </div>
     );
   }
   if (pkg.status === "with_custodian") {
-    return <div className="alert alert-success">With the Document Custodian.</div>;
+    return <div className="alert alert-success">Awaiting Document Custodian acceptance.</div>;
   }
   if (pkg.status === "package_returned") {
     return (

@@ -39,7 +39,7 @@ export default function QmsDashboard({ onLogout }) {
           axios.get("/api/qms/queue/", getAuth()),
         ]);
         setMe(who);
-        setWaiting(queue.imr.length + queue.custodian.length);
+        setWaiting(queue.imr.length + (queue.approval?.length || 0) + queue.custodian.length);
       } catch {
         // The pages report their own errors; the sidebar can do without.
       }

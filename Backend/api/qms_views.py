@@ -106,12 +106,22 @@ def queue(request):
     an error, for someone who holds neither - the screen then shows
     nothing rather than a queue that can never fill."""
     user = request.user
-    waiting = {'imr': [], 'custodian': []}
+    waiting = {'imr': [], 'approval': [], 'custodian': []}
     base = Proposal.objects.select_related('manual', 'initiating_office')
     if qms_position(user, Position.IMR):
         waiting['imr'] = [
             _queue_row(p) for p in base.filter(status=Proposal.READY_FOR_IMR)
         ]
+        waiting['approval'] = [
+            _queue_row(p) for p in base.filter(status=Proposal.AWAITING_APPROVAL)
+            if conflicting_office(user, p) is None
+        ]
+        from .package_views import latest_return
+        for proposal in base.filter(status=Proposal.PACKAGE_RETURNED):
+            returned = latest_return(proposal)
+            if (returned and Attachment.APPROVED_DCR in returned.returned_kinds
+                    and conflicting_office(user, proposal) is None):
+                waiting['approval'].append(_queue_row(proposal))
     if qms_position(user, Position.DOCUMENT_CUSTODIAN):
         # Not a returned package: that waits on the requesting office.
         waiting['custodian'] = [

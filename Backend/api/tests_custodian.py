@@ -2,9 +2,9 @@
 
 What has teeth here:
 
-**After the IMR accepts, the requesting office uploads the DCR the
-approving authority signed**, and the request goes to the custodian. No
-other office uploads it, and it cannot arrive before the IMR has decided.
+**After the IMR accepts, the IMR or requesting office uploads the DCR the
+approving authority signed**, and the request goes to the custodian.
+Other QMS colleagues do not inherit this permission from their office.
 
 **The custodian returns a package for defects only.** They name which
 signed copies are defective and say why. Only those copies may then be
@@ -16,7 +16,7 @@ Every test that expects an error asserts the reason, not only the status.
 """
 
 from api.models import (
-    Attachment, AuditEvent, Position, PositionAssignment, Proposal,
+    Attachment, AuditEvent, Notification, Position, PositionAssignment, Proposal,
     QmsDecision, SectionChange,
 )
 from api.tests_package import a_file, pdf_bytes
@@ -50,6 +50,102 @@ class ApprovalFixture(QmsFixture):
 # --- the approving authority's signed DCR --------------------
 
 class ApprovalUploadTests(ApprovalFixture):
+
+    def test_imr_upload_moves_to_custodian_and_records_the_actual_position(self):
+        import io
+        from docx import Document
+        response = self.upload_approval(user=self.imr)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(self.status(), Proposal.WITH_CUSTODIAN)
+        scan = self.current(Attachment.APPROVED_DCR)
+        self.assertEqual(scan.created_by, self.imr)
+        self.assertEqual(scan.created_as, 'Quality Management Office — Integrated Management Representative')
+        for event in self.proposal.events.filter(actor=self.imr, event__in=[
+                AuditEvent.SCAN_UPLOADED, AuditEvent.APPROVAL_UPLOADED]):
+            self.assertEqual(event.office, self.qms)
+            self.assertEqual(event.position.kind, Position.IMR)
+        report = self.as_(self.imr).post(self.url + 'trail-report/', {}, format='json')
+        self.assertEqual(report.status_code, 200)
+        doc = Document(io.BytesIO(report.content))
+        text = '\n'.join(p.text for p in doc.paragraphs) + '\n'.join(
+            c.text for t in doc.tables for r in t.rows for c in r.cells)
+        self.assertIn('With the Document Custodian', text)
+        self.assertIn(scan.created_as, text)
+
+    def test_handoff_notifies_the_requesting_office_and_custodian_only(self):
+        colleague = self.qms_person('qms_encoder', Position.ENCODER)
+        self.upload_approval(user=self.imr)
+        event = self.proposal.events.get(event=AuditEvent.APPROVAL_UPLOADED)
+        recipients = set(Notification.objects.filter(event=event).values_list('user_id', flat=True))
+        self.assertEqual(recipients, {self.acc_enc.id, self.acc_head.id, self.custodian.id})
+        from api.notifications import message
+        self.assertIn('uploaded by the IMR; awaiting Document Custodian acceptance', message(event))
+        self.assertNotIn(colleague.id, recipients)
+
+    def test_office_fallback_notifies_custodian_without_claiming_imr_upload(self):
+        self.upload_approval()
+        event = self.proposal.events.get(event=AuditEvent.APPROVAL_UPLOADED)
+        self.assertTrue(Notification.objects.filter(event=event, user=self.custodian).exists())
+        from api.notifications import message
+        self.assertIn('uploaded by Accounting Office', message(event))
+
+    def test_former_custodian_with_another_active_post_is_not_notified(self):
+        from datetime import timedelta
+        PositionAssignment.objects.filter(user=self.custodian).update(
+            starts_on=self.today - timedelta(days=2), ends_on=self.today - timedelta(days=1))
+        encoder, _ = Position.objects.get_or_create(office=self.qms, kind=Position.ENCODER)
+        PositionAssignment.objects.create(user=self.custodian, position=encoder, starts_on=self.today)
+        self.upload_approval(user=self.imr)
+        self.assertFalse(Notification.objects.filter(user=self.custodian, event__event=AuditEvent.APPROVAL_UPLOADED).exists())
+
+    def test_imr_can_find_accepted_proposals_until_upload(self):
+        queue = self.as_(self.imr).get('/api/qms/queue/').data
+        self.assertEqual([p['id'] for p in queue['approval']], [self.proposal.id])
+        rows = self.as_(self.imr).get(self.url + 'package/').data['scans']
+        self.assertTrue(rows[Attachment.APPROVED_DCR]['can_upload'])
+        self.assertFalse(rows[Attachment.SIGNED_DCR]['can_replace'])
+        self.upload_approval(user=self.imr)
+        self.assertEqual(self.as_(self.imr).get('/api/qms/queue/').data['approval'], [])
+        self.assertEqual([p['id'] for p in self.as_(self.custodian).get('/api/qms/queue/').data['custodian']], [self.proposal.id])
+
+    def test_qms_office_membership_alone_does_not_allow_upload(self):
+        colleague = self.qms_person('qms_encoder', Position.ENCODER)
+        for user in (colleague, self.custodian):
+            self.assertFalse(self.as_(user).get(self.url + 'package/').data['scans'][Attachment.APPROVED_DCR]['can_upload'])
+            self.assertEqual(self.upload_approval(user=user).status_code, 403)
+        self.assertEqual(self.status(), Proposal.AWAITING_APPROVAL)
+
+    def test_imr_cannot_skip_acceptance_or_upload_other_copies(self):
+        Proposal.objects.filter(pk=self.proposal.pk).update(status=Proposal.READY_FOR_IMR)
+        self.assertEqual(self.upload_approval(user=self.imr).status_code, 409)
+        self.assertEqual(self.upload(Attachment.SIGNED_PAGES, user=self.imr).status_code, 403)
+        self.assertFalse(self.proposal.events.filter(event=AuditEvent.APPROVAL_UPLOADED).exists())
+
+    def test_invalid_imr_scan_does_not_advance_or_notify(self):
+        response = self.upload_approval(user=self.imr, file=a_file('bad.pdf', b'bad'))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.status(), Proposal.AWAITING_APPROVAL)
+        self.assertFalse(Notification.objects.filter(event__event=AuditEvent.APPROVAL_UPLOADED).exists())
+
+    def test_ended_imr_assignment_cannot_upload(self):
+        from datetime import timedelta
+        PositionAssignment.objects.filter(user=self.imr).update(
+            starts_on=self.today - timedelta(days=2), ends_on=self.today - timedelta(days=1))
+        self.assertEqual(self.upload_approval(user=self.imr).status_code, 403)
+        self.assertFalse(self.as_(self.imr).get(self.url + 'package/').data['scans'][Attachment.APPROVED_DCR]['can_upload'])
+
+    def test_imr_can_replace_only_the_returned_final_dcr_with_password(self):
+        self.upload_approval(user=self.imr)
+        old = self.current(Attachment.APPROVED_DCR)
+        self.assertEqual(self.replace(old.id, user=self.imr).status_code, 409)
+        self.assertEqual(self.returns([Attachment.APPROVED_DCR]).status_code, 200)
+        self.assertEqual(len(self.as_(self.imr).get('/api/qms/queue/').data['approval']), 1)
+        self.assertEqual(self.replace(old.id, user=self.imr, token=False).status_code, 403)
+        self.assertEqual(self.replace(old.id, user=self.imr).status_code, 200)
+        self.assertEqual(self.status(), Proposal.WITH_CUSTODIAN)
+        old.refresh_from_db()
+        self.assertFalse(old.is_current)
+        self.assertEqual(self.current(Attachment.APPROVED_DCR).created_by, self.imr)
 
     def test_the_office_uploads_it_and_the_request_goes_to_the_custodian(self):
         response = self.upload_approval()

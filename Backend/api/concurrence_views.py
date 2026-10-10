@@ -41,7 +41,7 @@ from .views import reauth_failure
 from ml.revision_pipeline.change_reason import blocks_submission, classify_reason
 
 
-def _record(proposal, version, event, user, office, detail=''):
+def _record(proposal, version, event, user, office, detail='', position=None):
     """Write the audit event, and tell whoever needs to hear about it.
 
     One place for both, so no transition can be recorded and forgotten
@@ -50,7 +50,7 @@ def _record(proposal, version, event, user, office, detail=''):
     """
     record = AuditEvent.objects.create(
         proposal=proposal, version=version, event=event, actor=user,
-        position=_held_position(user, office), office=office,
+        position=position or _held_position(user, office), office=office,
         office_name_at_time=office.name, detail=detail,
     )
     notifications.notify(record)

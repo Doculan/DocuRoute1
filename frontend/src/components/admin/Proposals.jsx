@@ -133,7 +133,7 @@ export default function Proposals() {
  * decision - so the reviewer sees exactly what the admin sees.
  */
 export function ProposalDetail({
-  proposalId, onBack, backLabel = "Proposals", renderActions,
+  proposalId, onBack, backLabel = "Proposals", renderActions, onPackageChanged,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -187,7 +187,8 @@ export function ProposalDetail({
           decision elsewhere on this page must not leave it telling the
           reader what was true before. */}
       {WITH_PACKAGE.includes(data.status) && (
-        <ProposalPackage key={data.status} proposalId={proposalId} />
+        <ProposalPackage key={data.status} proposalId={proposalId}
+          onChanged={() => { load(); onPackageChanged?.(); }} />
       )}
 
       <section style={{ marginTop: "1.5rem" }}>
