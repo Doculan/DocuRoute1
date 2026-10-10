@@ -56,6 +56,8 @@ export default function Offices() {
   const [creatingUnder, setCreatingUnder] = useState(undefined); // parent id or null
   const [pendingMove, setPendingMove] = useState(null);
   const [pendingDeactivate, setPendingDeactivate] = useState(null);
+  const [pendingReactivate, setPendingReactivate] = useState(null);
+  const [details, setDetails] = useState(null);
   const [merging, setMerging] = useState(null);     // { office, into, preview }
 
   const load = useCallback(async () => {
@@ -155,6 +157,28 @@ export default function Offices() {
     }
   };
 
+  const viewOffice = async (id) => {
+    try {
+      const { data } = await axios.get(`${BASE_URL}/api/org/offices/${id}/`, getAuth());
+      setDetails(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not load office details.");
+    }
+  };
+
+  const reactivate = async (token) => {
+    const office = pendingReactivate;
+    setPendingReactivate(null);
+    try {
+      await axios.post(`${BASE_URL}/api/org/offices/${office.id}/reactivate/`, {},
+        { headers: { ...getAuth().headers, ...reauthHeader(token) } });
+      say(`${office.name} is active again and available for signup and staff assignments.`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not reactivate the office.");
+    }
+  };
+
   const doMerge = async (token) => {
     const { office, into } = merging;
     setMerging(null);
@@ -214,6 +238,8 @@ export default function Offices() {
               onAddUnder={setCreatingUnder}
               onMove={(o, parentId) => setPendingMove({ office: o, parentId })}
               onDeactivate={setPendingDeactivate}
+              onReactivate={setPendingReactivate}
+              onView={viewOffice}
               onMerge={previewMerge}
             />
           ))}
@@ -270,6 +296,44 @@ export default function Offices() {
         />
       )}
 
+      {pendingReactivate && (
+        <ConfirmDestructive
+          title={`Reactivate ${pendingReactivate.name}?`}
+          body="This makes the office available for signup and staff assignments again. Its existing active posts and document relationships resume applying."
+          passwordHint="Confirm because reactivating an office restores its access and responsibilities."
+          confirmLabel="Reactivate"
+          onConfirm={reactivate}
+          onCancel={() => setPendingReactivate(null)}
+        />
+      )}
+
+      {details && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="office-details-title">
+          <div className="modal" style={{ maxWidth: "500px" }}>
+            <div className="modal-head"><h3 id="office-details-title">{details.name}</h3></div>
+            <div className="modal-body">
+              <p>{details.merged_into_id
+                ? `Merged into ${details.merged_into}. This record stays for history; use the successor for new assignments and signup.`
+                : details.is_active ? "Active office — available for assignments and signup."
+                  : "Inactive office — reactivate it to make it available again."}</p>
+              <dl className="detail-grid">
+                <dt>Child offices</dt><dd>{details.children}</dd>
+                <dt>Positions</dt><dd>{details.positions}</dd>
+                <dt>Unended assignments</dt><dd>{details.current_holders}</dd>
+                <dt>Series owned</dt><dd>{details.owned_series}</dd>
+                <dt>Documents owned directly</dt><dd>{details.owned_documents}</dd>
+              </dl>
+            </div>
+            <div className="modal-foot">
+              {details.merged_into_id && <button className="btn btn-primary" onClick={() => viewOffice(details.merged_into_id)}>View successor</button>}
+              {!details.merged_into_id && !details.is_active && <button className="btn btn-primary" onClick={() => { setPendingReactivate(details); setDetails(null); }}>Reactivate</button>}
+              {!details.merged_into_id && <button className="btn btn-ghost" onClick={() => { setEditing(details); setDetails(null); }}>Edit</button>}
+              <button className="btn btn-ghost" onClick={() => setDetails(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {merging && (
         <ConfirmDestructive
           title={`Merge ${merging.office.name} into ${merging.into.name}?`}
@@ -285,11 +349,16 @@ export default function Offices() {
 
 /** One office and everything under it. */
 function OfficeNode({ office, depth, allRows, onEdit, onAddUnder, onMove,
-                      onDeactivate, onMerge }) {
+                      onDeactivate, onReactivate, onView, onMerge }) {
   const [open, setOpen] = useState(true);
   const [action, setAction] = useState(null);   // "move" | "merge" | null
 
-  const others = allRows.filter((r) => r.id !== office.id);
+  const excluded = new Set([office.id]);
+  const excludeChildren = (node) => node.children.forEach((child) => {
+    excluded.add(child.id); excludeChildren(child);
+  });
+  excludeChildren(office);
+  const others = allRows.filter((r) => r.is_active && !r.merged_into_id && !excluded.has(r.id));
 
   return (
     <div className="office-node" style={{ "--depth": depth }}>
@@ -318,13 +387,24 @@ function OfficeNode({ office, depth, allRows, onEdit, onAddUnder, onMove,
           </span>
         )}
 
-        {office.is_active && (
+        {!office.merged_into_id && (
           <span className="office-actions">
-            <button className="link-btn" onClick={() => onAddUnder(office.id)}>Add under</button>
+            {office.is_active && <button className="link-btn" onClick={() => onAddUnder(office.id)}>Add under</button>}
             <button className="link-btn" onClick={() => onEdit(office)}>Edit</button>
             <button className="link-btn" onClick={() => setAction(action === "move" ? null : "move")}>Move</button>
-            <button className="link-btn" onClick={() => setAction(action === "merge" ? null : "merge")}>Merge</button>
-            <button className="link-btn" onClick={() => onDeactivate(office)}>Deactivate</button>
+            {office.is_active ? <>
+              <button className="link-btn" onClick={() => setAction(action === "merge" ? null : "merge")}>Merge</button>
+              <button className="link-btn" onClick={() => onDeactivate(office)}>Deactivate</button>
+            </> : <>
+              <button className="link-btn" onClick={() => onView(office.id)}>Details</button>
+              <button className="link-btn" onClick={() => onReactivate(office)}>Reactivate</button>
+            </>}
+          </span>
+        )}
+        {office.merged_into_id && (
+          <span className="office-actions">
+            <button className="link-btn" onClick={() => onView(office.id)}>Details</button>
+            <button className="link-btn" onClick={() => onView(office.merged_into_id)}>View successor</button>
           </span>
         )}
       </div>
@@ -368,6 +448,8 @@ function OfficeNode({ office, depth, allRows, onEdit, onAddUnder, onMove,
           onAddUnder={onAddUnder}
           onMove={onMove}
           onDeactivate={onDeactivate}
+          onReactivate={onReactivate}
+          onView={onView}
           onMerge={onMerge}
         />
       ))}

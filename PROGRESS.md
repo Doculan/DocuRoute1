@@ -3,6 +3,34 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 11 October 2026 — Manage deactivated and merged offices
+
+The backend could reactivate deactivated offices, but the Offices screen
+hid all their actions. It now exposes Edit, Move, Details and password-
+confirmed Reactivate. Management actions stay visible without hovering.
+Reactivation restores eligibility in signup and staff-assignment pickers.
+It also restores access through existing active posts and relationships,
+which the confirmation explains. A retired parent must first be restored,
+or the child moved to an active parent (or the top level).
+
+Merged source records remain historical: Details and View successor let
+the admin follow the surviving office, including successive mergers. The
+old source cannot be reactivated, edited or merged again. Moved/renamed
+offices keep their active status and remain eligible for assignment.
+
+Move/Merge pickers exclude inactive records and descendants. The backend
+also refuses inactive merge destinations and inactive parents on creation
+or movement. Previously showing inactive offices exposed them as targets,
+so a merge could move work into an office that was already unavailable.
+
+Validation: 101 office, signup and People tests passed, including eight
+new lifecycle regressions. Chrome checks with mocked API responses cover
+visible archived actions, successor details, cancellation, confirmed
+reactivation, movement, and signup eligibility. No schema change and no
+live offices modified; the locally configured database contained no
+inactive offices, so the reported records were not repaired directly.
+Frontend production build and focused Offices lint passed.
+
 ## 11 October 2026 — IMR can file the completed signed DCR
 
 After IMR acceptance, the current IMR can upload the DCR bearing the

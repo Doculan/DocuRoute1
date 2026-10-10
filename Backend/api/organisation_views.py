@@ -87,6 +87,13 @@ def _impact_of(office):
     }
 
 
+def _active_parent_exists(parent_id):
+    try:
+        return Office.objects.filter(pk=parent_id, is_active=True, merged_into__isnull=True).exists()
+    except (ValueError, TypeError):
+        return False
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsSystemAdmin])
 def offices(request):
@@ -119,6 +126,8 @@ def offices(request):
         parent_id=request.data.get('parent_id') or None,
         is_approving_level=bool(request.data.get('is_approving_level')),
     )
+    if office.parent_id and not _active_parent_exists(office.parent_id):
+        return Response({'error': 'Choose an active parent office.', 'reason': 'parent_inactive'}, status=400)
     try:
         office.full_clean()
     except ValidationError as error:
@@ -150,6 +159,10 @@ def office_detail(request, office_id):
     if request.method == 'GET':
         return Response(_office_payload(office, _impact_of(office)))
 
+    if office.merged_into_id:
+        return Response({'error': 'This is a merged office record. Manage its successor instead.',
+                         'reason': 'merged'}, status=409)
+
     moving = (
         'parent_id' in request.data
         and (request.data.get('parent_id') or None) != office.parent_id
@@ -158,6 +171,9 @@ def office_detail(request, office_id):
         failure = reauth_failure(request)
         if failure:
             return failure
+        parent_id = request.data.get('parent_id') or None
+        if parent_id and not _active_parent_exists(parent_id):
+            return Response({'error': 'Choose an active parent office.', 'reason': 'parent_inactive'}, status=400)
 
     if 'name' in request.data:
         name = (request.data.get('name') or '').strip()
@@ -235,13 +251,17 @@ def reactivate_office(request, office_id):
     if office.merged_into_id:
         return Response({
             'error': (
-                f'{office} was merged into {office.merged_into}. Undo the '
-                f'merge rather than reactivating it, or the same work would '
-                f'belong to two offices.'
+                f'{office} was merged into {office.merged_into}. Manage the '
+                f'successor office; this record is retained for history.'
             ),
             'reason': 'merged',
         }, status=409)
 
+    if office.parent_id and not _active_parent_exists(office.parent_id):
+        return Response({
+            'error': f'Reactivate {office.parent.name} first, or move this office under an active parent before reactivating it.',
+            'reason': 'parent_inactive',
+        }, status=409)
     office.is_active = True
     office.save(update_fields=['is_active', 'updated_at'])
     return Response(_office_payload(office, _impact_of(office)))
@@ -269,6 +289,13 @@ def merge_office(request, office_id):
         target = Office.objects.get(id=target_id)
     except (Office.DoesNotExist, ValueError, TypeError):
         return Response({'error': 'Target office not found'}, status=404)
+
+    if office.merged_into_id:
+        return Response({'error': 'This office has already been merged. Manage its successor instead.',
+                         'reason': 'merged'}, status=409)
+    if not target.is_active or target.merged_into_id:
+        return Response({'error': 'Merge into an active office. Reactivate a deactivated destination first.',
+                         'reason': 'target_inactive'}, status=409)
 
     if target.pk == office.pk:
         return Response(

@@ -3155,7 +3155,8 @@ a:hover { color: var(--brand-500); }
 
 /* Retired offices stay listed - nothing is deleted - but they should
    not compete with the live hierarchy for attention. */
-.office-row.is-retired { opacity: 0.62; }
+.office-row.is-retired .office-name,
+.office-row.is-retired .office-abbr { color: var(--text-muted); }
 
 .office-twisty {
   width: 1.1rem;
@@ -3179,22 +3180,14 @@ a:hover { color: var(--brand-500); }
   color: var(--text-muted);
 }
 
-/* The actions appear on hover, but stay reachable by keyboard: a control
-   that only exists on hover does not exist on a tablet or to a screen
-   reader. */
+/* Keep management actions visible so a moved or retired row never looks
+   like an office the administrator can no longer manage. */
 .office-actions {
   display: flex;
   gap: 0.6rem;
   margin-left: auto;
   flex-wrap: wrap;
-  opacity: 0;
-  transition: opacity var(--t) var(--ease-quart);
-}
-.office-row:hover .office-actions,
-.office-actions:focus-within { opacity: 1; }
-
-@media (hover: none) {
-  .office-actions { opacity: 1; }
+  opacity: 1;
 }
 
 .office-picker {
