@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
+import Icon from "../Icon";
 
 const BASE_URL = "";
 
@@ -177,7 +178,7 @@ function UnassignedList({ series, onSay, onChanged }) {
   };
 
   if (!shown) {
-    return <button className="link-btn" onClick={open}>Show them</button>;
+    return <button className="btn btn-ghost btn-sm" onClick={open}>Show them</button>;
   }
 
   return (
@@ -311,7 +312,7 @@ function SeriesDetail({ seriesId, onBack, onSay }) {
 
   return (
     <div>
-      <button className="link-btn" onClick={onBack}>← All series</button>
+      <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />All series</button>
 
       <header className="page-head" style={{ marginTop: "0.6rem" }}>
         <div>
@@ -496,7 +497,7 @@ function DocumentDetail({ documentId, offices, onBack, onSay }) {
 
   return (
     <div>
-      <button className="link-btn" onClick={onBack}>← Back to the series</button>
+      <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />Back to the series</button>
 
       <header className="page-head" style={{ marginTop: "0.6rem" }}>
         <div>

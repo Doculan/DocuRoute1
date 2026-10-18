@@ -476,13 +476,18 @@ a:hover { color: var(--brand-500); }
 }
 
 .btn-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   width: 100%;
-  padding: 0.4rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: var(--r-xs);
+  min-height: 34px;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--r-sm);
   background: transparent;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.815rem;
   font-weight: 500;
   transition: all var(--t) var(--ease-quart);
 }
@@ -955,14 +960,19 @@ a:hover { color: var(--brand-500); }
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 0.45rem 0.85rem;
-  border: 1px solid transparent;
+  min-height: 34px;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--rule);
   border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
   font-family: inherit;
   font-size: 0.815rem;
   font-weight: 500;
+  line-height: 1.2;
   letter-spacing: -0.005em;
   white-space: nowrap;
+  text-decoration: none;
   transition:
     background-color var(--t) var(--ease-quart),
     border-color var(--t) var(--ease-quart),
@@ -973,18 +983,17 @@ a:hover { color: var(--brand-500); }
 .btn:active:not(:disabled) { transform: translateY(0.5px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+.btn:hover:not(:disabled) { border-color: var(--n-400); }
+.btn .icon { flex-shrink: 0; }
 
-.btn-primary {
-  background: var(--brand-600);
-  color: #fff;
-}
-.btn-primary:hover:not(:disabled) { background: var(--brand-700); }
-
+.btn-primary,
 .btn-deep {
-  background: var(--brand-900);
+  background: var(--brand-600);
+  border-color: var(--brand-600);
   color: #fff;
 }
-.btn-deep:hover:not(:disabled) { background: var(--brand-800); }
+.btn-primary:hover:not(:disabled),
+.btn-deep:hover:not(:disabled) { background: var(--brand-700); border-color: var(--brand-700); }
 
 .btn-ghost {
   background: var(--surface);
@@ -999,21 +1008,23 @@ a:hover { color: var(--brand-500); }
 .btn-subtle {
   background: var(--brand-50);
   color: var(--brand-700);
-  border-color: transparent;
+  border-color: var(--brand-100);
 }
-.btn-subtle:hover:not(:disabled) { background: var(--brand-100); }
+.btn-subtle:hover:not(:disabled) { background: var(--brand-100); border-color: var(--brand-200); }
 
 .btn-success {
   background: var(--success);
+  border-color: var(--success);
   color: #fff;
 }
-.btn-success:hover:not(:disabled) { background: var(--success-ink); }
+.btn-success:hover:not(:disabled) { background: var(--success-ink); border-color: var(--success-ink); }
 
 .btn-danger {
   background: var(--danger);
+  border-color: var(--danger);
   color: #fff;
 }
-.btn-danger:hover:not(:disabled) { background: var(--danger-ink); }
+.btn-danger:hover:not(:disabled) { background: var(--danger-ink); border-color: var(--danger-ink); }
 
 /* Destructive actions read as an outline, not a red slab — they
    sit next to Approve in the same row and must not out-shout it. */
@@ -1027,15 +1038,15 @@ a:hover { color: var(--brand-500); }
   border-color: #e5b8b3;
 }
 
-.btn-sm { padding: 0.3rem 0.65rem; font-size: 0.78rem; border-radius: var(--r-xs); }
-.btn-lg { padding: 0.62rem 1.2rem; font-size: 0.9rem; }
+.btn-sm { min-height: 28px; padding: 0.25rem 0.65rem; font-size: 0.78rem; gap: 0.35rem; }
+.btn-lg { min-height: 42px; padding: 0.55rem 1.2rem; font-size: 0.9rem; }
 .btn-block { width: 100%; }
 
 .btn-icon {
-  padding: 0.4rem;
+  padding: 0;
   width: 30px;
+  min-height: 30px;
   height: 30px;
-  border-radius: var(--r-xs);
 }
 
 /* Filter pills — a filter is a state you toggle, not a form you
@@ -1166,11 +1177,11 @@ a:hover { color: var(--brand-500); }
 .input-file:hover { border-color: var(--brand-500); background: var(--brand-50); color: var(--brand-700); }
 
 .input-file::file-selector-button {
-  padding: 0.35rem 0.8rem;
+  padding: 0.3rem 0.8rem;
   margin-right: 0.75rem;
-  border: none;
-  border-radius: var(--r-xs);
-  background: var(--brand-100);
+  border: 1px solid var(--brand-200);
+  border-radius: var(--r-sm);
+  background: var(--brand-50);
   color: var(--brand-700);
   font-family: inherit;
   font-size: 0.78rem;
@@ -1178,7 +1189,7 @@ a:hover { color: var(--brand-500); }
   cursor: pointer;
   transition: background-color var(--t) var(--ease-quart), color var(--t) var(--ease-quart);
 }
-.input-file:hover::file-selector-button { background: var(--brand-600); color: #fff; }
+.input-file:hover::file-selector-button { background: var(--brand-100); }
 
 /* ============================================================
    Tabs — sliding pill
@@ -1681,14 +1692,16 @@ a:hover { color: var(--brand-500); }
   width: 26px;
   height: 26px;
   border: none;
-  border-radius: var(--r-xs);
+  border-radius: var(--r-sm);
   background: transparent;
-  font-size: 0.8rem;
+  color: var(--text-muted);
   line-height: 1;
-  transition: background-color var(--t) var(--ease-quart), transform var(--t) var(--ease-spring);
+  cursor: pointer;
+  transition: background-color var(--t) var(--ease-quart), color var(--t) var(--ease-quart);
 }
-.icon-btn:hover { background: rgba(0, 0, 0, 0.07); transform: scale(1.15); }
-.toc-item.is-active .icon-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.icon-btn:hover { background: rgba(0, 0, 0, 0.07); color: var(--text); }
+.icon-btn.is-danger:hover { background: var(--danger-soft); color: var(--danger); }
+.icon-btn:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .toc-children {
   display: flex;

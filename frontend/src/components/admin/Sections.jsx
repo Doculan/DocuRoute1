@@ -5,6 +5,7 @@ import SectionStructure from "./SectionStructure";
 import DocTable from "../DocTable";
 import { parseTableRow, isTableSeparator } from "../../docTable";
 import { revisionLine } from "../documentStatus";
+import Icon from "../Icon";
 
 const formatOCRContent = (content = "") => {
   return content
@@ -549,16 +550,18 @@ export default function Sections({ openManualId = null }) {
           <button
             className="icon-btn"
             title="Edit"
+            aria-label="Edit section"
             onClick={(e) => { e.stopPropagation(); handleEditClick(section); setActiveSection(section); }}
           >
-            ✏️
+            <Icon name="edit" />
           </button>
           <button
-            className="icon-btn"
+            className="icon-btn is-danger"
             title="Delete"
+            aria-label="Delete section"
             onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: section.id, subtitle: section.subtitle }); }}
           >
-            🗑️
+            <Icon name="trash" />
           </button>
         </div>
       </div>
@@ -584,7 +587,7 @@ export default function Sections({ openManualId = null }) {
               className={`btn ${showForm ? "btn-ghost" : "btn-primary"}`}
               onClick={() => { setShowForm(!showForm); setEditingSection(null); }}
             >
-              {showForm ? "✕ Cancel" : "+ Add section"}
+              {showForm ? <><Icon name="close" />Cancel</> : <><Icon name="plus" />Add section</>}
             </button>
           )}
         </div>
@@ -731,7 +734,7 @@ export default function Sections({ openManualId = null }) {
                         className={`btn btn-sm ${showOriginal ? "btn-ghost" : "btn-primary"}`}
                         onClick={() => setShowOriginal(!showOriginal)}
                       >
-                        {showOriginal ? "📝 Extracted text" : "📎 Original file"}
+                        {showOriginal ? <><Icon name="doc" />Extracted text</> : <><Icon name="external" />Original file</>}
                       </button>
                     )}
                   </div>
@@ -781,7 +784,7 @@ export default function Sections({ openManualId = null }) {
               <div className="anim-fade-up">
                 <div className="page-head" style={{ marginBottom: "1.25rem" }}>
                   <h2 className="page-title" style={{ fontSize: "1.3rem" }}>✏️ Editing section</h2>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingSection(null)}>✕ Cancel</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingSection(null)}><Icon name="close" />Cancel</button>
                 </div>
 
                 <form onSubmit={handleEditSave} className="col">
@@ -930,7 +933,7 @@ export default function Sections({ openManualId = null }) {
                             className="btn btn-ghost btn-sm"
                             onClick={() => { setShowDiff(false); setSelectedVersion(history[history.length - 1]); }}
                           >
-                            ✕ Clear diff
+                            <Icon name="close" />Clear diff
                           </button>
                         ) : (
                           hasPreviousVersion && (
@@ -938,7 +941,7 @@ export default function Sections({ openManualId = null }) {
                               className="btn btn-subtle btn-sm"
                               onClick={() => compareWithPrevious(history, selectedVersion)}
                             >
-                              ⇄ Compare with previous
+                              <Icon name="compare" />Compare with previous
                             </button>
                           )
                         )}

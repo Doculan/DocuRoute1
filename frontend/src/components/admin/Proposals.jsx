@@ -5,6 +5,7 @@ import DiffView from "../DiffView";
 import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
 import TrailReport from "../TrailReport";
+import Icon from "../Icon";
 import {
   IN_PROGRESS, STATUS_LABEL, WITH_PACKAGE, statusTone,
 } from "../proposalStatus";
@@ -154,7 +155,7 @@ export function ProposalDetail({
   if (error) {
     return (
       <div>
-        <button className="link-btn" onClick={onBack}>← {backLabel}</button>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />{backLabel}</button>
         <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{error}</div>
       </div>
     );
@@ -165,7 +166,7 @@ export function ProposalDetail({
 
   return (
     <div>
-      <button className="link-btn" onClick={onBack}>← {backLabel}</button>
+      <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />{backLabel}</button>
 
       <header className="page-head" style={{ marginTop: "0.6rem" }}>
         <div>

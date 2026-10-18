@@ -91,8 +91,8 @@ export default function PublicSVMEvaluation() {
           <p className="public-hero-sub">
             Text categorization performance analysis for the controlled document management system.
           </p>
-          <button className="btn btn-lg" onClick={runEvaluation} disabled={loading}
-            style={{ marginTop: "1.75rem", background: "#fff", color: "var(--brand-800)" }}>
+          <button className="btn btn-primary btn-lg" onClick={runEvaluation} disabled={loading}
+            style={{ marginTop: "1.75rem", background: "#fff", borderColor: "#fff", color: "var(--brand-800)" }}>
             {loading ? <><span className="spinner" /> Running evaluation…</> : 'Run evaluation'}
           </button>
         </div>

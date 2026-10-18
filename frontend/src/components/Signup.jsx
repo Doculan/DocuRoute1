@@ -85,7 +85,7 @@ export default function Signup({ onBackToLogin }) {
               Your account is pending admin approval. You&apos;ll be able to sign in
               once an administrator approves it.
             </p>
-            <button className="btn btn-deep btn-lg btn-block" onClick={onBackToLogin}>
+            <button className="btn btn-primary btn-lg btn-block" onClick={onBackToLogin}>
               Back to sign in
             </button>
           </div>
@@ -232,7 +232,7 @@ export default function Signup({ onBackToLogin }) {
 
             {error && <div className="alert alert-danger">{error}</div>}
 
-            <button className="btn btn-deep btn-lg btn-block" type="submit" disabled={loading}>
+            <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={loading}>
               {loading ? <><span className="spinner spinner-light" /> Creating account…</> : "Create account"}
             </button>
           </form>

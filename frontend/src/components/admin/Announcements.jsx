@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import Icon from "../Icon";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -159,7 +160,7 @@ export default function Announcements() {
             Upcoming; an undated one is the banner.
           </p>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={load}><Icon name="refresh" />Refresh</button>
       </header>
 
       {error && <div className="alert alert-danger" style={{ marginBottom: "1rem" }}>{error}</div>}
@@ -249,7 +250,7 @@ export default function Announcements() {
         </label>
 
         <div className="row-wrap" style={{ gap: "0.5rem", marginTop: "1rem" }}>
-          <button className="btn btn-deep" type="submit" disabled={saving}>
+          <button className="btn btn-primary" type="submit" disabled={saving}>
             {saving
               ? <><span className="spinner spinner-light" /> Saving…</>
               : editingId ? "Save changes" : "Post announcement"}
@@ -318,8 +319,7 @@ export default function Announcements() {
                     {row.active ? "Deactivate" : "Reactivate"}
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ color: "var(--danger)" }}
+                    className="btn btn-danger-soft btn-sm"
                     onClick={() => setConfirmDelete(row.id)}
                   >
                     Delete
@@ -336,7 +336,7 @@ export default function Announcements() {
                     hides it from staff and keeps the record.
                   </p>
                   <div className="row-wrap" style={{ gap: "0.5rem" }}>
-                    <button className="btn btn-sm" style={{ background: "var(--danger)", color: "#fff" }}
+                    <button className="btn btn-danger btn-sm"
                             onClick={() => remove(row)}>
                       Delete it
                     </button>

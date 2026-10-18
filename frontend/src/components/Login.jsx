@@ -87,7 +87,7 @@ export default function Login({ onLoginSuccess }) {
 
             {error && <div className="alert alert-danger">{error}</div>}
 
-            <button className="btn btn-deep btn-lg btn-block" type="submit" disabled={loading}>
+            <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={loading}>
               {loading ? <><span className="spinner spinner-light" /> Signing in…</> : "Sign in"}
             </button>
           </form>

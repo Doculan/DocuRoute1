@@ -240,7 +240,7 @@ export default function People() {
                       {p.past_positions.length === 1 ? "" : "s"}
                     </span>
                     <button
-                      className="link-btn"
+                      className="btn btn-subtle btn-sm"
                       onClick={() => setPending({
                         url: `/api/org/people/${p.id}/reactivate/`,
                         success: `${p.username} reactivated. Assign their posts again.`,
@@ -328,7 +328,7 @@ function PersonCard({ person, onAssign, onEnd, onDeactivate }) {
               </span>
               {a.is_acting && <span className="badge badge-warning">acting</span>}
               <span className="subtle text-xs">since {formatDate(a.starts_on)}</span>
-              <button className="link-btn" onClick={() => onEnd(a)}>End</button>
+              <button className="btn btn-danger-soft btn-sm" onClick={() => onEnd(a)}>End</button>
             </div>
           ))}
         </div>
@@ -336,7 +336,7 @@ function PersonCard({ person, onAssign, onEnd, onDeactivate }) {
 
       {person.past_positions.length > 0 && (
         <>
-          <button className="link-btn" style={{ marginTop: "0.5rem" }}
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: "0.5rem" }}
                   onClick={() => setShowPast((v) => !v)}>
             {showPast ? "Hide" : `${person.past_positions.length} past post${person.past_positions.length === 1 ? "" : "s"}`}
           </button>

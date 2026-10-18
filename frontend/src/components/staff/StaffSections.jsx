@@ -4,6 +4,7 @@ import DocTable from "../DocTable";
 import { parseTableRow, isTableSeparator } from "../../docTable";
 import BaselineForm from "../qms/BaselineForm";
 import { formatDate, formatRevision, revisionLine } from "../documentStatus";
+import Icon from "../Icon";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
 // server diffs submitted text against content normalized the same way.
@@ -180,7 +181,7 @@ export default function StaffSections({
   return (
     <div className="reader">
       <div className="reader-bar">
-        <button className="btn btn-ghost btn-sm" onClick={onBack}>← Back to manuals</button>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />Back to manuals</button>
         {fileUrl && (
           <button
             className={`btn btn-sm ${showOriginal ? "btn-primary" : "btn-ghost"}`}
@@ -202,12 +203,12 @@ export default function StaffSections({
               </div>
             )}
             {manual?.canRecordBaseline && !recordingBaseline && (
-              <button className="link-btn text-xs" onClick={() => setRecordingBaseline(true)}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setRecordingBaseline(true)}>
                 Record starting status
               </button>
             )}
             {manual?.canCorrectBaseline && !recordingBaseline && (
-              <button className="link-btn text-xs" onClick={() => setRecordingBaseline(true)}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setRecordingBaseline(true)}>
                 Correct starting status
               </button>
             )}
@@ -238,7 +239,7 @@ export default function StaffSections({
               <div className="row text-xs muted" style={{ justifyContent: "space-between" }}>
                 <span>{sections.length} section{sections.length === 1 ? "" : "s"}</span>
                 <button
-                  className="link-btn text-xs"
+                  className="btn btn-ghost btn-sm"
                   onClick={() => { setSearchQuery(""); setTagFilter(""); }}
                 >
                   Clear filters
@@ -297,7 +298,7 @@ export default function StaffSections({
             <div className="reader-frame">
               <div className="row" style={{ justifyContent: "space-between", marginBottom: "0.75rem" }}>
                 <strong>Original document</strong>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowOriginal(false)}>✕ Close</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowOriginal(false)}><Icon name="close" />Close</button>
               </div>
               <iframe src={fileUrl} title="Original document" />
             </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import Icon from "../Icon";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -81,7 +82,7 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual }) {
             A way back to what you were reading, and anything waiting for you.
           </p>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={load}><Icon name="refresh" />Refresh</button>
       </header>
 
       {announcement && (

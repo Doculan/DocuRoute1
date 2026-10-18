@@ -9,9 +9,6 @@ import { formatDate, formatRevision } from "../documentStatus";
 // keeps the browser on one origin, so CORS never enters into it.
 const BASE_URL = "";
 
-// Past this many documents, a filter box earns its place.
-const FILTER_FROM = 8;
-
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
@@ -55,8 +52,7 @@ export default function StaffManuals({ onSelectManual }) {
   const needle = query.trim().toLowerCase();
   const shown = needle
     ? manuals.filter((m) =>
-        [m.title, m.series, m.series_title, m.owner]
-          .some((v) => (v || "").toLowerCase().includes(needle)))
+        (m.title || "").toLowerCase().includes(needle))
     : manuals;
 
   return (
@@ -83,16 +79,14 @@ export default function StaffManuals({ onSelectManual }) {
         </div>
       ) : (
         <>
-          {manuals.length > FILTER_FROM && (
-            <input
-              type="search"
-              className="input manual-filter"
-              placeholder="Filter by title, series or owner"
-              aria-label="Filter manuals"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          )}
+          <input
+            type="search"
+            className="input manual-filter"
+            placeholder="Search by title…"
+            aria-label="Search manuals by title"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
 
           {shown.length === 0 ? (
             <p className="subtle text-sm">No manuals match “{query}”.</p>

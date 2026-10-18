@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
+import Icon from "../Icon";
 
 const BASE_URL = "";
 
@@ -211,7 +212,7 @@ export default function Offices() {
           className="btn btn-primary btn-sm"
           onClick={() => setCreatingUnder(null)}
         >
-          + Add office
+          <Icon name="plus" />Add office
         </button>
       </header>
 
@@ -248,7 +249,7 @@ export default function Offices() {
 
       {inactiveTotal > 0 && (
         <button
-          className="link-btn"
+          className="btn btn-ghost btn-sm"
           style={{ marginTop: "1.25rem" }}
           onClick={() => setShowInactive((v) => !v)}
         >
@@ -389,22 +390,22 @@ function OfficeNode({ office, depth, allRows, onEdit, onAddUnder, onMove,
 
         {!office.merged_into_id && (
           <span className="office-actions">
-            {office.is_active && <button className="link-btn" onClick={() => onAddUnder(office.id)}>Add under</button>}
-            <button className="link-btn" onClick={() => onEdit(office)}>Edit</button>
-            <button className="link-btn" onClick={() => setAction(action === "move" ? null : "move")}>Move</button>
+            {office.is_active && <button className="btn btn-ghost btn-sm" onClick={() => onAddUnder(office.id)}><Icon name="plus" />Add under</button>}
+            <button className="btn btn-ghost btn-sm" onClick={() => onEdit(office)}><Icon name="edit" />Edit</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setAction(action === "move" ? null : "move")}><Icon name="move" />Move</button>
             {office.is_active ? <>
-              <button className="link-btn" onClick={() => setAction(action === "merge" ? null : "merge")}>Merge</button>
-              <button className="link-btn" onClick={() => onDeactivate(office)}>Deactivate</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setAction(action === "merge" ? null : "merge")}><Icon name="merge" />Merge</button>
+              <button className="btn btn-danger-soft btn-sm" onClick={() => onDeactivate(office)}><Icon name="ban" />Deactivate</button>
             </> : <>
-              <button className="link-btn" onClick={() => onView(office.id)}>Details</button>
-              <button className="link-btn" onClick={() => onReactivate(office)}>Reactivate</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => onView(office.id)}><Icon name="eye" />Details</button>
+              <button className="btn btn-subtle btn-sm" onClick={() => onReactivate(office)}><Icon name="undo" />Reactivate</button>
             </>}
           </span>
         )}
         {office.merged_into_id && (
           <span className="office-actions">
-            <button className="link-btn" onClick={() => onView(office.id)}>Details</button>
-            <button className="link-btn" onClick={() => onView(office.merged_into_id)}>View successor</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => onView(office.id)}><Icon name="eye" />Details</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => onView(office.merged_into_id)}>View successor<Icon name="forward" /></button>
           </span>
         )}
       </div>

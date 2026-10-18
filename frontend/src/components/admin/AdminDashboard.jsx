@@ -95,8 +95,6 @@ const CRUMBS = {
 
 export default function AdminDashboard({ onLogout }) {
   const [activePage, setActivePage] = useState("home");
-  const [search, setSearch] = useState("");
-  const [manualQuery, setManualQuery] = useState("");
   // Set when Sections is reached by clicking a manual rather than by the
   // nav. Sections keeps its own picker either way - it should behave the
   // same however you arrive - this only says which manual to open on.
@@ -143,7 +141,7 @@ export default function AdminDashboard({ onLogout }) {
         return <AdminHome onGo={goTo} />;
       case "users": return <UserManagement />;
       case "manuals":
-        return <Manuals initialSearch={manualQuery} onOpenSections={openSections} />;
+        return <Manuals onOpenSections={openSections} />;
       case "sections":
         return <Sections openManualId={drillManual} />;
       case "announcements": return <Announcements />;
@@ -163,12 +161,6 @@ export default function AdminDashboard({ onLogout }) {
   const goTo = (page) => {
     if (page !== "sections") setDrillManual(null);
     setActivePage(page);
-  };
-
-  // Global search hands the query to the one page that can answer it.
-  const runSearch = (query) => {
-    setManualQuery(query);
-    setActivePage("manuals");
   };
 
   // Drilling from a manual into its sections is the one place a Back is
@@ -259,10 +251,6 @@ export default function AdminDashboard({ onLogout }) {
       <div className="app-main">
         <Topbar
           crumb={CRUMBS[activePage]}
-          search={search}
-          onSearchChange={setSearch}
-          onSearchSubmit={runSearch}
-          searchPlaceholder="Search manuals by title, series or author"
           pendingCount={pending.users}
           pendingTitle="accounts waiting for approval"
           onPendingClick={() => setActivePage("users")}
@@ -270,7 +258,7 @@ export default function AdminDashboard({ onLogout }) {
 
         <main className="app-content">
           {/* key forces a remount so each tab animates in */}
-          <div className="tab-panel" key={`${activePage}-${manualQuery}`}>
+          <div className="tab-panel" key={activePage}>
             {renderPage()}
           </div>
         </main>

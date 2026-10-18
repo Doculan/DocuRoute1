@@ -16,6 +16,10 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   const [form, setForm] = useState({ title: "", file: null });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  // The full-page loader is for the first load only. Replacing the page
+  // (filters included) on every keystroke unmounted the search box and
+  // dropped focus after each letter.
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   // Preview state (review sectioning before finalizing)
@@ -33,7 +37,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   const itemsPerPage = 10;
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [searchBy, setSearchBy] = useState("all");
   const [selectedManualIds, setSelectedManualIds] = useState([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Uploading is occasional; reading the list is constant. The form stays
@@ -60,7 +63,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
       const params = new URLSearchParams();
       if (searchQuery.trim()) {
         params.append('search', searchQuery.trim());
-        params.append('searchBy', searchBy);
+        params.append('searchBy', 'title');
       }
       if (filters.series) params.append('series', filters.series);
       if (filters.author.trim()) params.append('author', filters.author.trim());
@@ -77,8 +80,9 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
       console.error(err);
     } finally {
       setLoading(false);
+      setLoadedOnce(true);
     }
-  }, [searchQuery, searchBy, filters.series, filters.author, filters.minSections, filters.sortBy]);
+  }, [searchQuery, filters.series, filters.author, filters.minSections, filters.sortBy]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -569,7 +573,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
 
       {message && <div className="toast">{message}</div>}
 
-      {loading ? (
+      {loading && !loadedOnce ? (
         <div className="loading-row"><span className="spinner" /> Loading manuals…</div>
       ) : (
         <div>
@@ -578,28 +582,12 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                  and the rarely-touched fields fold away behind a pill. ── */}
           <div className="filter-panel">
             <div className="filter-row">
-              <select
-                className="select"
-                style={{ width: "auto" }}
-                value={searchBy}
-                onChange={(e) => { setSearchBy(e.target.value); setCurrentPage(1); }}
-              >
-                <option value="all">All fields</option>
-                <option value="title">Title</option>
-                <option value="series">Series</option>
-                <option value="author">Author</option>
-              </select>
-
               <input
                 className="input"
                 style={{ width: "260px" }}
                 type="search"
-                placeholder={
-                  searchBy === "all" ? "Filter by title, series or author…"
-                    : searchBy === "title" ? "Filter by title…"
-                    : searchBy === "series" ? "Filter by series…"
-                    : "Filter by author…"
-                }
+                placeholder="Search by title…"
+                aria-label="Search manuals by title"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               />
@@ -640,7 +628,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                   className="pill"
                   onClick={() => {
                     setSearchQuery("");
-                    setSearchBy("all");
                     setShowAdvanced(false);
                     setFilters({ series: "", author: "", minSections: "", dateFrom: "", dateTo: "", sortBy: "newest" });
                     setCurrentPage(1);
@@ -721,7 +708,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
           <h3 className="section-title">Master copies</h3>
 
           {/* ── List ── */}
-          {manuals.length === 0 ? (
+          {manuals.length === 0 && !hasActiveFilters ? (
             <div className="empty-state">
               <div className="empty-icon">📚</div>
               <p className="empty-title">No manuals yet</p>

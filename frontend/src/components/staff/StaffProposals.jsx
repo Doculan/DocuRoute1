@@ -11,6 +11,7 @@ import { STATUS_LABEL, WITH_PACKAGE, statusTone } from "../proposalStatus";
 import DocDiff from "../DocDiff";
 import AiNote from "../AiNote";
 import SectionContentEditor from "../SectionContentEditor";
+import Icon from "../Icon";
 
 const BASE_URL = "";
 
@@ -244,7 +245,7 @@ function Proposal({ proposalId, onBack, onSay }) {
   if (error && !data) {
     return (
       <div>
-        <button className="link-btn" onClick={onBack}>← Proposals</button>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />Proposals</button>
         <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{error}</div>
       </div>
     );
@@ -275,7 +276,7 @@ function Proposal({ proposalId, onBack, onSay }) {
 
   return (
     <div>
-      <button className="link-btn" onClick={onBack}>← Proposals</button>
+      <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />Proposals</button>
 
       <header className="page-head" style={{ marginTop: "0.6rem" }}>
         <div>

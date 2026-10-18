@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { STATUS_LABEL, statusTone } from "../proposalStatus";
+import Icon from "../Icon";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -81,7 +82,7 @@ export default function AdminHome({ onGo }) {
             What is waiting for you, and whether the queue is moving.
           </p>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={load}><Icon name="refresh" />Refresh</button>
       </header>
 
       <Attention counts={attention} onGo={onGo} />
