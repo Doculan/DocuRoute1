@@ -680,6 +680,18 @@ a:hover { color: var(--brand-500); }
   overflow: hidden;
 }
 .notif-at { font-size: 0.7rem; color: var(--text-subtle); }
+.notif-item .status-mark { justify-self: start; }
+/* The unread dot already marks the row; the mark's own dot would double it. */
+.notif-item .status-mark::before { display: none; }
+
+/* The notifications page reuses the panel's rows, at reading size. */
+.notif-page {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.notif-page .notif-msg { font-size: 0.9rem; }
+.notif-page .notif-detail { font-size: 0.85rem; }
 
 .app-content {
   flex: 1;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import Icon from "../Icon";
+import NeedsAction from "../NeedsAction";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -24,7 +25,7 @@ function formatDay(value) {
  * not need six round trips, and the landing page is the worst place to be
  * slow.
  */
-export default function StaffHome({ onGo, onOpenSection, onOpenManual }) {
+export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenProposal }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -69,7 +70,7 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual }) {
     );
   }
 
-  const { proposals_awaiting: awaiting, proposals_mine: proposalsMine,
+  const { proposals_mine: proposalsMine,
           recently_opened: recent, announcement,
           upcoming, upcoming_total: upcomingTotal, stats } = data;
 
@@ -105,9 +106,10 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual }) {
         </div>
       )}
 
+      <NeedsAction onOpenProposal={onOpenProposal} onGo={onGo} />
+
       <div className="dash-grid">
         <div className="col" style={{ gap: "1.5rem", minWidth: 0 }}>
-          <Attention awaiting={awaiting} onGo={onGo} />
           <RecentlyOpened
             rows={recent}
             onOpenSection={onOpenSection}
@@ -121,27 +123,6 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual }) {
         </div>
       </div>
     </div>
-  );
-}
-
-/** The one widget that is about doing something: proposals waiting for
- *  your office to decide. Not shown at all when nothing is. */
-function Attention({ awaiting, onGo }) {
-  if (!awaiting) return null;
-  return (
-    <section>
-      <h2 className="section-title">Needs your attention</h2>
-      <button
-        className="card card-pad card-interactive row"
-        style={{ gap: "0.75rem", alignItems: "center", textAlign: "left", width: "100%" }}
-        onClick={() => onGo("proposals")}
-      >
-        <span className="badge badge-warning">•</span>
-        <span className="text-sm">
-          {awaiting} proposal{awaiting === 1 ? "" : "s"} waiting for your office to decide
-        </span>
-      </button>
-    </section>
   );
 }
 

@@ -206,3 +206,16 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
 - **Fixed:** the admin's Proposals screen showed only the six most recently
   updated proposals. It now lists every proposal, paged and filtered by
   status, office and series. Migration `0041` adds the indexes it uses.
+- Phase 2A: **notifications rebuilt.**
+  - Action-required notices stay until the action is done; info clears
+    when read.
+  - Each notice stores its own text and names its manual and the post it
+    was addressed to. One notice per person per thing.
+  - A bell in every portal, a notifications page, and "Needs your action"
+    derived from the data.
+  - The IMR's and custodian's decisions now notify.
+  - A hash-chained system activity log records who was told, read and
+    acted, with `system` as its own actor.
+  - `run_monitoring` flags stalled proposals and vacant posts (schedule
+    "QMS CDMS monitoring").
+  - Migrations `0042`–`0044`.

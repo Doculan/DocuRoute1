@@ -55,6 +55,27 @@ py manage.py runserver 0.0.0.0:8000
 - [ ] If Windows prompts about the firewall, tick **Private networks** and
       allow.
 
+### 2a. Monitoring
+
+Stall and vacancy notices come from `run_monitoring`. For a demo, run it
+once by hand from `Backend/` so the bells are current:
+
+```bash
+py manage.py run_monitoring
+```
+
+- [ ] It prints what it flagged. "Another run holds the lock" is fine.
+- [ ] To keep it running through the demo, schedule it (Task Scheduler,
+      every 5 minutes). Replace `<project folder>` with the folder holding
+      `Backend/` and `venv/`:
+
+```bat
+schtasks /create /tn "QMS CDMS monitoring" /sc minute /mo 5 ^
+  /tr "\"<project folder>\venv\Scripts\python.exe\" \"<project folder>\Backend\manage.py\" run_monitoring"
+```
+
+- [ ] Remove it afterwards: `schtasks /delete /tn "QMS CDMS monitoring" /f`
+
 ---
 
 ## 3. Start the frontend

@@ -36,6 +36,7 @@ What it seeds, at `--fraction 1`:
 command gains them then.
 """
 
+import json
 import random
 from contextlib import contextmanager
 from datetime import timedelta
@@ -44,13 +45,15 @@ from django.apps import apps
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Min
 from django.utils import timezone
 
+from api import system_log
 from api.models import (
     AuditEvent, Concurrence, CustomUser, DemoRecord, Manual, ManualOffice,
     ManualSection, ManualSeries, ManualSeriesOffice, Notification, Office,
     OfficeLink, Position, PositionAssignment, Proposal, ProposalParticipant,
-    ProposalVersion, SectionChange,
+    ProposalVersion, SectionChange, SystemEvent, LogHead,
 )
 
 SCALE_PASSWORD = 'Scale123!'
@@ -83,7 +86,7 @@ CLOSED_MIX = [
 
 # Children before parents, so a PROTECT never fires on the way out.
 CLEAR_ORDER = [
-    Notification, AuditEvent, Concurrence, SectionChange,
+    Notification, SystemEvent, AuditEvent, Concurrence, SectionChange,
     ProposalParticipant, ProposalVersion, Proposal,
     ManualSection, ManualOffice, ManualSeriesOffice, Manual, ManualSeries,
     PositionAssignment, Position, CustomUser, Office,
@@ -167,6 +170,7 @@ class Command(BaseCommand):
 
         removed = 0
         with transaction.atomic():
+            removed += self._clear_log_tail(records)
             # The tree first: an office's parent is PROTECT, and deleting
             # in chunks could otherwise meet a child in a later chunk.
             office_ids = list(records.filter(
@@ -187,6 +191,55 @@ class Command(BaseCommand):
             records.delete()
 
         self.stdout.write(self.style.SUCCESS(f'Removed {removed} synthetic row(s).'))
+
+    def _clear_log_tail(self, records):
+        """Remove the system log from the first synthetic row onwards.
+
+        A hash chain cannot lose rows from its middle, so only a tail can
+        go: the seeded `notified` rows and whatever ran on the synthetic
+        data afterwards (monitoring runs, reads). Refused if anything in
+        that tail concerns a real proposal, office or person - then the
+        synthetic data cannot be cleared without breaking the chain.
+        Notices about synthetic proposals or people go first; they hold
+        the rows below by PROTECT.
+        """
+        def ids(model):
+            return [int(i) for i in records.filter(label=_label(model))
+                    .values_list('object_id', flat=True)]
+
+        users, proposals, offices = ids(CustomUser), ids(Proposal), ids(Office)
+        seeded_events = ids(SystemEvent)
+        removed = 0
+        if seeded_events:
+            first = min(
+                SystemEvent.objects.filter(pk__in=seeded_events[start:start + CHUNK])
+                .aggregate(first=Min('seq'))['first']
+                for start in range(0, len(seeded_events), CHUNK))
+            tail = SystemEvent.objects.filter(seq__gte=first)
+            # A person acting in the tail is fine if they hold no post (the
+            # admin measuring); one who does is real staff, and stops it.
+            real = (tail.exclude(proposal__isnull=True).exclude(proposal_id__in=proposals).exists()
+                    or tail.exclude(office__isnull=True).exclude(office_id__in=offices).exists()
+                    or tail.filter(actor__isnull=False).exclude(actor_id__in=users)
+                    .filter(actor__position_assignments__isnull=False).exists())
+            if real:
+                raise CommandError(
+                    'The system log has entries about real data after the synthetic ones. '
+                    'Clearing would break its hash chain, so nothing was removed.')
+            removed += Notification.objects.filter(system_event__seq__gte=first).delete()[0]
+        for start in range(0, len(proposals), CHUNK):
+            removed += Notification.objects.filter(
+                proposal_id__in=proposals[start:start + CHUNK]).delete()[0]
+        for start in range(0, len(users), CHUNK):
+            removed += Notification.objects.filter(
+                recipient_id__in=users[start:start + CHUNK]).delete()[0]
+        if not seeded_events:
+            return removed
+        removed += tail.delete()[0]
+        last = SystemEvent.objects.order_by('-seq').first()
+        LogHead.objects.filter(log=system_log.LOG).update(
+            seq=last.seq if last else 0, hash=last.hash if last else system_log.GENESIS)
+        return removed
 
     # -- seeding ---------------------------------------------------
 
@@ -214,7 +267,11 @@ class Command(BaseCommand):
         self._counts = {}
 
         if options['clear']:
-            self._clear()
+            try:
+                self._clear()
+            except CommandError as refusal:
+                # Raised inside the clearing transaction, so nothing moved.
+                self.stderr.write(str(refusal))
             return
 
         fraction = options['fraction']
@@ -349,8 +406,11 @@ class Command(BaseCommand):
         self.head_of = {}
         self.encoder_of = {}
         position_by_id = {p.pk: p for p in positions}
+        self.qms_posts = {}
         for a in assignments:
             position = position_by_id[a.position_id]
+            if position.kind in Position.QMS_KINDS:
+                self.qms_posts[position.kind] = (a.user_id, position.pk)
             self.holders.setdefault(position.office_id, []).append(a.user_id)
             if position.kind == Position.HEAD:
                 self.head_of[position.office_id] = (a.user_id, position.pk)
@@ -657,31 +717,161 @@ class Command(BaseCommand):
                 'locked': locked, 'last_at': at}
 
     def _notifications(self, events, proposals):
-        """The inbox entries `notifications.notify` would have written for
-        these events: concurring offices on submission, the initiating
-        office on a decision or the lock."""
-        rows = []
-        for event in events:
-            proposal, story = proposals[event.proposal_id]
-            if event.event == AuditEvent.SUBMITTED:
-                offices = story.get('concurring', [])
-            elif event.event in (AuditEvent.CONCURRED, AuditEvent.RETURNED, AuditEvent.LOCKED):
-                offices = [proposal.initiating_office_id]
-            else:
-                continue
-            seen = set()
+        """The notices `notifications.notify` would have written for these
+        events - same kinds, severities, recipients and dedupe keys - with
+        each action notice resolved where a later event in the story did
+        the thing, and one `notified` row per event in the system log."""
+        from api.generation.common import position_title
+
+        post_of = {}
+        for office, (user, position) in self.head_of.items():
+            post_of[(office, user)] = (position, Position.HEAD)
+        for office, (user, position) in self.encoder_of.items():
+            post_of.setdefault((office, user), (position, Position.ENCODER))
+
+        def office_people(offices, head, encoder):
+            people = []
             for office in offices:
                 for user in self.holders.get(office, []):
-                    if user == event.actor_id or user in seen:
+                    position, kind = post_of.get((office, user), (None, None))
+                    severity = head if kind == Position.HEAD else encoder
+                    if position is not None and severity:
+                        people.append((user, office, position, kind, severity))
+            return people
+
+        def qms(kind):
+            user, position = self.qms_posts[kind]
+            return [(user, self.qms.pk, position, kind, Notification.ACTION)]
+
+        A, I = Notification.ACTION, Notification.INFO
+        by_proposal = {}
+        for event in events:
+            by_proposal.setdefault(event.proposal_id, []).append(event)
+
+        rows, logged = [], []
+        for proposal_id, trail in by_proposal.items():
+            proposal, story = proposals[proposal_id]
+            initiating = [proposal.initiating_office_id]
+            concurring = story.get('concurring', [])
+            manual = proposal.manual.title
+            asker = proposal.initiating_office.name
+            number = proposal.dcr_number
+            trail.sort(key=lambda e: (e.at, e.pk))
+            for index, event in enumerate(trail):
+                later = trail[index + 1:]
+                by = self.office_name[event.office_id]
+                kind, people, title = {
+                    AuditEvent.SUBMITTED: (
+                        Notification.CONCURRENCE_REQUESTED, office_people(concurring, A, I),
+                        f'{asker} asks your office to concur on {manual}'),
+                    AuditEvent.CONCURRED: (
+                        Notification.CONCURRED, office_people(initiating, I, I),
+                        f'{by} concurred on {manual}'),
+                    AuditEvent.RETURNED: (
+                        Notification.RETURNED_BY_OFFICE, office_people(initiating, A, A),
+                        f'{by} returned {manual}'),
+                    AuditEvent.LOCKED: (
+                        Notification.LOCKED, office_people(initiating, A, A),
+                        f'{manual} is locked as {number}'),
+                    AuditEvent.PACKAGE_COMPLETE: (
+                        Notification.READY_FOR_IMR, qms(Position.IMR),
+                        f'{number} is ready for your decision'),
+                    AuditEvent.IMR_ACCEPTED: (
+                        Notification.IMR_ACCEPTED, office_people(initiating, I, I),
+                        f'The IMR accepted {number}'),
+                    AuditEvent.IMR_DENIED: (
+                        Notification.IMR_DENIED, office_people(initiating + concurring, I, I),
+                        f'The IMR denied {number}'),
+                    AuditEvent.APPROVAL_UPLOADED: (
+                        Notification.APPROVAL_UPLOADED,
+                        office_people(initiating, I, I) + qms(Position.DOCUMENT_CUSTODIAN),
+                        f'Signed DCR for {manual} uploaded by the IMR'),
+                    AuditEvent.PACKAGE_RETURNED: (
+                        Notification.PACKAGE_RETURNED, office_people(initiating, A, A),
+                        f'The custodian returned {number}'),
+                    AuditEvent.MADE_EFFECTIVE: (
+                        Notification.MADE_EFFECTIVE, office_people(initiating + concurring, I, I),
+                        f'{manual} is effective'),
+                    AuditEvent.WITHDRAWN: (
+                        Notification.WITHDRAWN, office_people(initiating + concurring, I, I),
+                        f'{asker} withdrew {manual}'),
+                }.get(event.event, (None, [], ''))
+                if kind is None:
+                    continue
+                told, notices = set(), []
+                for user, office, position, post_kind, severity in people:
+                    if user == event.actor_id or user in told:
                         continue
-                    seen.add(user)
+                    told.add(user)
+                    acted = self._resolved_by(kind, office, later) if severity == A else None
                     age = (self.now - event.at).days
-                    rows.append(Notification(
-                        user_id=user, event=event, created_at=event.at,
+                    notices.append(Notification(
+                        recipient_id=user, kind=kind, severity=severity,
+                        addressed_office_id=office, addressed_office_name=self.office_name[office],
+                        addressed_position_id=position,
+                        addressed_position_title=position_title(self.office_name[office], post_kind),
+                        title=title[:120], target_type='proposal', target_id=proposal.pk,
+                        manual=proposal.manual, manual_title=manual, proposal=proposal,
+                        audit_event=event, dedupe_key=f'audit:{event.pk}', created_at=event.at,
                         read_at=(event.at + timedelta(hours=6)
                                  if age > 14 or self.rng.random() < 0.5 else None),
+                        acted_at=acted.at if acted else None,
+                        acted_by_id=acted.actor_id if acted else None,
                     ))
+                if notices:
+                    rows += notices
+                    logged.append((event, kind, notices))
         self._create(Notification, rows)
+        self._chain(logged)
+
+    def _resolved_by(self, kind, office, later):
+        """The later event that did what an action notice asked, if any."""
+        for after in later:
+            if kind == Notification.CONCURRENCE_REQUESTED and (
+                    (after.event == AuditEvent.CONCURRED and after.office_id == office)
+                    or after.event in (AuditEvent.RETURNED, AuditEvent.LOCKED,
+                                       AuditEvent.WITHDRAWN)):
+                return after
+            if kind == Notification.RETURNED_BY_OFFICE and after.event in (
+                    AuditEvent.SUBMITTED, AuditEvent.WITHDRAWN):
+                return after
+            if kind == Notification.LOCKED and after.event == AuditEvent.PACKAGE_COMPLETE:
+                return after
+            if kind == Notification.READY_FOR_IMR and after.event in (
+                    AuditEvent.IMR_ACCEPTED, AuditEvent.IMR_DENIED):
+                return after
+            if kind == Notification.APPROVAL_UPLOADED and after.event in (
+                    AuditEvent.MADE_EFFECTIVE, AuditEvent.PACKAGE_RETURNED):
+                return after
+        return None
+
+    def _chain(self, logged):
+        """One `notified` row per event, extending the real chain in time
+        order - built in memory and inserted in bulk, so seeding does not
+        take a lock per row. `verify_log system` checks it like any other."""
+        head = system_log.locked_head()
+        self._chain_started_after = head.seq
+        seq, previous, chain = head.seq, head.hash, []
+        for event, kind, notices in sorted(logged, key=lambda item: (item[0].at, item[0].pk)):
+            seq += 1
+            row = SystemEvent(
+                seq=seq, kind=SystemEvent.NOTIFIED, actor=None,
+                actor_label=SystemEvent.SYSTEM, proposal_id=event.proposal_id,
+                manual_id=notices[0].manual_id, office_name_at_time='', at=event.at,
+                detail=json.loads(system_log.canonical({
+                    'kind': kind, 'dedupe_key': f'audit:{event.pk}',
+                    'cause': {'audit_event': event.pk},
+                    'recipients': [{'user': n.recipient_id, 'as': n.addressed_position_title,
+                                    'severity': n.severity} for n in notices],
+                })),
+                prev_hash=previous,
+            )
+            row.hash = system_log.compute_hash(previous, row)
+            previous = row.hash
+            chain.append(row)
+        self._create(SystemEvent, chain)
+        head.seq, head.hash = seq, previous
+        head.save(update_fields=['seq', 'hash'])
 
     # -- who acts ---------------------------------------------------
 

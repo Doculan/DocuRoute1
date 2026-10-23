@@ -90,6 +90,57 @@ class ScaleSeedTests(TestCase):
         self.assertTrue(Proposal.objects.filter(created_at__lt=month_ago).exists())
         self.assertTrue(AuditEvent.objects.filter(at__lt=month_ago).exists())
 
+    def test_notices_take_the_new_shape_and_the_log_chain_holds(self):
+        from api import system_log
+        from api.models import SystemEvent
+        self.seed()
+
+        notices = Notification.objects.all()
+        self.assertEqual(set(notices.values_list('severity', flat=True)), {'action', 'info'})
+        self.assertFalse(notices.filter(manual__isnull=True).exists())
+        self.assertFalse(notices.filter(audit_event__isnull=True).exists())
+        # Encoders of a concurring office are informed; their Head acts.
+        requested = notices.filter(kind='concurrence_requested')
+        self.assertEqual(set(requested.filter(addressed_position__kind='encoder')
+                             .values_list('severity', flat=True)), {'info'})
+        # Action notices are done where a later step did the thing.
+        self.assertTrue(notices.filter(severity='action', acted_at__isnull=False,
+                                       acted_by__isnull=False).exists())
+        self.assertTrue(notices.filter(severity='action', acted_at__isnull=True).exists())
+        self.assertEqual(SystemEvent.objects.filter(kind='notified').count(),
+                         notices.values('audit_event').distinct().count())
+        checked, problem = system_log.verify()
+        self.assertIsNone(problem)
+        self.assertEqual(checked, SystemEvent.objects.count())
+
+    def test_clear_after_monitoring_leaves_an_intact_chain(self):
+        from api import monitoring, system_log
+        from api.models import SystemEvent
+        before = list(SystemEvent.objects.values_list('seq', 'hash'))
+        self.seed()
+        self.assertIsNotNone(monitoring.run())
+        self.assertTrue(SystemEvent.objects.filter(kind='stalled').exists())
+
+        self.seed('--clear')
+
+        self.assertFalse(Notification.objects.exists())
+        # Back to the chain as it was before seeding, still verifying.
+        self.assertEqual(list(SystemEvent.objects.values_list('seq', 'hash')), before)
+        self.assertEqual(system_log.verify(), (len(before), None))
+
+    def test_clear_refuses_when_the_log_has_real_entries_after_it(self):
+        from api import system_log
+        from api.models import SystemEvent
+        self.seed()
+        real = Office.objects.create(name='Accounting Office')
+        system_log.record(SystemEvent.POSITION_VACANT, office=real)
+
+        output = self.seed('--clear')
+
+        self.assertIn('entries about real data after the synthetic ones', output)
+        self.assertTrue(Proposal.objects.exists())
+        self.assertIsNone(system_log.verify()[1])
+
     def test_activity_is_spread_out_not_piled_on_now(self):
         """Stage aging is measured against this data: a long story must
         end before now, not have its last steps all pinned to the moment

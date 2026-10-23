@@ -76,18 +76,21 @@ class ApprovalUploadTests(ApprovalFixture):
         colleague = self.qms_person('qms_encoder', Position.ENCODER)
         self.upload_approval(user=self.imr)
         event = self.proposal.events.get(event=AuditEvent.APPROVAL_UPLOADED)
-        recipients = set(Notification.objects.filter(event=event).values_list('user_id', flat=True))
+        notices = Notification.objects.filter(audit_event=event)
+        recipients = set(notices.values_list('recipient_id', flat=True))
         self.assertEqual(recipients, {self.acc_enc.id, self.acc_head.id, self.custodian.id})
-        from api.notifications import message
-        self.assertIn('uploaded by the IMR; awaiting Document Custodian acceptance', message(event))
+        custodian = notices.get(recipient=self.custodian)
+        self.assertEqual(custodian.title, 'Signed DCR for FAM 6.02 uploaded by the IMR')
+        self.assertEqual(custodian.severity, 'action')
+        self.assertEqual(notices.get(recipient=self.acc_head).body,
+                         'Awaiting Document Custodian acceptance.')
         self.assertNotIn(colleague.id, recipients)
 
     def test_office_fallback_notifies_custodian_without_claiming_imr_upload(self):
         self.upload_approval()
         event = self.proposal.events.get(event=AuditEvent.APPROVAL_UPLOADED)
-        self.assertTrue(Notification.objects.filter(event=event, user=self.custodian).exists())
-        from api.notifications import message
-        self.assertIn('uploaded by Accounting Office', message(event))
+        notice = Notification.objects.get(audit_event=event, recipient=self.custodian)
+        self.assertIn('uploaded by Accounting Office', notice.title)
 
     def test_former_custodian_with_another_active_post_is_not_notified(self):
         from datetime import timedelta
@@ -96,7 +99,7 @@ class ApprovalUploadTests(ApprovalFixture):
         encoder, _ = Position.objects.get_or_create(office=self.qms, kind=Position.ENCODER)
         PositionAssignment.objects.create(user=self.custodian, position=encoder, starts_on=self.today)
         self.upload_approval(user=self.imr)
-        self.assertFalse(Notification.objects.filter(user=self.custodian, event__event=AuditEvent.APPROVAL_UPLOADED).exists())
+        self.assertFalse(Notification.objects.filter(recipient=self.custodian, audit_event__event=AuditEvent.APPROVAL_UPLOADED).exists())
 
     def test_imr_can_find_accepted_proposals_until_upload(self):
         queue = self.as_(self.imr).get('/api/qms/queue/').data
@@ -125,7 +128,7 @@ class ApprovalUploadTests(ApprovalFixture):
         response = self.upload_approval(user=self.imr, file=a_file('bad.pdf', b'bad'))
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.status(), Proposal.AWAITING_APPROVAL)
-        self.assertFalse(Notification.objects.filter(event__event=AuditEvent.APPROVAL_UPLOADED).exists())
+        self.assertFalse(Notification.objects.filter(audit_event__event=AuditEvent.APPROVAL_UPLOADED).exists())
 
     def test_ended_imr_assignment_cannot_upload(self):
         from datetime import timedelta

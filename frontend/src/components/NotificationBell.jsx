@@ -5,8 +5,8 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
-// Often enough that a concurrence shows up while someone is working,
-// rarely enough to be no load at all.
+// Often enough that a request shows up while someone is working, rarely
+// enough to be no load at all. Also re-read on every navigation.
 const POLL_MS = 60000;
 
 function ago(value) {
@@ -15,19 +15,18 @@ function ago(value) {
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours} h ago`;
-  return new Date(value).toLocaleDateString("en-PH", {
-    month: "short", day: "numeric",
-  });
+  return new Date(value).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
 }
 
 /**
- * The inbox: what other offices have done on proposals that involve yours.
+ * The bell, in every portal.
  *
- * The bell shows a count only while something is unread. Opening a notice
- * opens its proposal and marks that proposal's notices read; the count is
- * then fetched again, so it is always the server's, never guessed here.
+ * The count is the server's: unread info, plus action not yet done. An
+ * action notice stays counted after it is read, until someone does the
+ * thing - so the number means "still to do", not "not yet seen". Opening a
+ * notice marks it read and hands its target to the portal.
  */
-export default function NotificationBell({ onOpenProposal, refreshKey }) {
+export default function NotificationBell({ onOpen, onSeeAll, refreshKey }) {
   const [data, setData] = useState({ unread: 0, notifications: [] });
   const [open, setOpen] = useState(false);
   const wrap = useRef(null);
@@ -72,11 +71,9 @@ export default function NotificationBell({ onOpenProposal, refreshKey }) {
 
   const pick = async (notice) => {
     setOpen(false);
-    onOpenProposal?.(notice.proposal_id);
+    onOpen?.(notice);
     try {
-      await axios.post(
-        "/api/notifications/read/", { proposal_id: notice.proposal_id }, getAuth()
-      );
+      await axios.post("/api/notifications/read/", { ids: [notice.id] }, getAuth());
     } finally {
       load();
     }
@@ -90,7 +87,7 @@ export default function NotificationBell({ onOpenProposal, refreshKey }) {
         className="topbar-btn"
         type="button"
         title="Notifications"
-        aria-label={unread ? `${unread} unread notifications` : "Notifications"}
+        aria-label={unread ? `${unread} notifications to see or do` : "Notifications"}
         aria-expanded={open}
         onClick={() => { setOpen((v) => !v); if (!open) load(); }}
       >
@@ -109,27 +106,27 @@ export default function NotificationBell({ onOpenProposal, refreshKey }) {
         <div className="notif-panel" role="dialog" aria-label="Notifications">
           <div className="notif-head">
             <strong>Notifications</strong>
-            {unread > 0 && (
-              <button type="button" className="notif-link" onClick={markAll}>
-                Mark all read
-              </button>
-            )}
+            <span className="row" style={{ gap: "0.75rem" }}>
+              {notifications.some((n) => !n.read) && (
+                <button type="button" className="notif-link" onClick={markAll}>
+                  Mark all read
+                </button>
+              )}
+              {onSeeAll && (
+                <button type="button" className="notif-link"
+                        onClick={() => { setOpen(false); onSeeAll(); }}>
+                  See all
+                </button>
+              )}
+            </span>
           </div>
           {notifications.length === 0 ? (
             <p className="notif-empty">Nothing yet.</p>
           ) : (
             <ul className="notif-list">
-              {notifications.map((n) => (
+              {notifications.slice(0, 8).map((n) => (
                 <li key={n.id}>
-                  <button
-                    type="button"
-                    className={`notif-item${n.read ? "" : " is-unread"}`}
-                    onClick={() => pick(n)}
-                  >
-                    <span className="notif-msg">{n.message}</span>
-                    {n.detail && <span className="notif-detail">“{n.detail}”</span>}
-                    <span className="notif-at">{ago(n.at)}</span>
-                  </button>
+                  <NoticeButton notice={n} onPick={pick} />
                 </li>
               ))}
             </ul>
@@ -137,5 +134,27 @@ export default function NotificationBell({ onOpenProposal, refreshKey }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** One notice. Action required is marked in words, not colour alone, and
+ *  says Done once someone has done it. */
+export function NoticeButton({ notice, onPick }) {
+  const pending = notice.severity === "action" && !notice.acted;
+  return (
+    <button
+      type="button"
+      className={`notif-item${notice.read && !pending ? "" : " is-unread"}`}
+      onClick={() => onPick(notice)}
+    >
+      {notice.severity === "action" && (
+        <span className={`status-mark is-${notice.acted ? "approved" : "pending"}`}>
+          {notice.acted ? "Done" : "Action required"}
+        </span>
+      )}
+      <span className="notif-msg">{notice.title}</span>
+      {notice.body && <span className="notif-detail">{notice.body}</span>}
+      <span className="notif-at">{ago(notice.created_at)}</span>
+    </button>
   );
 }

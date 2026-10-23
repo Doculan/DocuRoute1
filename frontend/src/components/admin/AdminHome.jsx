@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { STATUS_LABEL, statusTone } from "../proposalStatus";
 import Icon from "../Icon";
+import NeedsAction from "../NeedsAction";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -36,7 +37,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * One request for every area. They read the same few tables, and the
  * first screen after signing in is the worst one to make slow.
  */
-export default function AdminHome({ onGo }) {
+export default function AdminHome({ onGo, onOpenProposal }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -85,6 +86,8 @@ export default function AdminHome({ onGo }) {
         <button className="btn btn-ghost btn-sm" onClick={load}><Icon name="refresh" />Refresh</button>
       </header>
 
+      <NeedsAction onGo={onGo} onOpenProposal={onOpenProposal} />
+
       <Attention counts={attention} onGo={onGo} />
 
       <div className="dash-grid" style={{ marginTop: "1.75rem" }}>
@@ -102,21 +105,13 @@ export default function AdminHome({ onGo }) {
   );
 }
 
-/* ── 1. Needs attention ─────────────────────────────────────────────── */
+/* ── 1. In progress ─────────────────────────────────────────────────── */
 
-/** The only part of the page that asks you to do something, so it runs full
- *  width above everything else and shows nothing at all when there is
- *  nothing to do. A row of zeroes would be a wall you learn to skip. */
+/** Where the work stands. What the admin must act on - sign-ups, vacant
+ *  posts - is in Needs your action above, so this only describes. Zero
+ *  rows are left out: a row of zeroes is a wall you learn to skip. */
 function Attention({ counts, onGo }) {
   const rows = [
-    counts.pending_users > 0 && {
-      key: "users",
-      value: counts.pending_users,
-      label: plural(counts.pending_users, "account") + " awaiting approval",
-      note: "they cannot sign in until approved",
-      tone: "",
-      go: "users",
-    },
     counts.proposals_in_concurrence > 0 && {
       key: "concurrence",
       value: counts.proposals_in_concurrence,
@@ -147,7 +142,7 @@ function Attention({ counts, onGo }) {
     return (
       <div className="card card-pad">
         <p className="text-sm" style={{ margin: 0, color: "var(--n-700)" }}>
-          Nothing is waiting. No accounts to approve, no proposals in progress.
+          No proposals in progress.
         </p>
       </div>
     );
@@ -155,7 +150,7 @@ function Attention({ counts, onGo }) {
 
   return (
     <section>
-      <h2 className="section-title">Needs your attention</h2>
+      <h2 className="section-title">In progress</h2>
       <div className="stat-grid">
         {rows.map((row) => (
           <button

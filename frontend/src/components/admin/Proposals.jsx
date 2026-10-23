@@ -48,13 +48,13 @@ const FILTER_STYLE = { width: "auto", flex: "1 1 12rem", maxWidth: "20rem" };
  * The reviewer's technical diff, not the submitter's marked-up one: this
  * audience is checking what changed, not reading the document.
  */
-export default function Proposals() {
+export default function Proposals({ openId = null }) {
   const [filters, setFilters] = useState(NO_FILTERS);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [offices, setOffices] = useState([]);
   const [series, setSeries] = useState([]);
-  const [open, setOpen] = useState(null);
+  const [open, setOpen] = useState(openId);
   const [error, setError] = useState("");
 
   // Filter choices. Best-effort: without them the list still works.

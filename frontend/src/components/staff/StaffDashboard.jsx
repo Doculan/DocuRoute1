@@ -8,6 +8,7 @@ import StaffHelp from "./StaffHelp";
 import StaffProposals from "./StaffProposals";
 import Topbar from "../Topbar";
 import NotificationBell from "../NotificationBell";
+import NotificationsPage from "../NotificationsPage";
 import Account from "../Account";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
@@ -53,6 +54,7 @@ const CRUMBS = {
   proposals: "Proposals",
   help: "Help",
   account: "My account",
+  notifications: "Notifications",
 };
 
 export default function StaffDashboard({ onLogout }) {
@@ -100,6 +102,11 @@ export default function StaffDashboard({ onLogout }) {
   };
   const clearOpenRequest = useCallback(() => setOpenRequest(null), []);
 
+  // A notice opens what it is about. Staff notices are all about proposals.
+  const openNotice = (notice) => {
+    if (notice.proposal_id) openProposal(notice.proposal_id);
+  };
+
   const openManual = (manualId) => {
     setSelectedManualId(manualId);
     setFocusSectionId(null);
@@ -135,6 +142,7 @@ export default function StaffDashboard({ onLogout }) {
         return (
           <StaffHome
             onGo={handleNav}
+            onOpenProposal={openProposal}
             onOpenManual={openManual}
             onOpenSection={(manualId, sectionId) =>
               openSection({ manual_id: manualId, id: sectionId })}
@@ -173,6 +181,8 @@ export default function StaffDashboard({ onLogout }) {
         return <StaffHelp />;
       case "account":
         return <Account onNameChange={renamed} />;
+      case "notifications":
+        return <NotificationsPage onOpen={openNotice} />;
       default:
         return <StaffManuals onSelectManual={openManual} />;
     }
@@ -231,7 +241,11 @@ export default function StaffDashboard({ onLogout }) {
         <Topbar
           crumb={CRUMBS[activePage] || "My Manuals"}
           actions={
-            <NotificationBell onOpenProposal={openProposal} refreshKey={bellKey} />
+            <NotificationBell
+              onOpen={openNotice}
+              onSeeAll={() => handleNav("notifications")}
+              refreshKey={`${bellKey}-${activePage}`}
+            />
           }
         />
 

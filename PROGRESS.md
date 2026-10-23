@@ -3,6 +3,73 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — v4.2 Phase 2A: notifications rebuilt (Checkpoint 2A)
+
+Design: `MONITORING_PHASE2_DESIGN.md`, approved with the answers below.
+
+- **Migrations 0042–0044.** Each was tested on a copy, then applied live
+  (backup `db.sqlite3.bak-20261024-pre-0042`).
+  - The 3 live notifications carried over with their kind, severity,
+    stored text, addressed post and dedupe key, and were marked done where
+    the data showed it.
+  - The system log starts with one `log_started` row. Nothing is
+    back-filled.
+- **`SystemEvent`**: the system activity log. It is append-only and
+  hash-chained, with `system` as a label (never a user), and
+  `verify_log system` checks the chain.
+- **`Notification`**:
+  - stores its own text and names its addressed office and post
+  - must name a manual unless `office_level`, checked by the database
+  - has exactly one cause (audit or system event)
+  - is unique per (recipient, dedupe key)
+- **Clearing.** Action notices clear only when done, by anyone entitled,
+  with `acted_by`. Each resolving action writes one `notification_acted`
+  row listing the notices it cleared.
+- **QMS stages now notify.** IMR accept/deny, custodian return and made
+  effective used to write audit events that told nobody.
+- **The Encoder's copy is info** for Head-only requests (concurrence).
+- **`run_monitoring`** runs stall and vacancy steps.
+  - It writes in batches of 200, each in its own short transaction, and
+    extends its lock after each batch.
+  - The lock is a conditional update that expires by itself.
+  - Dashboards run one batch when the last run is over 15 minutes old.
+  - Scheduling ("QMS CDMS monitoring") is in `DEPLOYMENT.md` and
+    `DEMO_CHECKLIST.md`.
+- **Screens:**
+  - the bell in all three portals
+  - a notifications page (Action required / Info / All, paged)
+  - "Needs your action" on the staff home, admin home and QMS landing
+  - the admin home's old attention block retitled "In progress"
+- **The staff home's awaiting count** is one aggregate query.
+- **`seed_scale`** writes notices in the new shape, resolved where a later
+  step did the thing, with a valid `notified` chain. `--clear` removes
+  only the chain's tail, and refuses if real data is in it.
+- **Tests:** 35 code-removal cases, each failing without its code.
+- **At full `seed_scale`:**
+  - every new endpoint runs in 2–21 ms, and the admin home in 69 ms
+  - the staff home went from 424 ms and 615 queries to 21 ms and 13
+  - the first `run_monitoring` took 25–30 s (3,096 stalls, 12 vacancies);
+    the second flagged nothing in 5 s
+- **Chain-head contention, measured.**
+  - 100 people marking read at the same instant: p50 1.6 s, p95 3.4 s, no
+    errors.
+  - The control without the log row: 1.7 s wall instead of 3.2 s, so the
+    chain roughly doubles the cost of a burst of writes.
+  - 50 simultaneous resolves: p95 0.9 s. Bells during a monitoring run:
+    p95 1.4 s. The chain stayed intact throughout.
+- **Approved at Checkpoint 2A (24 Oct 2026)**, including the three design
+  changes:
+  - `package_resubmitted` tells the custodian when a returned package
+    comes back fixed
+  - `Notification.manual` is PROTECT
+  - vacancies are watched for Head, IMR and Custodian posts only
+- Full suite: 735 tests passed.
+- **Found by the full suite:** a test that flushes the database
+  (`SimultaneousStartTests`) took the chain-head row migration 0043
+  seeds, and every later log write failed. The head is now rebuilt from
+  the chain's last row when missing. A test covers it and fails without
+  the fix.
+
 ## 23 October 2026 — v4.2 Phase 1 (Office not listed) and the admin Proposals stop-gap
 
 - **"Office not listed" replaces "not sure"** on sign-up and in all three

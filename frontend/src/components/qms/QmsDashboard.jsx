@@ -5,6 +5,9 @@ import StaffSections from "../staff/StaffSections";
 import QmsRequests from "./QmsRequests";
 import Topbar from "../Topbar";
 import Account from "../Account";
+import NeedsAction from "../NeedsAction";
+import NotificationBell from "../NotificationBell";
+import NotificationsPage from "../NotificationsPage";
 import logo from "../../assets/QMS.png";
 import manualsIcon from "../../assets/nav/manuals.svg";
 import reviewIcon from "../../assets/nav/review.svg";
@@ -13,7 +16,10 @@ const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
 
-const CRUMBS = { manuals: "Manuals", requests: "Requests", account: "My account" };
+const CRUMBS = {
+  manuals: "Manuals", requests: "Requests", account: "My account",
+  notifications: "Notifications",
+};
 
 /**
  * The QMS portal: the IMR and the Document Custodian.
@@ -54,6 +60,15 @@ export default function QmsDashboard({ onLogout }) {
     setOpenRequest(null);
   };
 
+  const openRequestFrom = (id) => {
+    setActivePage("requests");
+    setManualId(null);
+    setOpenRequest(id);
+  };
+  const openNotice = (notice) => {
+    if (notice.proposal_id) openRequestFrom(notice.proposal_id);
+  };
+
   const renamed = (name) => {
     localStorage.setItem("display_name", name);
     setMe((prev) => ({ ...prev, name }));
@@ -61,13 +76,18 @@ export default function QmsDashboard({ onLogout }) {
 
   const renderPage = () => {
     if (activePage === "account") return <Account onNameChange={renamed} />;
+    if (activePage === "notifications") return <NotificationsPage onOpen={openNotice} />;
     if (activePage === "requests") {
       return <QmsRequests onCount={onCount} openId={openRequest} onOpen={setOpenRequest} />;
     }
     return manualId ? (
       <StaffSections manualId={manualId} onBack={() => setManualId(null)} readOnly />
     ) : (
-      <StaffManuals onSelectManual={(id) => setManualId(id)} />
+      <>
+        {/* Reading comes first: this shows only when something is waiting. */}
+        <NeedsAction onOpenProposal={openRequestFrom} />
+        <StaffManuals onSelectManual={(id) => setManualId(id)} />
+      </>
     );
   };
 
@@ -120,7 +140,16 @@ export default function QmsDashboard({ onLogout }) {
         </div>
       </aside>
       <div className="app-main">
-        <Topbar crumb={CRUMBS[activePage]} />
+        <Topbar
+          crumb={CRUMBS[activePage]}
+          actions={
+            <NotificationBell
+              onOpen={openNotice}
+              onSeeAll={() => go("notifications")}
+              refreshKey={activePage}
+            />
+          }
+        />
         <main className="app-content">
           <div className="tab-panel" key={`${activePage}-${manualId ?? ""}-${openRequest ?? ""}`}>
             {renderPage()}

@@ -12,6 +12,8 @@ import People from "./People";
 import Proposals from "./Proposals";
 import Topbar from "../Topbar";
 import Account from "../Account";
+import NotificationBell from "../NotificationBell";
+import NotificationsPage from "../NotificationsPage";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
 import officesIcon from '../../assets/nav/offices.svg';
@@ -91,6 +93,7 @@ const CRUMBS = {
   announcements: "Announcements",
   evaluation: "Model health",
   account: "My account",
+  notifications: "Notifications",
 };
 
 export default function AdminDashboard({ onLogout }) {
@@ -100,6 +103,8 @@ export default function AdminDashboard({ onLogout }) {
   // same however you arrive - this only says which manual to open on.
   const [drillManual, setDrillManual] = useState(null);
   const [pending, setPending] = useState({ users: 0 });
+  // A proposal opened from a notice or from Needs your action.
+  const [openProposalId, setOpenProposalId] = useState(null);
   const [displayName, setDisplayName] = useState(
     () => localStorage.getItem("display_name") || localStorage.getItem("username") || "Admin"
   );
@@ -138,7 +143,7 @@ export default function AdminDashboard({ onLogout }) {
   const renderPage = () => {
     switch (activePage) {
       case "home":
-        return <AdminHome onGo={goTo} />;
+        return <AdminHome onGo={goTo} onOpenProposal={openProposal} />;
       case "users": return <UserManagement />;
       case "manuals":
         return <Manuals onOpenSections={openSections} />;
@@ -148,7 +153,8 @@ export default function AdminDashboard({ onLogout }) {
       case "offices": return <Offices />;
       case "series": return <Series />;
       case "people": return <People />;
-      case "proposals": return <Proposals />;
+      case "proposals": return <Proposals openId={openProposalId} />;
+      case "notifications": return <NotificationsPage onOpen={openNotice} />;
       case "evaluation": return <SVMEvaluation />;
       case "account": return <Account onNameChange={renamed} />;
       default: return <AdminHome onGo={goTo} />;
@@ -160,7 +166,23 @@ export default function AdminDashboard({ onLogout }) {
   // reason: arriving at Sections from here is not a drill-down.
   const goTo = (page) => {
     if (page !== "sections") setDrillManual(null);
+    setOpenProposalId(null);
     setActivePage(page);
+  };
+
+  const openProposal = (id) => {
+    setDrillManual(null);
+    setOpenProposalId(id);
+    setActivePage("proposals");
+  };
+
+  // A notice opens what it is about: a proposal, or the screen where an
+  // office's vacant post is filled.
+  const openNotice = (notice) => {
+    if (notice.proposal_id) return openProposal(notice.proposal_id);
+    if (notice.target?.type === "office" || notice.target?.type === "people") {
+      goTo(localStorage.getItem("system_role") === "system_admin" ? "people" : "home");
+    }
   };
 
   // Drilling from a manual into its sections is the one place a Back is
@@ -218,6 +240,7 @@ export default function AdminDashboard({ onLogout }) {
                       // so it opens on whatever the picker last had rather
                       // than on a manual chosen three clicks ago.
                       if (item.key !== "sections") setDrillManual(null);
+                      setOpenProposalId(null);
                       setActivePage(item.key);
                     }}
                   >
@@ -254,11 +277,18 @@ export default function AdminDashboard({ onLogout }) {
           pendingCount={pending.users}
           pendingTitle="accounts waiting for approval"
           onPendingClick={() => setActivePage("users")}
+          actions={
+            <NotificationBell
+              onOpen={openNotice}
+              onSeeAll={() => goTo("notifications")}
+              refreshKey={activePage}
+            />
+          }
         />
 
         <main className="app-content">
           {/* key forces a remount so each tab animates in */}
-          <div className="tab-panel" key={activePage}>
+          <div className="tab-panel" key={`${activePage}-${openProposalId ?? ""}`}>
             {renderPage()}
           </div>
         </main>

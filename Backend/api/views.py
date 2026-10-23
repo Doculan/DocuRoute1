@@ -1096,6 +1096,8 @@ def admin_dashboard(request):
     """
     today = timezone.localdate()
     window_start = today - timedelta(days=ACTIVITY_WINDOW_DAYS - 1)
+    from . import monitoring
+    monitoring.maybe_run_for()
 
     # -- 1. needs attention --------------------------------------
     # Only the rows that are not zero reach the screen, but the endpoint
@@ -1247,21 +1249,17 @@ def staff_dashboard(request):
     } for a in visible.filter(date__gte=today).order_by('date')[:5]]
 
     # -- proposals: how much is waiting on this person's offices ---
-    from .concurrence_views import _offices_yet_to_decide
+    # One aggregate query; it used to loop over every proposal in
+    # concurrence, which at 5,000 open proposals took most of a second.
+    from .action_views import awaiting_count
+    from . import monitoring
     my_offices = access.current_offices(user)
     my_office_ids = [o.pk for o in my_offices]
-    awaiting = 0
+    awaiting = awaiting_count(my_office_ids)
+    # If the scheduled job has stopped, this page does a little of its work
+    # for the offices it shows, so nothing goes silently unflagged.
     if my_office_ids:
-        for proposal in Proposal.objects.filter(
-            status=Proposal.CONCURRENCE,
-            participants__office_id__in=my_office_ids,
-            participants__role='concurring',
-        ).distinct():
-            undecided = _offices_yet_to_decide(
-                proposal, proposal.current_version()
-            )
-            if any(p.office_id in my_office_ids for p in undecided):
-                awaiting += 1
+        monitoring.maybe_run_for(my_offices)
 
     return Response({
         'proposals_awaiting': awaiting,

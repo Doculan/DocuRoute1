@@ -11,6 +11,7 @@ from . import account_views as account
 from . import trail_views as trail
 from . import structure_views as structure
 from . import admin_proposal_views
+from . import action_views
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
@@ -91,6 +92,8 @@ urlpatterns = [
     path('proposals/involving/', concurrence.involving_my_office),
     path('notifications/', inbox.inbox),
     path('notifications/read/', inbox.mark_read),
+    # What is waiting on this person, derived from the data, not the inbox.
+    path('needs-action/', action_views.needs_action),
     path('proposals/<int:proposal_id>/package/', package.package),
     path('proposals/<int:proposal_id>/trail-report/', trail.generate),
     path('proposals/<int:proposal_id>/trail-report/log/', trail.log),

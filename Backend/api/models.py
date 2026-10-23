@@ -4,6 +4,7 @@ import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from django.contrib.auth.models import AbstractUser
 
 
@@ -1396,43 +1397,309 @@ class AuditEvent(models.Model):
 
     class Meta:
         ordering = ['proposal', 'at']
+        # How long a proposal has sat in its stage is the latest event that
+        # put it there; stall detection asks that for every open proposal.
+        indexes = [
+            models.Index(fields=['proposal', 'at'], name='auditevent_proposal_at_idx'),
+        ]
 
     def __str__(self):
         return f"{self.get_event_display()} — {self.office_name_at_time}"
 
 
-class Notification(models.Model):
-    """One person's inbox entry for one event.
+class SystemEvent(models.Model):
+    """What happened that is not a step of one proposal.
 
-    Points at the audit event rather than copying its words, so the inbox
-    and the record cannot disagree about what happened. Written in the
-    same transaction as the event, to the people who held a post in the
-    office concerned at that moment - see `notifications.py`.
+    `AuditEvent` records a proposal's transitions, each by a person in a
+    position. Reminders, stalls, vacancies, and who was told what and when
+    have no proposal to belong to, or no person behind them - so they are
+    written here. When the system acted, `actor` is null and `actor_label`
+    says `system`; no user is invented to stand in for it.
+
+    **Append-only and hash-chained.** Each row carries the hash of the one
+    before it, so an edited or deleted row breaks the chain where it was
+    touched (`manage.py verify_log system`). Written only through
+    `system_log.record`, which holds the chain head while it inserts.
     """
 
-    user = models.ForeignKey(
+    LOG_STARTED = 'log_started'
+    NOTIFIED = 'notified'
+    NOTIFICATION_READ = 'notification_read'
+    NOTIFICATION_ACTED = 'notification_acted'
+    STALLED = 'stalled'
+    POSITION_VACANT = 'position_vacant'
+    EMAIL_SENT = 'email_sent'
+
+    KIND_CHOICES = [
+        (LOG_STARTED, 'Log started'),
+        (NOTIFIED, 'Notified'),
+        (NOTIFICATION_READ, 'Notification read'),
+        (NOTIFICATION_ACTED, 'Notification acted on'),
+        (STALLED, 'Stalled past its stage threshold'),
+        (POSITION_VACANT, 'Position has no current holder'),
+        (EMAIL_SENT, 'Email sent'),
+    ]
+
+    SYSTEM = 'system'
+
+    seq = models.PositiveBigIntegerField(unique=True)
+    kind = models.CharField(max_length=40, choices=KIND_CHOICES)
+    actor = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='system_events',
+    )
+    # `system` when nobody acted; otherwise the position title at the time.
+    actor_label = models.CharField(max_length=255)
+    position = models.ForeignKey(
+        Position, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+    office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, null=True, blank=True, related_name='+',
+    )
+    office_name_at_time = models.CharField(max_length=255, blank=True)
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='system_events',
+    )
+    manual = models.ForeignKey(
+        'Manual', on_delete=models.PROTECT, null=True, blank=True, related_name='+',
+    )
+    # Facts, not prose: recipients, days, thresholds, notice ids.
+    detail = models.JSONField(default=dict, blank=True)
+    # Set by the writer, so the hash covers the value actually stored.
+    at = models.DateTimeField()
+    prev_hash = models.CharField(max_length=64)
+    hash = models.CharField(max_length=64, unique=True)
+
+    class Meta:
+        ordering = ['seq']
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(actor__isnull=True, actor_label='system')
+                           | (Q(actor__isnull=False) & ~Q(actor_label='system'))),
+                name='system_event_actor_or_system_label',
+            ),
+        ]
+
+    def __str__(self):
+        return f"#{self.seq} {self.kind} by {self.actor_label}"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and not kwargs.get('force_insert'):
+            raise ValueError('System events are append-only.')
+        super().save(*args, **kwargs)
+
+
+class LogHead(models.Model):
+    """The last link of a hash chain, locked while the next one is added,
+    so two writers can never both extend the same row."""
+
+    log = models.CharField(max_length=16, primary_key=True)
+    seq = models.PositiveBigIntegerField(default=0)
+    hash = models.CharField(max_length=64)
+
+
+class JobLock(models.Model):
+    """One row per scheduled job; holding it means `expires_at` is ahead.
+
+    Taken with a conditional update, so two runs cannot both hold it, and
+    left to expire if a run dies - nobody has to clear it by hand.
+    """
+
+    name = models.CharField(max_length=40, primary_key=True)
+    holder = models.CharField(max_length=80, blank=True)
+    acquired_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+
+
+class JobRun(models.Model):
+    """One run of `run_monitoring`. Operational, so outside the hash chain:
+    a run every five minutes would bury the events that matter."""
+
+    SCHEDULED = 'scheduled'
+    DASHBOARD = 'dashboard'
+
+    trigger = models.CharField(max_length=16, default=SCHEDULED)
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    counts = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [models.Index(fields=['finished_at'], name='jobrun_finished_idx')]
+
+
+class MonitoringSetting(models.Model):
+    """Days a proposal may sit in a stage before it counts as stalled.
+
+    Provisional defaults (Checkpoint 0, decision 6), editable by the system
+    admin. A row per stage rather than columns, so a stage added later is a
+    row, not a migration.
+    """
+
+    WITH_HEAD = 'with_head'
+    CONCURRENCE = 'concurrence'
+    AWAITING_SIGNATURE = 'awaiting_signature'
+    WITH_IMR = 'with_imr'
+    WITH_CUSTODIAN = 'with_custodian'
+
+    DEFAULT_DAYS = {
+        WITH_HEAD: 3, CONCURRENCE: 7, AWAITING_SIGNATURE: 14,
+        WITH_IMR: 7, WITH_CUSTODIAN: 10,
+    }
+
+    stage = models.CharField(max_length=32, primary_key=True)
+    days = models.PositiveIntegerField()
+
+    @classmethod
+    def thresholds(cls):
+        values = dict(cls.DEFAULT_DAYS)
+        values.update(dict(cls.objects.values_list('stage', 'days')))
+        return values
+
+
+class Notification(models.Model):
+    """One person's notice of one thing, standing on its own.
+
+    Its words are stored when it is written - never rebuilt on read - so
+    the inbox says what was true when the person was told. It names the
+    office and post it was addressed to, the manual it concerns (unless it
+    is about an office as a whole) and exactly one cause: the proposal
+    step in `AuditEvent`, or the system's act in `SystemEvent`.
+
+    **Action required** clears only when the action is done (`acted_at`),
+    by anyone entitled to do it; **info** clears when read. Written only
+    through `notifications.create`.
+    """
+
+    ACTION = 'action'
+    INFO = 'info'
+    SEVERITY_CHOICES = [(ACTION, 'Action required'), (INFO, 'Info')]
+
+    CONCURRENCE_REQUESTED = 'concurrence_requested'
+    RETURNED_BY_OFFICE = 'returned_by_office'
+    CONCURRED = 'concurred'
+    LOCKED = 'locked'
+    READY_FOR_IMR = 'ready_for_imr'
+    IMR_ACCEPTED = 'imr_accepted'
+    IMR_DENIED = 'imr_denied'
+    APPROVAL_UPLOADED = 'approval_uploaded'
+    PACKAGE_RETURNED = 'package_returned'
+    PACKAGE_RESUBMITTED = 'package_resubmitted'
+    MADE_EFFECTIVE = 'made_effective'
+    WITHDRAWN = 'withdrawn'
+    STALLED = 'stalled'
+    POSITION_VACANT = 'position_vacant'
+
+    KIND_CHOICES = [
+        (CONCURRENCE_REQUESTED, 'Concurrence requested'),
+        (RETURNED_BY_OFFICE, 'Returned by an office'),
+        (CONCURRED, 'An office concurred'),
+        (LOCKED, 'Locked; documents ready to sign'),
+        (READY_FOR_IMR, 'Ready for the IMR'),
+        (IMR_ACCEPTED, 'Accepted by the IMR'),
+        (IMR_DENIED, 'Denied by the IMR'),
+        (APPROVAL_UPLOADED, 'Signed DCR uploaded'),
+        (PACKAGE_RETURNED, 'Package returned by the custodian'),
+        (PACKAGE_RESUBMITTED, 'Package back with the custodian'),
+        (MADE_EFFECTIVE, 'Made effective'),
+        (WITHDRAWN, 'Withdrawn'),
+        (STALLED, 'Stalled'),
+        (POSITION_VACANT, 'Position vacant'),
+    ]
+
+    TARGET_CHOICES = [
+        ('proposal', 'Proposal'), ('manual', 'Manual'), ('office', 'Office'),
+        ('people', 'People'),
+    ]
+
+    recipient = models.ForeignKey(
         'CustomUser', on_delete=models.CASCADE, related_name='notifications',
     )
-    event = models.ForeignKey(
-        AuditEvent, on_delete=models.CASCADE, related_name='notifications',
+    addressed_office = models.ForeignKey(
+        Office, on_delete=models.PROTECT, null=True, blank=True, related_name='+',
     )
-    # Null while unread. Opening the proposal, or "mark all read", sets it.
+    addressed_office_name = models.CharField(max_length=255, blank=True)
+    addressed_position = models.ForeignKey(
+        Position, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    addressed_position_title = models.CharField(max_length=255, blank=True)
+
+    kind = models.CharField(max_length=40, choices=KIND_CHOICES)
+    severity = models.CharField(max_length=8, choices=SEVERITY_CHOICES)
+    title = models.CharField(max_length=120)
+    body = models.CharField(max_length=300, blank=True)
+    # The app navigates by state, not URLs, so a link is a typed target.
+    target_type = models.CharField(max_length=16, choices=TARGET_CHOICES, blank=True)
+    target_id = models.PositiveIntegerField(null=True, blank=True)
+
+    # Set by the creation helper for notices about an office as a whole
+    # (a vacant post), which have no manual. Everything else names one.
+    office_level = models.BooleanField(default=False)
+    # PROTECT: the check below forbids a manual-level notice losing it.
+    manual = models.ForeignKey(
+        'Manual', on_delete=models.PROTECT, null=True, blank=True, related_name='+',
+    )
+    manual_title = models.CharField(max_length=255, blank=True)
+    proposal = models.ForeignKey(
+        Proposal, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='notifications',
+    )
+
+    audit_event = models.ForeignKey(
+        AuditEvent, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='notifications',
+    )
+    system_event = models.ForeignKey(
+        SystemEvent, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='notifications',
+    )
+    # One notice per person per thing: a second run, a double click or a
+    # person holding two posts in the office meets the unique constraint.
+    dedupe_key = models.CharField(max_length=200)
+
+    created_at = models.DateTimeField(default=timezone.now)
     read_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    acted_at = models.DateTimeField(null=True, blank=True)
+    acted_by = models.ForeignKey(
+        'CustomUser', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
 
     class Meta:
         ordering = ['-created_at', '-id']
         constraints = [
+            models.CheckConstraint(
+                condition=(Q(audit_event__isnull=False, system_event__isnull=True)
+                           | Q(audit_event__isnull=True, system_event__isnull=False)),
+                name='notification_has_exactly_one_cause',
+            ),
             models.UniqueConstraint(
-                fields=['user', 'event'], name='one_notification_per_user_per_event',
+                fields=['recipient', 'dedupe_key'],
+                name='one_notification_per_recipient_and_key',
+            ),
+            models.CheckConstraint(
+                condition=Q(severity='action') | Q(acted_at__isnull=True),
+                name='only_action_notifications_are_acted_on',
+            ),
+            models.CheckConstraint(
+                condition=Q(office_level=True) | Q(manual__isnull=False),
+                name='notification_names_its_manual',
             ),
         ]
         indexes = [
-            models.Index(fields=['user', 'read_at']),
+            models.Index(fields=['recipient', 'read_at'], name='notif_recipient_read_idx'),
+            models.Index(fields=['recipient', 'severity', 'acted_at'],
+                         name='notif_recipient_open_idx'),
+            models.Index(fields=['recipient', 'created_at'], name='notif_recipient_time_idx'),
+            models.Index(fields=['proposal', 'kind', 'acted_at'],
+                         name='notif_resolver_idx'),
         ]
 
     def __str__(self):
-        return f"{self.user} <- {self.event}"
+        return f"{self.recipient} <- {self.kind}"
 
 
 class TrailReport(models.Model):

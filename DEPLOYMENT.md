@@ -61,6 +61,49 @@ Terminates TLS, serves `/static/` and `/media/` directly from disk, and
 forwards the rest. Also the right place for a request size limit — revision
 uploads are PDFs — and for rate limiting.
 
+### Scheduled monitoring ("QMS CDMS monitoring")
+
+`manage.py run_monitoring` does the time-based work: proposals stalled past
+their stage threshold, posts with nobody in them (and, from Phase 3,
+deadline reminders and escalation). Schedule it **every 5 minutes**. It is
+safe to overlap and to repeat — a second run finds the lock held and exits,
+and no notice is ever sent twice — and it writes in batches of 200, each in
+its own short transaction, so it does not hold the database while the site
+is in use. Give it the **same environment** as the web server
+(`DATABASE_URL` or `SQLITE_PATH`, `DJANGO_SETTINGS_MODULE`), or it monitors
+a different database.
+
+Dashboards also run one batch themselves when the last finished run is
+older than 15 minutes, so a stopped scheduler delays nothing anyone is
+looking at — but that is a safety net, not a substitute.
+
+**Windows — Task Scheduler.** Replace `<project folder>` with the folder
+holding `Backend/` and `venv/`:
+
+```bat
+schtasks /create /tn "QMS CDMS monitoring" /sc minute /mo 5 /ru SYSTEM ^
+  /tr "\"<project folder>\venv\Scripts\python.exe\" \"<project folder>\Backend\manage.py\" run_monitoring"
+```
+
+Then, in Task Scheduler → the task → Settings, set **"If the task is
+already running: Do not start a new instance"**, and add the server's
+environment variables to the task (or set them machine-wide).
+
+**Linux — cron.** Same placeholder:
+
+```cron
+*/5 * * * * cd <project folder>/Backend && ../venv/bin/python manage.py run_monitoring >> /var/log/qms-cdms/monitoring.log 2>&1
+```
+
+A systemd timer works equally well. Where neither exists, a loop under the
+process manager is the fallback:
+`while true; do python manage.py run_monitoring; sleep 300; done`.
+
+**Checking it.** `manage.py run_monitoring` prints what it flagged and
+cleared; each run is a `JobRun` row. `manage.py verify_log system` checks
+the system activity log's hash chain and names the first row that does not
+follow from the one before it.
+
 ---
 
 ## 2. Configuration
@@ -422,6 +465,8 @@ load justifies it.
 [ ] model weights unpacked; check_setup.py prints "Ready."
 [ ] model pre-warmed at boot
 [ ] gunicorn/waitress behind nginx/Caddy; runserver not in use
+[ ] "QMS CDMS monitoring" scheduled every 5 minutes, same environment
+[ ] manage.py verify_log system reports the chain intact
 [ ] TLS terminated; secure-cookie and HSTS settings enabled
 [ ] manage.py check --deploy reviewed
 [ ] LOGGING configured to a durable destination

@@ -23,7 +23,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access
+from . import access, notifications
 from .concurrence_views import _full_payload, _load, can_see
 from .document_status import read_status_fields, status_payload, suggested_status
 from .generation.common import position_title
@@ -205,11 +205,11 @@ def imr_decide(request, proposal_id):
             proposal.status = Proposal.DENIED
             event = AuditEvent.IMR_DENIED
         proposal.save(update_fields=['status'])
-        AuditEvent.objects.create(
+        notifications.notify(AuditEvent.objects.create(
             proposal=proposal, version=version, event=event,
             actor=request.user, position=position, office=office,
             office_name_at_time=office.name, detail=comments,
-        )
+        ))
         # A denial releases the sections; an acceptance keeps them held.
         proposal.refresh_open_changes()
 
@@ -300,11 +300,11 @@ def custodian_return(request, proposal_id):
         )
         proposal.status = Proposal.PACKAGE_RETURNED
         proposal.save(update_fields=['status'])
-        AuditEvent.objects.create(
+        notifications.notify(AuditEvent.objects.create(
             proposal=proposal, version=version, event=AuditEvent.PACKAGE_RETURNED,
             actor=request.user, position=position, office=office,
             office_name_at_time=office.name, detail=comments,
-        )
+        ))
 
     proposal.refresh_from_db()
     data = _full_payload(proposal)
@@ -443,14 +443,14 @@ def make_effective(request, proposal_id):
             )
             proposal.status = Proposal.EFFECTIVE
             proposal.save(update_fields=['status'])
-            AuditEvent.objects.create(
+            notifications.notify(AuditEvent.objects.create(
                 proposal=proposal, version=version, event=AuditEvent.MADE_EFFECTIVE,
                 actor=request.user, position=position, office=office,
                 office_name_at_time=office.name,
                 detail=(f'{status.document_number}, version {status.version}, '
                         f'revision {status.revision}, '
                         f'effective {status.effective_on:%Y-%m-%d}'),
-            )
+            ))
             proposal.refresh_open_changes()
     except _SectionMoved as moved:
         return Response({
