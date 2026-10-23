@@ -3,6 +3,39 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 23 October 2026 — v4.2 Phase 1 (Office not listed) and the admin Proposals stop-gap
+
+- **"Office not listed" replaces "not sure"** on sign-up and in all three
+  admin places (Users ×2, People).
+  - It offers one optional 60-character "Office name" field, stored on
+    `CustomUser.requested_office_name` (migration `0040`). The name is
+    dropped when a real office is chosen, and nothing is ever created from
+    it.
+  - Approval leaves the applicant unplaced, with a note quoting the typed
+    name. They reach no manual, section search or proposal until assigned
+    (tested).
+- **The sign-up office picker** has a search box and groups offices by
+  parent branch (`auth/offices/` now returns `group`). The chosen office
+  stays visible while filtered out.
+- **Admin Proposals** reads a new `GET admin/proposals/`: every proposal,
+  50 to a page, filtered by status (in progress / closed / all / one
+  status), office and series. It runs in 2 queries whatever the page holds.
+  At full `seed_scale` it answers in 8–18 ms. It replaces the dashboard's
+  "recent six", which had hidden every proposal after the sixth.
+  Migration `0041` adds the `Proposal(status)` and `Proposal(updated_at)`
+  indexes.
+- **`seed_scale` fix:** steps were clamped to "now", which pinned 530
+  proposals and 2,938 events to one instant. A story that would run past
+  now now moves back whole.
+- Migrations `0040` and `0041` were tested on copies, then applied live
+  (backups `db.sqlite3.bak-20261023-pre-0040` / `-pre-0041`). Every new
+  test was run without its code and failed.
+- Checked in headless Chrome on a copy of the scale database: sign-up
+  (search, Office not listed, the 60-character cap, registration), the
+  pending applicant on People and Users, and Proposals filters, paging and
+  clear. No console errors.
+- The Phase 2 design is in `MONITORING_PHASE2_DESIGN.md`, awaiting approval.
+
 ## 23 October 2026 — v4.2 monitoring update, Phase 0 (Checkpoint 0)
 
 Spec: `MONITORING_UPDATE_SPEC.md`. Full report: `MONITORING_PHASE0_REPORT.md`.

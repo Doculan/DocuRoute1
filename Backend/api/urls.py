@@ -10,6 +10,7 @@ from . import notification_views as inbox
 from . import account_views as account
 from . import trail_views as trail
 from . import structure_views as structure
+from . import admin_proposal_views
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
@@ -154,6 +155,8 @@ urlpatterns = [
     # Admin dashboard and announcements. The staff banner and Upcoming
     # list read these rows; this is the half that puts something in them.
     path('admin/dashboard/', admin_dashboard),
+    # Every proposal, paged and filtered - not the dashboard's recent six.
+    path('admin/proposals/', admin_proposal_views.admin_proposals),
     path('admin/announcements/', admin_announcements),
     path('admin/announcements/<int:announcement_id>/', admin_announcement_detail),
 

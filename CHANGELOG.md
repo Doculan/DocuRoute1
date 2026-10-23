@@ -199,3 +199,10 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   harness, synthetic and exactly clearable. Migration `0039` records which
   seeder wrote each `DemoRecord`, so clearing one never removes the
   other's rows. Tagged `v4.1.1` before it.
+- Phase 1: sign-up offers **Office not listed** with an optional office name
+  (60 characters) for the admin, and the office picker is searchable and
+  grouped by branch. Such an applicant reaches nothing until assigned.
+  Migration `0040`.
+- **Fixed:** the admin's Proposals screen showed only the six most recently
+  updated proposals. It now lists every proposal, paged and filtered by
+  status, office and series. Migration `0041` adds the indexes it uses.

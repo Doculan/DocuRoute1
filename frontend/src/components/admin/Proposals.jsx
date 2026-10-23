@@ -7,7 +7,7 @@ import QmsDecisions from "../QmsDecisions";
 import TrailReport from "../TrailReport";
 import Icon from "../Icon";
 import {
-  IN_PROGRESS, STATUS_LABEL, WITH_PACKAGE, statusTone,
+  STATUS_LABEL, WITH_PACKAGE, statusTone,
 } from "../proposalStatus";
 
 const BASE_URL = "";
@@ -24,8 +24,21 @@ function when(value) {
   });
 }
 
+// The groups first, then each status on its own.
+const STATUS_FILTERS = [
+  ["open", "In progress"],
+  ["closed", "Closed"],
+  ["all", "All"],
+  ...Object.entries(STATUS_LABEL),
+];
+
+const NO_FILTERS = { status: "open", office: "", series: "" };
+
+// Side by side, wrapping on a narrow screen, rather than three full-width rows.
+const FILTER_STYLE = { width: "auto", flex: "1 1 12rem", maxWidth: "20rem" };
+
 /**
- * Every proposal, read only.
+ * Every proposal, read only, paged and filtered on the server.
  *
  * The system admin and QMS staff watch the process; they do not take part
  * in it. So there is nothing to click here but a proposal — no submit, no
@@ -36,41 +49,53 @@ function when(value) {
  * audience is checking what changed, not reading the document.
  */
 export default function Proposals() {
-  const [rows, setRows] = useState(null);
+  const [filters, setFilters] = useState(NO_FILTERS);
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState(null);
+  const [offices, setOffices] = useState([]);
+  const [series, setSeries] = useState([]);
   const [open, setOpen] = useState(null);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("open");
+
+  // Filter choices. Best-effort: without them the list still works.
+  useEffect(() => {
+    axios.get(`${BASE_URL}/api/org/offices/?include_inactive=true`, getAuth())
+      .then((res) => setOffices(
+        [...res.data.offices].sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => setOffices([]));
+    axios.get(`${BASE_URL}/api/org/series/`, getAuth())
+      .then((res) => setSeries(res.data.series || res.data || []))
+      .catch(() => setSeries([]));
+  }, []);
 
   const load = useCallback(async () => {
     try {
-      // The dashboard summary already carries the recent ones; this asks
-      // for the list a watcher actually wants.
-      const { data } = await axios.get(
-        `${BASE_URL}/api/admin/dashboard/`, getAuth()
+      const params = { ...filters, page };
+      Object.keys(params).forEach((k) => params[k] === "" && delete params[k]);
+      const { data: body } = await axios.get(
+        `${BASE_URL}/api/admin/proposals/`, { ...getAuth(), params }
       );
-      setRows(data.proposals || []);
+      setData(body);
       setError("");
     } catch (err) {
       setError(err.response?.data?.error || "Could not load proposals.");
     }
-  }, []);
+  }, [filters, page]);
 
   useEffect(() => { load(); }, [load]);
+
+  const choose = (name) => (e) => {
+    setFilters({ ...filters, [name]: e.target.value });
+    setPage(1);
+  };
 
   if (open != null) {
     return <ProposalDetail proposalId={open} onBack={() => setOpen(null)} />;
   }
 
-  if (!rows) {
-    return <div className="loading-row"><span className="spinner" /> Loading…</div>;
-  }
-
-  const shown = filter === "all"
-    ? rows
-    // Frozen is not finished: the paperwork is still to come. Named
-    // rather than "not withdrawn", so P4's finished statuses do not
-    // arrive here by default.
-    : rows.filter((r) => IN_PROGRESS.includes(r.status));
+  const filtered = filters.status !== "open" || filters.office || filters.series;
+  const first = data ? (data.page - 1) * data.page_size + 1 : 0;
+  const last = data ? first + data.results.length - 1 : 0;
 
   return (
     <div>
@@ -85,44 +110,80 @@ export default function Proposals() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <div className="tabs">
-        <button className={`tab${filter === "open" ? " is-active" : ""}`}
-                onClick={() => setFilter("open")}>
-          In progress
-        </button>
-        <button className={`tab${filter === "all" ? " is-active" : ""}`}
-                onClick={() => setFilter("all")}>
-          All
-        </button>
+      <div className="row-wrap" style={{ gap: "0.5rem", marginBottom: "1rem" }}>
+        <select className="select" aria-label="Status" style={FILTER_STYLE}
+                value={filters.status} onChange={choose("status")}>
+          {STATUS_FILTERS.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <select className="select" aria-label="Office" style={FILTER_STYLE}
+                value={filters.office} onChange={choose("office")}>
+          <option value="">Every office</option>
+          {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select className="select" aria-label="Manual series" style={FILTER_STYLE}
+                value={filters.series} onChange={choose("series")}>
+          <option value="">Every series</option>
+          {series.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.title}</option>)}
+        </select>
+        {filtered && (
+          <button className="btn btn-ghost btn-sm"
+                  onClick={() => { setFilters(NO_FILTERS); setPage(1); }}>
+            Clear
+          </button>
+        )}
       </div>
 
-      {shown.length === 0 ? (
+      {!data ? (
+        <div className="loading-row"><span className="spinner" /> Loading…</div>
+      ) : data.count === 0 ? (
         <div className="empty-state">
           <p className="empty-title">
-            {filter === "open" ? "Nothing in progress" : "No proposals yet"}
+            {filtered ? "No proposals match" : "Nothing in progress"}
           </p>
           <p className="empty-text">
-            Offices draft proposals against the documents they concur on.
+            {filtered
+              ? "Clear a filter to see more."
+              : "Offices draft proposals against the documents they concur on."}
           </p>
         </div>
       ) : (
-        <div className="col" style={{ gap: "0.15rem" }}>
-          {shown.map((p) => (
-            <button key={p.id} className="series-row" onClick={() => setOpen(p.id)}>
-              <span className="series-code">{p.manual}</span>
-              <span className="series-title">from {p.office}</span>
+        <>
+          <div className="col" style={{ gap: "0.15rem" }}>
+            {data.results.map((p) => (
+              <button key={p.id} className="series-row" onClick={() => setOpen(p.id)}>
+                <span className="series-code">{p.manual}</span>
+                <span className="series-title">from {p.office}</span>
+                <span className="subtle text-xs">
+                  {p.status === "concurrence"
+                    ? `${p.concurred} of ${p.of} concurred`
+                    : `version ${p.version}`}
+                </span>
+                <span className={`status-mark is-${statusTone(p.status)}`}>
+                  {STATUS_LABEL[p.status]}
+                </span>
+                <span className="subtle text-xs">{when(p.updated_at)}</span>
+              </button>
+            ))}
+          </div>
+
+          {data.pages > 1 && (
+            <div className="row" style={{ gap: "0.75rem", alignItems: "center", marginTop: "1rem" }}>
+              <button className="btn btn-ghost btn-sm" disabled={data.page <= 1}
+                      onClick={() => setPage(data.page - 1)}>
+                Previous
+              </button>
               <span className="subtle text-xs">
-                {p.status === "concurrence"
-                  ? `${p.concurred} of ${p.of} concurred`
-                  : `version ${p.version}`}
+                {first.toLocaleString()}–{last.toLocaleString()} of {data.count.toLocaleString()}
               </span>
-              <span className={`status-mark is-${statusTone(p.status)}`}>
-                {STATUS_LABEL[p.status]}
-              </span>
-              <span className="subtle text-xs">{when(p.updated_at)}</span>
-            </button>
-          ))}
-        </div>
+              <button className="btn btn-ghost btn-sm" disabled={data.page >= data.pages}
+                      onClick={() => setPage(data.page + 1)}>
+                Next
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

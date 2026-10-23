@@ -975,6 +975,13 @@ class Proposal(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        # The admin's list filters on status and sorts by last activity;
+        # without these both were full scans with a temporary sort
+        # (MONITORING_PHASE0_REPORT.md §8).
+        indexes = [
+            models.Index(fields=['status'], name='proposal_status_idx'),
+            models.Index(fields=['updated_at'], name='proposal_updated_at_idx'),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=['dcr_number'], condition=~Q(dcr_number=''),
