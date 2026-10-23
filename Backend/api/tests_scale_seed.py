@@ -90,6 +90,19 @@ class ScaleSeedTests(TestCase):
         self.assertTrue(Proposal.objects.filter(created_at__lt=month_ago).exists())
         self.assertTrue(AuditEvent.objects.filter(at__lt=month_ago).exists())
 
+    def test_activity_is_spread_out_not_piled_on_now(self):
+        """Stage aging is measured against this data: a long story must
+        end before now, not have its last steps all pinned to the moment
+        of seeding."""
+        self.seed()
+        now = timezone.now()
+
+        latest = Proposal.objects.order_by('-updated_at').first().updated_at
+        self.assertLessEqual(latest, now)
+        self.assertFalse(AuditEvent.objects.filter(at__gt=now).exists())
+        pinned = Proposal.objects.filter(updated_at=latest).count()
+        self.assertLessEqual(pinned, 2, f'{pinned} proposals share the latest timestamp')
+
     def test_clear_removes_exactly_what_it_created(self):
         admin = CustomUser.objects.create_user(
             username='measuring_admin', password='x', role='admin',

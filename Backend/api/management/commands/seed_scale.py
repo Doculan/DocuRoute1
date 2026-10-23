@@ -550,7 +550,7 @@ class Command(BaseCommand):
                 proposal.withdrawn_reason = 'Synthetic: superseded by another request.'
 
         Proposal.objects.bulk_update(
-            proposals, ['updated_at', 'locked_at', 'withdrawn_at',
+            proposals, ['created_at', 'updated_at', 'locked_at', 'withdrawn_at',
                         'withdrawn_by', 'withdrawn_reason'], batch_size=CHUNK,
         )
         self._create(ProposalParticipant, participants)
@@ -571,8 +571,8 @@ class Command(BaseCommand):
 
         def later(low=1, high=6):
             nonlocal at
-            at = min(at + timedelta(days=rng.randint(low, high),
-                                    minutes=rng.randint(0, 600)), self.now)
+            at = at + timedelta(days=rng.randint(low, high),
+                                minutes=rng.randint(0, 600))
             return at
 
         versions = [{'created': at, 'events': [(AuditEvent.CREATED, at, office, '')],
@@ -636,6 +636,23 @@ class Command(BaseCommand):
         if status == Proposal.WITHDRAWN:
             current['events'].append((AuditEvent.WITHDRAWN, later(), office,
                                        'Synthetic: superseded by another request.'))
+
+        # A story that would run past now moves back whole, ending a while
+        # before it. Clamping each step to now instead pinned hundreds of
+        # proposals and thousands of events to one instant, with nothing
+        # left to age.
+        overflow = at - (self.now - timedelta(minutes=rng.randint(30, 4320)))
+        if overflow > timedelta(0):
+            def back(value):
+                return value - overflow if value else value
+            for version in versions:
+                version['created'] = back(version['created'])
+                if version.get('submitted'):
+                    version['submitted'] = back(version['submitted'])
+                version['events'] = [(k, back(t), o, d) for k, t, o, d in version['events']]
+                version['decisions'] = [(o, d, back(t)) for o, d, t in version['decisions']]
+            locked, at = back(locked), back(at)
+            proposal.created_at = back(proposal.created_at)
         return {'versions': versions, 'submitted': submitted,
                 'locked': locked, 'last_at': at}
 
