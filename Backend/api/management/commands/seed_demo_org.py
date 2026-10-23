@@ -101,6 +101,7 @@ class Command(BaseCommand):
     def _record(self, obj, previous=None):
         self._sequence += 1
         DemoRecord.objects.create(
+            source=DemoRecord.DEMO_ORG,
             label=f'{obj._meta.app_label}.{obj._meta.object_name}',
             object_id=str(obj.pk),
             kind=DemoRecord.CHANGED if previous else DemoRecord.CREATED,
@@ -114,7 +115,8 @@ class Command(BaseCommand):
     def _clear(self):
         from django.apps import apps
 
-        records = list(DemoRecord.objects.order_by('-sequence'))
+        mine = DemoRecord.objects.filter(source=DemoRecord.DEMO_ORG)
+        records = list(mine.order_by('-sequence'))
         if not records:
             self.stdout.write('Nothing to clear - no demo data recorded.')
             return
@@ -137,7 +139,7 @@ class Command(BaseCommand):
                 else:
                     obj.delete()
                     removed += 1
-            DemoRecord.objects.all().delete()
+            mine.delete()
 
         self.stdout.write(self.style.SUCCESS(
             f'Removed {removed} demo row(s), restored {restored} changed row(s).'
@@ -151,7 +153,9 @@ class Command(BaseCommand):
     # -- seeding ---------------------------------------------------
 
     def handle(self, *args, **options):
-        self._sequence = DemoRecord.objects.count()
+        self._sequence = DemoRecord.objects.filter(
+            source=DemoRecord.DEMO_ORG,
+        ).count()
 
         if options['clear']:
             self._clear()
@@ -160,6 +164,7 @@ class Command(BaseCommand):
         def seeded(label):
             return set(
                 DemoRecord.objects.filter(
+                    source=DemoRecord.DEMO_ORG,
                     label=label, kind=DemoRecord.CREATED,
                 ).values_list('object_id', flat=True)
             )

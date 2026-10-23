@@ -830,6 +830,20 @@ class DemoRecord(models.Model):
         (CHANGED, 'Existing row the seeder modified'),
     ]
 
+    # Which seeder wrote the row. Each one's --clear undoes only its own:
+    # without this, clearing the demo organisation would also delete the
+    # scale harness's rows, and report them as demo data.
+    DEMO_ORG = 'demo_org'
+    SCALE = 'scale'
+
+    SOURCE_CHOICES = [
+        (DEMO_ORG, 'seed_demo_org'),
+        (SCALE, 'seed_scale'),
+    ]
+
+    source = models.CharField(
+        max_length=16, choices=SOURCE_CHOICES, default=DEMO_ORG, db_index=True,
+    )
     label = models.CharField(max_length=64)          # "api.Office"
     object_id = models.CharField(max_length=64)
     kind = models.CharField(max_length=16, choices=KIND_CHOICES)
