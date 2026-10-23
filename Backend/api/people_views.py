@@ -107,6 +107,8 @@ def _person_payload(person, assignments=None):
             {'id': person.requested_office_id, 'name': person.requested_office.name}
             if person.requested_office_id else None
         ),
+        # Typed under "Office not listed"; blank otherwise.
+        'requested_office_name': person.requested_office_name,
         'current_positions': [_assignment_payload(a) for a in current],
         'past_positions': [
             _assignment_payload(a) for a in assignments if not a.is_current
@@ -162,7 +164,9 @@ def place_in_requested_office(person, approved_by):
     Returns `(assignment or None, note)`, the note saying why not.
     """
     if person.requested_office_id is None:
-        return None, 'No office was chosen at sign-up; assign one by hand.'
+        typed = (f' ("{person.requested_office_name}")'
+                 if person.requested_office_name else '')
+        return None, f'Office not listed at sign-up{typed}; assign one by hand.'
     office = Office.objects.select_for_update().get(pk=person.requested_office_id)
     if not office.is_active:
         return None, f'{office.name} is no longer active; assign an office by hand.'

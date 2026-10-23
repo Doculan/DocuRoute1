@@ -2,6 +2,10 @@
 
 Choosing an office grants nothing before approval. Approval creates the
 requested Encoder or Head assignment; an occupied Head post refuses approval.
+
+"Office not listed" replaces "not sure": the applicant may type the office's
+name (60 characters, optional), the admin assigns the real office by hand,
+and nothing is created from the typed name.
 """
 
 from django.test import TestCase
@@ -33,7 +37,39 @@ class SignupOfficeTests(TestCase):
     def test_the_list_is_open_and_shows_active_offices_only(self):
         data = self.anon.get('/api/auth/offices/').data
         self.assertEqual([o['name'] for o in data], ['Accounting Office', 'Budget Office'])
-        self.assertEqual(set(data[0]), {'id', 'name'})
+        self.assertEqual(set(data[0]), {'id', 'name', 'group'})
+
+    def test_the_list_is_grouped_by_parent_branch(self):
+        vp = Office.objects.create(name='Office of the VP for Finance', abbreviation='VPF')
+        self.budget.parent = vp
+        self.budget.save(update_fields=['parent'])
+        groups = {o['name']: o['group'] for o in self.anon.get('/api/auth/offices/').data}
+        self.assertEqual(groups['Budget Office'], 'Office of the VP for Finance')
+        # Top-level offices have no parent branch to sit under.
+        self.assertIsNone(groups['Accounting Office'])
+        self.assertIsNone(groups['Office of the VP for Finance'])
+
+    def test_office_not_listed_keeps_the_typed_name(self):
+        response = self.register(requested_office_name='  Records Section  ')
+        self.assertEqual(response.status_code, 201)
+        user = CustomUser.objects.get(username='juan')
+        self.assertIsNone(user.requested_office)
+        self.assertEqual(user.requested_office_name, 'Records Section')
+        # Nothing is created from what was typed.
+        self.assertFalse(Office.objects.filter(name='Records Section').exists())
+
+    def test_the_typed_name_is_limited_to_sixty_characters(self):
+        response = self.register(requested_office_name='x' * 61)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['reason'], 'office_name_too_long')
+        self.assertFalse(CustomUser.objects.filter(username='juan').exists())
+        self.assertEqual(self.register(requested_office_name='x' * 60).status_code, 201)
+
+    def test_a_typed_name_is_dropped_when_an_office_is_chosen(self):
+        self.register(requested_office_id=self.budget.id, requested_office_name='Records')
+        user = CustomUser.objects.get(username='juan')
+        self.assertEqual(user.requested_office, self.budget)
+        self.assertEqual(user.requested_office_name, '')
 
     def test_applying_to_an_office(self):
         self.assertEqual(self.register(requested_office_id=self.budget.id).status_code, 201)
@@ -81,6 +117,21 @@ class SignupOfficeTests(TestCase):
         people = client.get('/api/org/people/?filter=pending').data['people']
         self.assertEqual(people[0]['requested_office']['name'], 'Accounting Office')
 
+    def test_the_admin_sees_office_not_listed_and_the_typed_name(self):
+        self.register(requested_office_name='Records Section')
+        admin = CustomUser.objects.create_user(
+            username='admin', password=PASSWORD, is_approved=True, role='admin',
+            system_role=CustomUser.SYSTEM_ADMIN,
+        )
+        client = APIClient()
+        client.force_authenticate(user=admin)
+        pending = client.get('/api/admin/pending-users/').data[0]
+        self.assertIsNone(pending['requested_office'])
+        self.assertEqual(pending['requested_office_name'], 'Records Section')
+        person = client.get('/api/org/people/?filter=pending').data['people'][0]
+        self.assertIsNone(person['requested_office'])
+        self.assertEqual(person['requested_office_name'], 'Records Section')
+
 
 class ApprovalPlacesThemTests(TestCase):
     """Password-confirmed approval grants the chosen office and position.
@@ -127,12 +178,48 @@ class ApprovalPlacesThemTests(TestCase):
         self.assertIn('Encoder at Accounting Office', response.data['message'])
         self.assertEqual(self.current_posts(user), [(self.office, Position.ENCODER)])
 
-    def test_not_sure_leaves_it_to_the_admin(self):
+    def test_office_not_listed_leaves_it_to_the_admin(self):
         user = self.applicant(office=False)
+        user.requested_office_name = 'Records Section'
+        user.save(update_fields=['requested_office_name'])
         response = self.client.post(f'/api/org/people/{user.id}/approve/', {}, format='json')
         self.assertFalse(response.data['placed'])
+        self.assertIn('Office not listed', response.data['note'])
+        self.assertIn('"Records Section"', response.data['note'])
         self.assertIn('assign one by hand', response.data['note'])
         self.assertEqual(self.current_posts(user), [])
+
+    def test_office_not_listed_reaches_no_manual_until_assigned(self):
+        from api.models import Manual, ManualSeries, ManualSeriesOffice, OfficeLink
+        vp = Office.objects.create(name='VP', is_approving_level=True)
+        series = ManualSeries.objects.create(code='FAM', title='Finance', owning_office=vp)
+        ManualSeriesOffice.objects.create(series=series, office=self.office,
+                                          relationship=OfficeLink.CONCURRING)
+        manual = Manual.objects.create(title='FAM 6.02', series=series)
+        user = self.applicant(office=False)
+        user.requested_office_name = 'Records Section'
+        user.save(update_fields=['requested_office_name'])
+        self.client.post(f'/api/org/people/{user.id}/approve/', {}, format='json')
+        user.refresh_from_db()
+        self.assertTrue(user.is_approved)
+
+        staff = APIClient()
+        staff.force_authenticate(user=user)
+        for path in ('/api/staff/manuals/', '/api/staff/sections/', '/api/proposals/'):
+            response = staff.get(path)
+            self.assertEqual(response.status_code, 403, path)
+            self.assertEqual(response.data['reason'], 'no_position', path)
+        response = staff.get(f'/api/manuals/{manual.id}/sections/')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['error'], 'Access denied')
+
+        # Assigned by hand: now the office's documents open.
+        position = Position.objects.create(office=self.office, kind=Position.ENCODER)
+        PositionAssignment.objects.create(user=user, position=position,
+                                          starts_on=timezone.localdate())
+        self.assertEqual([m['title'] for m in staff.get('/api/staff/manuals/').data],
+                         ['FAM 6.02'])
+        self.assertEqual(staff.get(f'/api/manuals/{manual.id}/sections/').status_code, 200)
 
     def test_a_retired_office_is_not_assigned(self):
         user = self.applicant()
@@ -152,11 +239,12 @@ class ApprovalPlacesThemTests(TestCase):
         self.applicant()
         row = self.client.get('/api/admin/pending-users/').data[0]
         self.assertEqual(set(row), {'id', 'username', 'email', 'full_name',
-                                    'requested_office', 'date_joined',
+                                    'requested_office', 'requested_office_name', 'date_joined',
                                     'requested_position_kind', 'requested_position_label', 'approval_warning'})
         person = self.client.get('/api/org/people/?filter=pending').data['people'][0]
         self.assertEqual(set(person), {
-            'id', 'username', 'email', 'full_name', 'requested_office', 'date_joined',
+            'id', 'username', 'email', 'full_name', 'requested_office',
+            'requested_office_name', 'date_joined',
             'requested_position_kind', 'requested_position_label', 'approval_warning',
             'system_role', 'is_approved', 'is_active', 'current_positions', 'past_positions',
         })

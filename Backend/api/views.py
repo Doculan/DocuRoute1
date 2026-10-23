@@ -578,12 +578,22 @@ def register(request):
         except (Office.DoesNotExist, TypeError, ValueError):
             return Response({'error': 'Choose an office from the list.'}, status=400)
 
+    # "Office not listed": an optional name for the admin to read. Dropped
+    # when an office was chosen, so the record never carries two answers.
+    office_name = (request.data.get('requested_office_name') or '').strip()
+    if len(office_name) > 60:
+        return Response({'error': 'Keep the office name to 60 characters.',
+                         'reason': 'office_name_too_long'}, status=400)
+    if requested_office is not None:
+        office_name = ''
+
     CustomUser.objects.create_user(
         username=username,
         password=password,
         email=email,
         full_name=full_name,
         requested_office=requested_office,
+        requested_office_name=office_name,
         requested_position_kind=kind,
         is_approved=False
     )
@@ -597,11 +607,14 @@ def signup_offices(request):
     """The offices someone signing up can say they work in.
 
     Open, because the person is not signed in yet. Names only, of active
-    offices - nothing about who works where.
+    offices - nothing about who works where. `group` is the parent office's
+    name, so a list of hundreds can be shown by branch; null at the top.
     """
     return Response([
-        {'id': o.id, 'name': o.name}
-        for o in Office.objects.filter(is_active=True).order_by('name')
+        {'id': o.id, 'name': o.name,
+         'group': o.parent.name if o.parent_id else None}
+        for o in Office.objects.filter(is_active=True)
+        .select_related('parent').order_by('name')
     ])
 
 
@@ -645,6 +658,7 @@ def pending_users(request):
     data = [{**application_details(u), 'id': u.id, 'username': u.username, 'email': u.email,
              'full_name': u.full_name,
              'requested_office': u.requested_office.name if u.requested_office else None,
+             'requested_office_name': u.requested_office_name,
              'date_joined': u.date_joined}
             for u in users]
     return Response(data)

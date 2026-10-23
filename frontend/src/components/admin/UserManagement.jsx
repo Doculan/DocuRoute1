@@ -138,7 +138,10 @@ export default function UserManagement() {
                       <td>{user.full_name}</td>
                       <td>{user.email}</td>
                       <td>
-                        {user.requested_office || <span className="subtle">Not sure</span>}
+                        {user.requested_office || <span className="subtle">Office not listed</span>}
+                        {!user.requested_office && user.requested_office_name && (
+                          <div className="subtle text-xs">“{user.requested_office_name}”</div>
+                        )}
                         <div className="subtle text-xs">{user.requested_position_label}</div>
                         {user.approval_warning && <div className="text-xs" role="status">{user.approval_warning}</div>}
                       </td>
@@ -170,7 +173,11 @@ export default function UserManagement() {
                             <dd>
                               {user.requested_office
                                 ? <>{user.requested_office}</>
-                                : <span className="subtle">Not sure — assign an office after approving</span>}
+                                : <span className="subtle">
+                                    Office not listed
+                                    {user.requested_office_name && <> — typed “{user.requested_office_name}”</>}
+                                    . Assign an office after approving.
+                                  </span>}
                             </dd>
                             <dt>Position chosen</dt><dd>{user.requested_position_label}</dd>
                             <dt>Signed up</dt>

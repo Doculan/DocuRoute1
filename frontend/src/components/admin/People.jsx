@@ -172,7 +172,11 @@ export default function People() {
                 <div className="text-xs" style={{ marginTop: "0.2rem" }}>
                   {p.requested_office
                     ? <>Requested <strong>{p.requested_position_label}</strong> at <strong>{p.requested_office.name}</strong></>
-                    : <span className="subtle">Not sure — assign an office after approving</span>}
+                    : <span className="subtle">
+                        <strong>Office not listed</strong>
+                        {p.requested_office_name && <> — typed “{p.requested_office_name}”</>}
+                        . Assign an office after approving.
+                      </span>}
                 </div>
                 {p.approval_warning && <div className="text-xs" role="status">{p.approval_warning}</div>}
                 {p.date_joined && (

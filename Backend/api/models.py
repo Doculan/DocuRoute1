@@ -468,6 +468,10 @@ class CustomUser(AbstractUser):
         max_length=32, default=Position.ENCODER,
         choices=[(Position.ENCODER, 'Encoder'), (Position.HEAD, 'Head')],
     )
+    # "Office not listed": what the applicant typed, for the admin to read
+    # when placing them. Never used to create or match an office - a typed
+    # name is a hint, not a record of the organisation.
+    requested_office_name = models.CharField(max_length=60, blank=True)
 
     def get_full_name(self):
         """`full_name`, which sign-up and the account page fill in.

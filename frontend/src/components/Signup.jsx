@@ -1,6 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import logo from '../assets/QMS.png';
+
+const NOT_LISTED = "not_listed";
+
+/**
+ * Offices grouped by their parent branch, narrowed by a search. Hundreds of
+ * offices do not fit a flat list; a branch heading tells two similarly
+ * named units apart. The chosen office stays visible while filtered out,
+ * so a search never silently changes the answer.
+ */
+function groupOffices(offices, query, selectedId) {
+  const needle = query.trim().toLowerCase();
+  const groups = new Map();
+  for (const o of offices) {
+    const matches = !needle
+      || o.name.toLowerCase().includes(needle)
+      || (o.group || "").toLowerCase().includes(needle)
+      || String(o.id) === selectedId;
+    if (!matches) continue;
+    const key = o.group || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  }
+  // Top-level offices first, then branches alphabetically.
+  return [...groups.entries()].sort(([a], [b]) =>
+    a === "" ? -1 : b === "" ? 1 : a.localeCompare(b));
+}
 
 function BrandPanel() {
   return (
@@ -24,17 +50,25 @@ export default function Signup({ onBackToLogin }) {
     password: "",
     confirmPassword: "",
     requested_office_id: "",
+    requested_office_name: "",
     requested_position_kind: "encoder",
   });
   // Active offices, for the application. Best-effort: if the list cannot
-  // load, the field is simply left out and the admin assigns the office.
+  // load, only "Office not listed" remains and the admin assigns the office.
   const [offices, setOffices] = useState([]);
+  const [officeQuery, setOfficeQuery] = useState("");
 
   useEffect(() => {
     axios.get("/api/auth/offices/")
       .then((res) => setOffices(res.data))
       .catch(() => setOffices([]));
   }, []);
+
+  const officeGroups = useMemo(
+    () => groupOffices(offices, officeQuery, formData.requested_office_id),
+    [offices, officeQuery, formData.requested_office_id],
+  );
+  const notListed = formData.requested_office_id === NOT_LISTED;
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,7 +95,8 @@ export default function Signup({ onBackToLogin }) {
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        requested_office_id: formData.requested_office_id || null,
+        requested_office_id: notListed ? null : (formData.requested_office_id || null),
+        requested_office_name: notListed ? formData.requested_office_name : "",
         requested_position_kind: formData.requested_position_kind,
       });
       setSuccess(true);
@@ -134,28 +169,59 @@ export default function Signup({ onBackToLogin }) {
               </p>
             </div>
 
-            {offices.length > 0 && (
+            <div className="field">
+              <label className="label" htmlFor="su-office">Your office</label>
+              {offices.length > 0 && (
+                <input
+                  className="input"
+                  type="search"
+                  value={officeQuery}
+                  onChange={(e) => setOfficeQuery(e.target.value)}
+                  placeholder="Search offices"
+                  aria-label="Search offices"
+                  aria-controls="su-office"
+                />
+              )}
+              <select
+                id="su-office"
+                className="select"
+                name="requested_office_id"
+                value={formData.requested_office_id}
+                onChange={handleChange}
+                required
+              >
+                <option value="" disabled>
+                  {officeGroups.length ? "Choose your office" : "No office matches"}
+                </option>
+                {officeGroups.map(([group, list]) => (
+                  <optgroup key={group || "top"} label={group || "Top level"}>
+                    {list.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+                <option value={NOT_LISTED}>Office not listed</option>
+              </select>
+              <p className="subtle text-xs" style={{ margin: 0 }}>
+                Approval places you in this office. If yours is missing,
+                choose Office not listed.
+              </p>
+            </div>
+
+            {notListed && (
               <div className="field">
-                <label className="label" htmlFor="su-office">
-                  Your office
+                <label className="label" htmlFor="su-office-name">
+                  Office name <span className="subtle">(optional)</span>
                 </label>
-                <select
-                  id="su-office"
-                  className="select"
-                  name="requested_office_id"
-                  value={formData.requested_office_id}
+                <input
+                  id="su-office-name"
+                  className="input"
+                  type="text"
+                  name="requested_office_name"
+                  value={formData.requested_office_name}
                   onChange={handleChange}
-                >
-                  <option value="">Not sure — let the administrator assign me</option>
-                  {offices.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-                <p className="subtle text-xs" style={{ margin: 0 }}>
-                  Once an administrator approves your account, you join this
-                  office in your chosen position, subject to availability. Not sure? The administrator assigns
-                  your office instead.
-                </p>
+                  maxLength={60}
+                />
               </div>
             )}
             <div className="field">
