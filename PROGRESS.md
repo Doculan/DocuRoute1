@@ -3,6 +3,56 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 23 October 2026 — v4.2 monitoring update, Phase 0 (Checkpoint 0)
+
+Spec: `MONITORING_UPDATE_SPEC.md`. Full report: `MONITORING_PHASE0_REPORT.md`.
+Tagged `v4.1.1`; backup `db.sqlite3.bak-20261023-pre-v4.2`.
+
+- **`seed_scale`** builds a synthetic university at the §9 targets (500
+  offices, 3,000 manuals, 5,000 open + 2,000 closed proposals, ~160k
+  notifications) in 53 s. It refuses beside real or demo data, and
+  `--clear` removes exactly its rows. Deadlines are seeded once Phase 3
+  adds them.
+- **Migration `0039`** adds `DemoRecord.source`. Without it,
+  `seed_demo_org --clear` would have deleted the scale data as "demo".
+  Tested on a copy, then applied live; existing rows unchanged.
+- **Measured on SQLite:** the 3,000-row manual lists take 5–24 s at
+  12–15k queries, People takes 1 s, and "Involving my office" takes 0.9 s.
+  At 100 concurrent users the staff home's p50 is 6.4 s. All misses come
+  from query-per-row loops and unpaginated lists, not the engine.
+  **PostgreSQL is not recommended yet**; re-measure after Phase 5.
+- **Found:** the admin Proposals screen lists at most the 6 most recently
+  updated proposals; the admin and QMS portals have no bell; a
+  `Notification` cannot exist without a proposal's `AuditEvent`, which
+  deadline notices will need changed in Phase 2.
+- Full suite: 670 tests passed. `check_setup.py` Ready, fingerprint
+  `6a6a5c667a3c4d11`.
+
+**Checkpoint 0 decisions (approved 23 Oct 2026).** The spec's ten
+recommendations stand, with these changes:
+
+- **Announcements**: the hard DELETE is retired (deactivate only), and
+  targeting becomes several offices. The three existing rows become
+  Announcements, their date becoming the expiry date.
+- **Escalation ladder**: on the due day, if the deadline is unmet, the
+  office's Head and Encoder plus the **Head of its immediate parent
+  office** are told. Seven days later, still unmet: the nearest
+  approving-level office and QMS. With no approving-level ancestor, the
+  President's office is told instead; a VP office with no Head escalates to
+  the system admin.
+- **Monitor-only accounts**: demo accounts for the President, VPAF,
+  CAO-Finance and CAO-Administration offices, added to `seed_demo_org`
+  **at the start of Phase 4** (fictional names, same password pattern).
+  Monitor-only is **derived**: anyone holding a position in an office with
+  offices beneath it monitors that branch.
+- **Database**: stay on SQLite and re-measure after Phase 5.
+  `run_monitoring` writes in small batches with short transactions.
+- **Performance rule**: an endpoint that gains the deadline tag is
+  converted to bulk, paginated queries in the same change, and meets its
+  budget before that phase's checkpoint. Each index arrives with the phase
+  that first needs it. The staff home's awaiting count becomes one
+  aggregate query in Phase 2.
+
 ## 11 October 2026 — Manage deactivated and merged offices
 
 The backend could reactivate deactivated offices, but the Offices screen

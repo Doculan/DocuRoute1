@@ -184,3 +184,18 @@ The transition finished: v4 alone, no switch and no v3 flow.
 - Migrations `0031` (refuses to run while a v3 revision exists) and `0032`.
   Test accounts with no references may be deleted before go-live; nothing
   else in the organisation is.
+
+---
+
+## [v4.2.0] — Unreleased
+
+QMS CDMS becomes a monitoring system: notifications, deadlines with banners
+and tags, monitoring for offices above, rebuilt Proposals, an explicit
+Encoder-to-Head step, History, a change freeze, an expanded audit trail and a
+navigation pass. Specified in `MONITORING_UPDATE_SPEC.md`. The AI pipeline is
+not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
+
+- Phase 0: survey (`MONITORING_PHASE0_REPORT.md`) and the `seed_scale`
+  harness, synthetic and exactly clearable. Migration `0039` records which
+  seeder wrote each `DemoRecord`, so clearing one never removes the
+  other's rows. Tagged `v4.1.1` before it.
