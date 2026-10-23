@@ -85,7 +85,7 @@ export default function QmsDashboard({ onLogout }) {
     ) : (
       <>
         {/* Reading comes first: this shows only when something is waiting. */}
-        <NeedsAction onOpenProposal={openRequestFrom} />
+        <NeedsAction compact onGo={() => go("requests")} />
         <StaffManuals onSelectManual={(id) => setManualId(id)} />
       </>
     );

@@ -18,8 +18,12 @@ function since(value) {
  * Shared by every portal. Derived on the server from the state of
  * proposals and posts, not from notifications, so nothing missed or marked
  * read can hide here. Shows nothing at all when nothing is waiting.
+ *
+ * `compact` shows each section as a count that opens its screen, for a
+ * landing where reading must not be pushed down the page (the QMS portal);
+ * the lists themselves live on that screen.
  */
-export default function NeedsAction({ onOpenProposal, onGo, refreshKey }) {
+export default function NeedsAction({ onOpenProposal, onGo, refreshKey, compact = false }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -35,12 +39,13 @@ export default function NeedsAction({ onOpenProposal, onGo, refreshKey }) {
   return (
     <section style={{ marginBottom: "1.75rem" }}>
       <h2 className="section-title">Needs your action</h2>
-      <div className="col" style={{ gap: "1rem" }}>
+      <div className={compact ? "row-wrap" : "col"} style={{ gap: compact ? "0.6rem" : "1rem" }}>
         {data.sections.map((section) => (
           <div key={section.key}>
-            {section.items.length === 0 ? (
+            {compact || section.items.length === 0 ? (
               <button className="card card-pad card-interactive row"
-                      style={{ gap: "0.75rem", alignItems: "center", width: "100%", textAlign: "left" }}
+                      style={{ gap: "0.75rem", alignItems: "center", textAlign: "left",
+                               width: compact ? "auto" : "100%" }}
                       onClick={() => onGo?.(section.go)}>
                 <span className="badge badge-warning">{section.total}</span>
                 <span className="text-sm">{section.title}</span>
