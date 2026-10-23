@@ -222,7 +222,7 @@ Measured in-process with Django's test client (median of 3 after a warm-up) on a
 - Under concurrency, the per-request query count multiplies across 8 threads holding one SQLite file.
 - The bell, which is two indexed queries, holds well even under 100 concurrent requests.
 
-**PostgreSQL recommendation: not yet.** The budgets are missed for reasons PostgreSQL wouldn't fix. A 12,000-query request is slow on any engine. Phases 4–5 replace these lists with paginated, aggregate queries (§9), which have to be built anyway. Re-measure on SQLite after Phase 5. If the 100-user figures still miss then, that is the point to move through `DATABASE_URL`, since SQLite serialises writers and the notification and monitoring jobs add writes. I haven't migrated anything.
+**Superseded (24 Oct 2026): SQLite is retained by decision.** These misses were query-per-row loops and unpaginated lists, not the engine, and are fixed by redesigning each screen (§9 of the spec). No database change is recommended.
 
 ---
 

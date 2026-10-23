@@ -22,7 +22,7 @@ rather than a code change.
                                                   │
                                        ┌──────────┴──────────┐
                                   database            model weights
-                              (MySQL/Postgres)      (on the filesystem)
+                               (SQLite file)        (on the filesystem)
 ```
 
 **`manage.py runserver` is not part of it.** It is single-process, reloads on
@@ -70,7 +70,7 @@ safe to overlap and to repeat — a second run finds the lock held and exits,
 and no notice is ever sent twice — and it writes in batches of 200, each in
 its own short transaction, so it does not hold the database while the site
 is in use. Give it the **same environment** as the web server
-(`DATABASE_URL` or `SQLITE_PATH`, `DJANGO_SETTINGS_MODULE`), or it monitors
+(`SQLITE_PATH`, `DJANGO_SETTINGS_MODULE`), or it monitors
 a different database.
 
 Dashboards also run one batch themselves when the last finished run is
@@ -117,8 +117,8 @@ which take precedence.
 | `DJANGO_SECRET_KEY` | the development key committed in `settings.py` | **must be set** |
 | `DJANGO_DEBUG` | `true` | **`false`** |
 | `DJANGO_ALLOWED_HOSTS` | `*` | the real hostnames |
-| `DATABASE_URL` | unset → SQLite | the server's database |
-| `DJANGO_CONN_MAX_AGE` | `60` | tune to the database |
+| `SQLITE_PATH` | `Backend/db.sqlite3` | the database file, on a backed-up volume |
+| `DJANGO_CONN_MAX_AGE` | `60` | leave |
 
 ### DEBUG
 
@@ -173,60 +173,22 @@ proxy, both become unnecessary — everything is one origin.
 
 ## 3. Database
 
-The `DATABASES` block reads `DATABASE_URL` first, then discrete `DB_*`
-variables, then falls back to the SQLite file. No code changes when switching.
+**SQLite is the database, by decision** (24 October 2026), at every scale
+this system is built for. No move to another engine is planned or
+prepared. Where a screen cannot cope at scale, the screen is redesigned —
+summary first, grouping, filters, top-N, paging, precomputed summary
+counts — and where a stress target still cannot be met, a smaller design
+limit is set instead of a bigger database.
 
 ```bash
-DATABASE_URL=mysql://docuroute:password@10.0.0.5:3306/docuroute
-DATABASE_URL=postgres://docuroute:password@10.0.0.5:5432/docuroute
+SQLITE_PATH=/srv/qms-cdms/data/db.sqlite3     # unset: Backend/db.sqlite3
 ```
 
-Percent-encode `@ : /` in passwords (`@` → `%40`).
-
-### PostgreSQL — recommended
-
-`pip install psycopg[binary]`. Django's best-supported backend, no encoding
-traps, and `JSONField` — which `ai_trace` and `ai_issues` use — maps to native
-`jsonb`.
-
-### MySQL / MariaDB
-
-`pip install mysqlclient`. On Windows this needs MSVC Build Tools; if that is
-not available, `pymysql` with `pymysql.install_as_MySQLdb()` in
-`backend/__init__.py` works.
-
-Create the schema as `utf8mb4` — the manuals contain typographic quotes and
-dashes that `utf8` (3-byte) silently mangles. The `DATABASE_URL` path sets
-`charset: utf8mb4` on the connection automatically.
-
-```sql
-CREATE DATABASE docuroute CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-**Index length:** utf8mb4 uses 4 bytes per character against MySQL's
-3072-byte index limit, capping a unique `VARCHAR` at 768 characters. Every
-unique text field today is 255 or shorter, which fits. Any future unique
-field longer than 768 would not.
-
-### Moving the data
-
-```bash
-python manage.py dumpdata --natural-foreign --natural-primary \
-    -e contenttypes -e auth.Permission -e admin.logentry \
-    --indent 2 -o dump.json
-
-DATABASE_URL=... python manage.py migrate
-DATABASE_URL=... python manage.py loaddata dump.json
-```
-
-The excludes matter: content types and permissions are recreated by `migrate`,
-and loading them again collides on unique keys. Expect the custom user model
-(`api.CustomUser`) to need loading before anything referencing it; `dumpdata`
-usually orders this correctly, but a failure here is the most likely problem.
-
-**Verify after loading** — row counts per model, then a login, a revision
-submission, and one assessment. SQLite accepts values that MySQL's strict mode
-rejects, and a migration is where that surfaces.
+Put the file on a backed-up volume, and back it up with SQLite's own
+backup (`sqlite3 db.sqlite3 ".backup copy.sqlite3"` or Python's
+`Connection.backup`), not a plain file copy: the database runs in WAL mode
+and a copy can miss what is still in the write-ahead log. §7 has the
+configuration and the measured limits.
 
 ---
 
@@ -355,7 +317,7 @@ worker after deployment. Either way the first real user sees 0.3 s, not 14 s.
 
 ---
 
-## 7. Why SQLite was kept for development and the demonstration
+## 7. SQLite: configuration and measured limits
 
 A deliberate decision, not an omission, and the numbers above are the reason.
 
@@ -394,20 +356,31 @@ only have read - at this scale, milliseconds.
 
 For the two-to-three concurrent users of the demonstration, against a 6 MB
 database, this is comfortably sufficient — and it was verified rather than
-assumed. Migrating to MySQL would have solved a problem that measurement
-showed did not exist, while adding a driver that needs a C toolchain on
-Windows and a data migration to go wrong the week of the defence.
+assumed. The same holds at the scale targets, within the limits below.
 
-**Where SQLite would stop being adequate**, and the move becomes worthwhile:
+**Measured limits on SQLite**, at the full `seed_scale` organisation (500
+offices, 3,000 manuals, 7,000 proposals, ~200,000 notifications), waitress
+with 8 threads:
 
-- more than roughly ten users writing concurrently, since SQLite serialises
-  writers regardless of WAL;
-- more than one application server, as SQLite cannot be shared across hosts;
-- any need for replication, point-in-time recovery, or a managed backup
-  service.
+| Load | Result |
+|---|---|
+| 100 people opening the bell at once | p95 0.6 s |
+| 100 people marking notices read in the same instant | p50 1.6 s, p95 3.4 s, no errors |
+| 50 resolving actions at once | p95 0.9 s |
+| 100 bells while a full monitoring run writes | p95 1.4 s |
+| First `run_monitoring` over the whole organisation (3,096 stalls) | 25–30 s, in batches |
+| Bell, notifications page, Needs your action, staff home (one request) | 2–21 ms |
 
-At that point `DATABASE_URL` is set and nothing else changes — which is the
-purpose of §3.
+SQLite serialises writers. A burst of simultaneous writes queues; it does
+not fail, because transactions are immediate and wait up to the 20-second
+busy timeout. The answer to a slow burst is shorter transactions and
+fewer writes per request, not another engine. Phase 0's slower figures
+(`MONITORING_PHASE0_REPORT.md`) were query-per-row loops, which are being
+replaced screen by screen.
+
+Two limits are structural and accepted: one application server (SQLite
+cannot be shared across hosts), and backups by file copy through the
+backup API rather than replication.
 
 ---
 
@@ -459,7 +432,7 @@ load justifies it.
 [ ] DJANGO_SECRET_KEY set to a freshly generated value
 [ ] DJANGO_DEBUG=false
 [ ] DJANGO_ALLOWED_HOSTS naming the real hostnames
-[ ] DATABASE_URL set; migrate and loaddata verified
+[ ] SQLITE_PATH on a backed-up volume; migrate verified
 [ ] STATIC_ROOT set; collectstatic run; proxy serving /static/
 [ ] /media/ served with access control, on a backed-up volume
 [ ] model weights unpacked; check_setup.py prints "Ready."

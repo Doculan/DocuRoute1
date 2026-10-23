@@ -171,6 +171,24 @@ The target entities, at a high level — detailed fields come in each phase spec
 
 Existing single-section revisions were to migrate into one-section proposals; there were none, and the v3 single-section flow was removed at v4.1.0. Existing manuals and sections stay; until linked to an office they appear as **unassigned**. **Done at v4.1.0:** access is by position permanently (the switch is gone), `Department` is retired, and the transitional admin review is removed — reviewing belongs only to the IMR and Document Custodian.
 
+**SQLite is retained at all cost** (decided 24 Oct 2026). Never recommend or prepare a move to another database. If a screen cannot cope at scale, fix it by design: summary first, grouping, filters, top-N, paging, and **precomputed summary counts** kept current by `run_monitoring` and by each transition. If a stress target still cannot be met, propose a smaller **design limit**, not a bigger database. Keep `DEPLOYMENT.md` honest about the measured limits (for example, 100 simultaneous "mark read" writes: p95 3.4 s).
+
+**Main screens stay clear and uncrowded** however much information there is, following `MONITORING_UPDATE_SPEC.md` §11.1: summary first, group by default, top N then "Show more", no empty sections, at most about six sections above the fold, 50 rows per page at most.
+
+---
+
+## Testing — what to run, and when
+
+*Decided 24 Oct 2026.*
+
+- **During a sub-phase, run partial tests only:** the test modules for the files changed, plus every module that imports them. Run each **new** test on its own and show it **fails without its code**.
+- **Run the FULL suite** at the end of each phase and before any tag. Also run it, or every module that imports the changed code, in two cases:
+  - before applying to the live database a migration that **rewrites an existing core table**;
+  - when a change touches **shared code**: models, `access.py`, the audit trail, notifications, authentication.
+- **Run long runs in the background**, writing their output to a file.
+- **At every checkpoint, report** what was run and why, and what was **not** run.
+- Tests that expect an error assert the reason.
+
 ---
 
 ## The AI pipeline — do not disturb

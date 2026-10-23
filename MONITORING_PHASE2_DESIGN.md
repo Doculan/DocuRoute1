@@ -60,7 +60,7 @@ hash = sha256(prev_hash ‖ canonical_json({seq, kind, actor_id, actor_label,
 ```
 `canonical_json` uses sorted keys and `separators=(',', ':')`, so the same row always hashes the same.
 
-**Writing under concurrency.** A one-row-per-log table `LogHead(log, seq, hash)` is read with `select_for_update()` inside the writer's transaction, which then inserts `seq+1` and updates the head. On SQLite the project's immediate transactions already serialise writers; on PostgreSQL the row lock does the same. So two writers can never fork the chain.
+**Writing under concurrency.** A one-row-per-log table `LogHead(log, seq, hash)` is read with `select_for_update()` inside the writer's transaction, which then inserts `seq+1` and updates the head. The project's immediate SQLite transactions serialise writers, and the row lock keeps that true in any case. So two writers can never fork the chain.
 
 **Verify.** `manage.py verify_log system` walks `seq` in order, recomputes each hash, and reports the first break (seq, expected, found). Phase 6 adds a "verify trail" button and an AuditEvent chain using the same helper. That chain will be **per proposal**, so busy proposals don't contend for one global head.
 

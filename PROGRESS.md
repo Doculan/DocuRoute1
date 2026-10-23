@@ -3,6 +3,30 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — Decisions: SQLite retained, test policy, screen density
+
+Recorded in `CLAUDE.md`.
+
+- **SQLite is retained at all cost.** Every recommendation to move to
+  another database was removed: `DEPLOYMENT.md` §3 and §7 (now
+  "configuration and measured limits"), the spec's definition of done, the
+  Phase 0 report (marked superseded), the Phase 2 design, and this log.
+  Screens that cannot cope are fixed by design, or given a smaller design
+  limit. The measured limits now sit beside the decision in
+  `DEPLOYMENT.md`.
+- **Test policy:**
+  - partial tests during a sub-phase (changed modules and their
+    importers), each new test shown to fail without its code
+  - the full suite at the end of each phase, before any tag, before a
+    live migration that rewrites a core table, and for changes to shared
+    code
+  - long runs in the background, writing to a file
+  - every checkpoint reports what was and was not run
+- **Main screens stay uncrowded** by the spec's §11.1 rules.
+- The updated spec adds §7.6 (offices bar chart, critical times), §7.7
+  (QMS dashboard and monitoring) and §8.2's "each proposal appears exactly
+  once". §7.6 and §7.7 are Phase 4; §11.1 applies from now on.
+
 ## 24 October 2026 — v4.2 Phase 2A: notifications rebuilt (Checkpoint 2A)
 
 Design: `MONITORING_PHASE2_DESIGN.md`, approved with the answers below.
@@ -120,7 +144,7 @@ Tagged `v4.1.1`; backup `db.sqlite3.bak-20261023-pre-v4.2`.
   12–15k queries, People takes 1 s, and "Involving my office" takes 0.9 s.
   At 100 concurrent users the staff home's p50 is 6.4 s. All misses come
   from query-per-row loops and unpaginated lists, not the engine.
-  **PostgreSQL is not recommended yet**; re-measure after Phase 5.
+  (Superseded 24 Oct 2026: SQLite is retained by decision.)
 - **Found:** the admin Proposals screen lists at most the 6 most recently
   updated proposals; the admin and QMS portals have no bell; a
   `Notification` cannot exist without a proposal's `AuditEvent`, which

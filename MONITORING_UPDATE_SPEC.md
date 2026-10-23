@@ -24,7 +24,7 @@ QMS CDMS stops presenting itself as a **pipeline an office moves a proposal thro
 2. **Nothing touches the AI pipeline** (Layers 1–4, thresholds, fusion, wording file). Figures stay 0.978 / 0.854 and the fingerprint stays unchanged.
 3. **Notify positions, not people.** Recipients are whoever holds the position now. A position with no current holder escalates (§5.5).
 4. **Nudge, don't block reading.** Nothing may stop anyone reading a manual. Pressure comes from notifications, persistent action banners and escalation, never from locking the library.
-5. **Scale is a design constraint from the start** (§9). Every list is server-filtered and paginated; every summary is an aggregate query, never a loop over rows.
+5. **Scale is a design constraint from the start** (§9). Every list is server-filtered and paginated; every summary is an aggregate query, never a loop over rows. **SQLite stays**; clarity at scale is solved by design (§9, §11), never by changing the database.
 6. **Reading-first design principles still apply**: sparse screens, short labels, details collapsed. The monitoring screens lead with counts and exceptions, not tables of everything.
 7. Audit events are append-only. No edit or delete endpoint exists for them, for any role.
 8. Tests that expect an error assert the reason; every new test is shown to fail without the code it protects.
@@ -43,7 +43,7 @@ Claude Code reports what exists, then asks me these. Recommendations are marked 
 | 4 | Do VP and CAO offices need accounts? | Yes, to monitor. The demo organisation has none for the VPAF; add them, with monitor-only access unless also concurring |
 | 5 | Is email available (SMTP from the university)? | Build in-app first. Email as an optional channel behind a setting, off until SMTP exists |
 | 6 | Stage-aging thresholds | Provisional defaults, editable by the system admin: **with Head 3 days**, concurrence 7, awaiting signature 14, with IMR 7, with custodian 10 |
-| 7 | Scale target | Design and test for 500 offices, 3,000 manuals, 5,000 open proposals, 100 concurrent users. Report SQLite results; see §9 |
+| 7 | Scale target | **SQLite is kept by decision.** Treat 500 offices, 3,000 manuals, 5,000 open proposals and 100 concurrent users as stress targets. If a screen cannot cope, fix it by design (§9, §11), never by changing the database |
 | 8 | Change freeze: scope, what it blocks, who lifts it, what happens to deadlines inside it | §6.6 |
 | 9 | During a freeze, may proposals already in concurrence keep collecting decisions (but not be made effective)? | Yes, so work in progress is not stranded |
 | 10 | Should concurring and reader offices of a manual see a muted "Revision advised for {Office}" tag? | Yes, because they will be asked to concur (§6.7) |
@@ -298,6 +298,41 @@ Monitoring is not only for deadlines. Every proposal, deadline-driven or ad hoc,
 
 PDF and spreadsheet export of any filtered monitoring view, with its filters and the date printed, as evidence for audits.
 
+### 7.6 Admin dashboard: offices bar chart and critical times
+
+**Replaces** the activity-over-time chart on the admin dashboard, and its table fallback and `enough_for_chart` rule.
+
+**Offices bar chart.**
+- Horizontal bars, one per office, **sorted highest to lowest**. Offices with none sit at the bottom under a collapsed line, "No pending proposals · N offices", that expands, so every office is accounted for.
+- A toggle: **Pending** (every open proposal, meaning not yet effective, denied or withdrawn) or **Approved** (made effective). Approved has a period filter: this month, this year, last year, custom. Still a bar chart.
+- Counted by initiating office. Hover or click shows the stage breakdown (with Head, in concurrence, awaiting signatures, with QMS). Clicking a bar opens Proposals filtered to that office and status.
+- Filters: branch (a VP office and everything beneath it) and manual series.
+- Values are printed on the bars, with patterns or labels, never colour alone.
+- At scale: the top 15 by default with "Show more"; one aggregate `GROUP BY` query inside the dashboard summary endpoint, never one query per office; scoped to the viewer.
+- The same chart appears on the Monitoring overview for offices above, limited to their branch.
+
+**Critical times.** A compact timeline on the admin dashboard for the next 90 days.
+- It marks **deadlines** and **freeze periods** (as bands, so people see "no submissions from X to Y").
+- Each deadline shows its date, type, days left and **offices unmet of offices targeted** (for example "7 of 12 not yet submitted"), coloured by urgency (calm, amber, red).
+- Several deadlines in the same week are flagged as a cluster.
+- **Scope switch: all offices, one branch, or one office.** For one office it shows only the deadlines that target it, with that office's own status against each.
+- Clicking a deadline opens Monitoring, By deadline.
+- Heads see the same timeline for their own office on Home, without the switch.
+- It needs the Phase 3 deadlines, so it is built straight after them.
+
+### 7.7 QMS dashboard and monitoring
+
+QMS sees everything (§7.1), so the QMS portal gets the same monitoring as the admin, in a lighter form, with its own queue first.
+
+- **The landing is a Dashboard**, not a bare Requests list:
+  1. **Your queue as counts only**, e.g. "Ready for IMR 4 · With custodian 2", each opening Requests. The lists themselves live on Requests, so reading is not pushed down the page. The IMR and the Custodian see different counts, from their positions.
+  2. The **offices bar chart** (§7.6).
+  3. **Critical times** (§7.6).
+  4. **Overdue and stalled** counts, linking to the filtered Monitoring view.
+  5. The **Advised revisions** count.
+- **Monitoring** (every lens in §7.3) is available to QMS, read-only, across the whole institution.
+- Reading stays one click away: Manuals remains in the navigation.
+
 **Checkpoint 4.**
 
 ---
@@ -324,6 +359,7 @@ Each row shows: manual, series, **deadline and type** (or "no deadline"), **stat
 - **Filters, not a search bar:** office, manual series, manual, status, deadline, deadline type, priority, overdue, stalled. Remember each admin's last selection.
 - "Needs attention" first (8.1), then the full list grouped by series and manual, paginated on the server, sortable by nearest deadline.
 - Opening a proposal shows the **Next step** panel: who must act, what they must do, by when.
+- **Each proposal appears exactly once** in any list or group. A filter, join or grouping must never duplicate a row; a test fails if it does.
 
 ### 8.3 Staff: Head and Encoder
 
@@ -369,7 +405,7 @@ Proposals shows what is **active**; History shows what is **done**. A new **Hist
 - Deadline tags (§6.7) are computed in bulk per page, never per row.
 - All lists paginated and filtered on the server (50 per page); counts from `GROUP BY`; no query per row; indexes on every filter column, reported and added.
 - Roll-ups for the office tree computed in one pass, not per node.
-- **Decision flag.** `DEPLOYMENT.md` justified SQLite for 2–3 users. At this scale that justification no longer holds. Measure on SQLite first and report the numbers. If a budget is missed, recommend PostgreSQL through the existing `DATABASE_URL` setting. Do not migrate without asking.
+- **SQLite is retained, by decision.** Do not recommend or prepare a database change. If a number cannot be met, fix the design: summary-first screens, grouping and filters, top-N with expand, pagination, **precomputed summary counts** (a small summary table kept current by `run_monitoring` and by each transition, so dashboards read a handful of rows, not thousands) and shorter transactions. If a stress target still cannot be met, say so and propose a smaller **design limit** (for example, show the top 15 and require a filter above 200 rows) instead of a bigger database. Keep `DEPLOYMENT.md` honest: record the measured limits beside the decision.
 
 ---
 
@@ -400,13 +436,28 @@ A lack of direction when clicking through is a design failure to fix.
 2. **A consistent navigation structure per portal:**
    - Staff: Home · Manuals · Proposals (deadlines first, §8.3) · History · Notifications
    - Heads add: Office monitoring
-   - QMS: Requests · History
+   - QMS: Dashboard · Manuals · Requests · Monitoring · History
    - Admin: Monitoring · Proposals · History · Deadlines & announcements · Organisation · Audit
 3. **Breadcrumbs and a Back link** on every screen below the top level.
 4. **A Next step panel on every proposal**, using the same stage tracker everywhere.
 5. **Empty states that say what to do next**, not just that nothing is here.
 6. **One status vocabulary and colour system** across all screens, as in §7.2.
 7. Remove anything that duplicates another screen. Report what was removed.
+
+### 11.1 Keeping screens clear when there is a lot of information
+
+These rules apply to every screen from now on, not only in this phase.
+
+1. **Summary first, detail on demand.** A list screen opens on counts and exceptions; rows load after a click or a filter.
+2. **Group by default** wherever more than about 20 rows would show: by branch or VP office, series, status or year, with counts on each group header and only the group that needs attention open.
+3. **Top N, then "Show more".** Charts and lists show the top 15 (or the 10 most urgent); zero-value rows collapse into one line.
+4. **Filters are remembered**, and can be saved as named views ("My branch, overdue", "FAM series this quarter").
+5. **At most about six summary tiles or sections above the fold.** More than that go into tabs or collapsed sections.
+6. **One status vocabulary and colour system**, with patterns or labels as well as hue.
+7. **No empty sections.** A section with nothing to show disappears, or says so in one line.
+8. **Compact rows, generous space between groups:** sticky headers, one line per row with a details expander, no more than five columns by default (more through a column picker).
+9. **Never everything at once:** a hard cap of 50 rows per page, with server paging.
+10. **Five-second test.** On the scale data, a new user should be able to tell what needs attention without scrolling. Report a screenshot of each main screen at scale.
 
 **Checkpoint 7.** Re-run the end-to-end skill, and `check_setup.py`, and confirm the fingerprint and figures are unchanged.
 
@@ -425,8 +476,12 @@ A lack of direction when clicking through is a design failure to fix.
 - A History tab for staff, QMS and admin groups closed proposals by year then month, with date, outcome, office, series and DCR filters, and exports.
 - Any manual with a deadline or advised revision shows a **"Deadline upcoming {date}"** tag on every screen that lists or opens it, with the states in §6.7; a coverage test fails if an endpoint returning manuals omits it.
 - Heads and VP-level offices see which offices are advised to revise which manuals, in Monitoring (Advised revisions lens, By office and By deadline) and as tags; an office sees its own on its Proposals screen and Home.
+- The QMS portal opens on a Dashboard with its queue as counts, the offices bar chart, critical times, overdue and stalled counts, and read-only Monitoring of the whole institution.
+- SQLite is retained. Where a screen would be crowded or slow at scale it is grouped, filtered, capped or summarised from precomputed counts, following §11.1, and each main screen passes the five-second test on the scale data.
+- Each proposal appears exactly once in the admin and staff lists.
+- The admin dashboard shows a bar chart of offices by pending proposals, highest first, with offices that have none collapsed at the bottom, and a toggle to approved proposals; plus a critical-times timeline of deadlines and freeze periods, switchable between all offices, a branch and one office.
 - The admin and staff Proposals screens filter by office, series, manual, status and deadline, and lead with what has a deadline: overdue first, then nearest due, then priority manuals. A manual owed but not started still appears.
 - A Head or Encoder opens Proposals and sees their office's manuals due for submission at the top, each with the one action they may take.
 - The audit block is detailed, filterable, exportable and tamper-evident.
-- Performance budgets in §9 are met on `seed_scale`, or the PostgreSQL recommendation has been reported.
+- Performance budgets in §9 are met on `seed_scale` on SQLite, or a smaller design limit has been proposed and recorded in `DEPLOYMENT.md`.
 - Pipeline untouched: `check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11`, `evaluate_folds.py` at 0.978 / 0.854.
