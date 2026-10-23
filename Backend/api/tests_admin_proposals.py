@@ -122,6 +122,52 @@ class AdminProposalListTests(TestCase):
         self.assertEqual(row['series'], 'FAM')
         self.assertEqual(row['office'], 'Accounting Office')
 
+    def test_each_proposal_appears_exactly_once_in_any_list(self):
+        """Spec §8.2. Proposals with several participants, versions and
+        concurrences - the rows a careless join would multiply - under
+        every status option, with and without the office and series
+        filters, across every page."""
+        from api.models import ProposalParticipant
+        made = []
+        for n, status in enumerate([s for s, _ in Proposal.STATUS_CHOICES] * 6):
+            office = (self.acc, self.bud)[n % 2]
+            proposal = self.proposal(n, status=status, office=office,
+                                     series=(self.fam, self.hrm)[n % 3 == 0])
+            ProposalVersion.objects.create(proposal=proposal, number=2)
+            for other in (self.vp, self.bud, self.acc):
+                ProposalParticipant.objects.create(
+                    proposal=proposal, office=other, office_name_at_time=other.name,
+                    role=ProposalParticipant.CONCURRING)
+            made.append(proposal)
+
+        options = ['open', 'closed', 'all'] + [s for s, _ in Proposal.STATUS_CHOICES]
+        filters = [{}, {'office': self.acc.id}, {'series': self.fam.id},
+                   {'office': self.bud.id, 'series': self.hrm.id}]
+        for status in options:
+            for extra in filters:
+                with self.subTest(status=status, **extra):
+                    ids, page, pages = [], 1, 1
+                    while page <= pages:
+                        data = self.get(status=status, page=page, **extra).data
+                        ids += [r['id'] for r in data['results']]
+                        pages, page = data['pages'], page + 1
+                    self.assertEqual(len(ids), len(set(ids)))
+                    self.assertEqual(len(ids), data['count'])
+
+    def test_rows_say_which_request_they_are(self):
+        """Two proposals on one document from one office - withdrawn, then
+        made effective - must not read as one row shown twice."""
+        first = self.proposal(1, status=Proposal.WITHDRAWN)
+        second = Proposal.objects.create(
+            manual=first.manual, initiating_office=self.acc,
+            status=Proposal.EFFECTIVE, created_by=self.admin, dcr_number='DCR-2026-009')
+
+        rows = {r['id']: r for r in self.get(status='closed').data['results']}
+
+        self.assertEqual(rows[second.id]['dcr_number'], 'DCR-2026-009')
+        self.assertEqual(rows[first.id]['dcr_number'], '')
+        self.assertEqual(rows[first.id]['created_at'], first.created_at)
+
     def test_queries_do_not_grow_with_the_page(self):
         self.proposal(0)
         with CaptureQueriesContext(connection) as one:

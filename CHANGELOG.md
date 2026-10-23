@@ -219,3 +219,8 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   - `run_monitoring` flags stalled proposals and vacant posts (schedule
     "QMS CDMS monitoring").
   - Migrations `0042`–`0044`.
+- **Fixed:** admin Proposals rows could not be told apart when one document
+  had several proposals from one office, and the status filter listed
+  "Closed" beside "Withdrawn". Rows now carry the DCR number or start date,
+  and group and single-status filters are separated. No proposal had been
+  listed twice; a test now guarantees each appears exactly once.

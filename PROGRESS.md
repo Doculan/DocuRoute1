@@ -3,6 +3,40 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — Admin Proposals: rows that looked repeated
+
+**Cause.** No proposal was ever listed twice. The data, the endpoint (every
+status option × office and series filters × every page, on the live copy
+and at scale) and the rendered screen each showed every proposal once.
+What looked like repeats was two things:
+
+- **Rows that could not be told apart.** One document can have several
+  proposals from one office: withdrawn, then started again; or made
+  effective twice over the years. At scale, 79 document-and-office pairs in
+  Closed have more than one. The row showed only manual, office, version,
+  status and date.
+- **Overlapping filter options.** "Closed" sat beside "Withdrawn" in one
+  flat list, so the same proposals were offered under both.
+
+**Fix.**
+- Each row says which request it is: its DCR number, or "started {date}"
+  before it has one.
+- The status filter separates "Groups" (In progress, "Closed (effective,
+  denied, withdrawn)", All) from "One status".
+
+**Tests.**
+- An exactly-once test (spec §8.2) runs every status option, with and
+  without the filters, across every page, on proposals with several
+  participants, versions and concurrences. It passes on the current code,
+  which never duplicated; with a participants join added it fails (144
+  rows against 48).
+- The row-identity test failed without the fix.
+
+**Also found, not fixed here:** `Proposal.updated_at` never changes after
+creation, because every transition saves with `update_fields=['status']`,
+which skips `auto_now`. "Most recent activity" is therefore creation
+order. Proposed for its own commit in 2B.
+
 ## 24 October 2026 — Decisions: SQLite retained, test policy, screen density
 
 Recorded in `CLAUDE.md`.

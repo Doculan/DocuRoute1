@@ -24,12 +24,13 @@ function when(value) {
   });
 }
 
-// The groups first, then each status on its own.
-const STATUS_FILTERS = [
+// Groups, then single statuses, kept visibly apart: "Closed" contains
+// Effective, Denied and Withdrawn, and listing them side by side read as
+// the same proposals offered twice.
+const STATUS_GROUPS = [
   ["open", "In progress"],
-  ["closed", "Closed"],
+  ["closed", "Closed (effective, denied, withdrawn)"],
   ["all", "All"],
-  ...Object.entries(STATUS_LABEL),
 ];
 
 const NO_FILTERS = { status: "open", office: "", series: "" };
@@ -113,9 +114,16 @@ export default function Proposals({ openId = null }) {
       <div className="row-wrap" style={{ gap: "0.5rem", marginBottom: "1rem" }}>
         <select className="select" aria-label="Status" style={FILTER_STYLE}
                 value={filters.status} onChange={choose("status")}>
-          {STATUS_FILTERS.map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
+          <optgroup label="Groups">
+            {STATUS_GROUPS.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="One status">
+            {Object.entries(STATUS_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </optgroup>
         </select>
         <select className="select" aria-label="Office" style={FILTER_STYLE}
                 value={filters.office} onChange={choose("office")}>
@@ -154,7 +162,10 @@ export default function Proposals({ openId = null }) {
             {data.results.map((p) => (
               <button key={p.id} className="series-row" onClick={() => setOpen(p.id)}>
                 <span className="series-code">{p.manual}</span>
-                <span className="series-title">from {p.office}</span>
+                {/* Which request: a document can have several from one office. */}
+                <span className="series-title">
+                  from {p.office} · {p.dcr_number || `started ${when(p.created_at)}`}
+                </span>
                 <span className="subtle text-xs">
                   {p.status === "concurrence"
                     ? `${p.concurred} of ${p.of} concurred`

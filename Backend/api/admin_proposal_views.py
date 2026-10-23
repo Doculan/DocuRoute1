@@ -113,7 +113,11 @@ def admin_proposals(request):
             'office': str(p.initiating_office),
             'status': p.status,
             'status_label': p.get_status_display(),
+            # Which request this is: one document can have several from one
+            # office (withdrawn, then made effective), and without these
+            # they read as one row shown twice.
             'dcr_number': p.dcr_number,
+            'created_at': p.created_at,
             'version': p.version_number,
             'concurred': p.concurred_total,
             'of': p.concurring_total,
