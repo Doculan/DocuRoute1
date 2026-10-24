@@ -45,7 +45,9 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   // Uploading is occasional; reading the list is constant. The form stays
   // folded away so it costs nothing on the visits where you are not uploading.
   const [showUpload, setShowUpload] = useState(false);
-  const [filters, setFilters] = useState({ series: "", uploader: "" });
+  const [filters, setFilters] = useState({ series: "", uploader: "", from: "", to: "" });
+  // Applies inside the series groups as well as to a filtered list.
+  const [sort, setSort] = useState("title");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -327,7 +329,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
     setExpandedRows(newExpanded);
   };
 
-  const filtering = Boolean(needle || filters.series || filters.uploader);
+  const filtering = Boolean(needle || filters.series || filters.uploader || filters.from || filters.to);
 
   // One admin row: expands for its details, deletes, opens its sections.
   const renderRow = (m) => (
@@ -638,10 +640,33 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                   <option key={u.id} value={u.id}>{u.username}</option>
                 ))}
               </select>
+              <select
+                className="select"
+                style={{ width: "auto" }}
+                aria-label="Sort"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                <option value="title">By title</option>
+                <option value="series">By series</option>
+                <option value="newest">Newest upload first</option>
+                <option value="oldest">Oldest upload first</option>
+                <option value="sections">Most sections first</option>
+              </select>
+              <label className="row text-sm subtle" style={{ gap: "0.4rem" }}>
+                Uploaded from
+                <input className="input" type="date" style={{ width: "auto" }} aria-label="Uploaded from"
+                       value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} />
+              </label>
+              <label className="row text-sm subtle" style={{ gap: "0.4rem" }}>
+                to
+                <input className="input" type="date" style={{ width: "auto" }} aria-label="Uploaded to"
+                       value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} />
+              </label>
               {filtering && (
                 <button
                   className="pill"
-                  onClick={() => { setSearchQuery(""); setNeedle(""); setFilters({ series: "", uploader: "" }); }}
+                  onClick={() => { setSearchQuery(""); setNeedle(""); setFilters({ series: "", uploader: "", from: "", to: "" }); }}
                 >
                   Clear
                 </button>
@@ -666,14 +691,15 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
               <p className="empty-text">Upload a master copy above to get started.</p>
             </div>
           ) : filtering ? (
-            <AdminPaged key={`${needle}|${filters.series}|${filters.uploader}|${reloadKey}`}
-                        params={{ q: needle, series: filters.series, uploader: filters.uploader }}
+            <AdminPaged key={`${needle}|${JSON.stringify(filters)}|${sort}|${reloadKey}`}
+                        params={{ q: needle, series: filters.series, uploader: filters.uploader,
+                                  uploaded_from: filters.from, uploaded_to: filters.to, sort }}
                         renderRow={renderRow} />
           ) : (
             <div className="col" style={{ gap: "0.5rem" }}>
               {summary.groups.map((g) => (
-                <AdminGroup key={`${g.series_id ?? "none"}|${reloadKey}`} group={g} renderRow={renderRow}
-                            startOpen={g === seriesToOpen(summary.groups)} />
+                <AdminGroup key={`${g.series_id ?? "none"}|${sort}|${reloadKey}`} group={g} sort={sort}
+                            renderRow={renderRow} startOpen={g === seriesToOpen(summary.groups)} />
               ))}
             </div>
           )}
@@ -699,7 +725,7 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
 }
 
 /** One series, folded unless it has the most open deadlines; 50 a page inside. */
-function AdminGroup({ group, renderRow, startOpen }) {
+function AdminGroup({ group, sort, renderRow, startOpen }) {
   const [open, setOpen] = useState(startOpen);
   return (
     <div className={`card accordion${group.open_deadlines > 0 ? " is-warning" : ""}`}>
@@ -716,7 +742,7 @@ function AdminGroup({ group, renderRow, startOpen }) {
       </button>
       {open && (
         <div className="accordion-body">
-          <AdminPaged params={{ series: group.series_id ?? "none" }} renderRow={renderRow} />
+          <AdminPaged params={{ series: group.series_id ?? "none", sort }} renderRow={renderRow} />
         </div>
       )}
     </div>

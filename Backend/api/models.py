@@ -547,6 +547,15 @@ class Manual(models.Model):
         null=True, blank=True, related_name='+',
     )
 
+    class Meta:
+        # The admin's sorts and the upload-date range (3B-2); the lists'
+        # default order is by title within a series.
+        indexes = [
+            models.Index(fields=['title'], name='manual_title_idx'),
+            models.Index(fields=['series', 'title'], name='manual_series_title_idx'),
+            models.Index(fields=['uploaded_at'], name='manual_uploaded_at_idx'),
+        ]
+
     def __str__(self):
         return self.title
 

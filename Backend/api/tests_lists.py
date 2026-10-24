@@ -171,6 +171,53 @@ class Paging(ListFixture):
         self.assertEqual(set(picked[0]), {'id', 'title', 'series_code'})
 
 
+class TheAdminsSortAndUploadRange(ListFixture):
+    """Sorted and ranged on the server, on indexed columns (0047)."""
+
+    def setUp(self):
+        super().setUp()
+        days = {self.m1: 10, self.m2: 5, self.m9: 1, self.self_approved: 20,
+                self.read_only: 3, self.a1: 30, self.loose: 2}
+        now = timezone.now()
+        for manual, ago in days.items():
+            Manual.objects.filter(pk=manual.pk).update(uploaded_at=now - datetime.timedelta(days=ago))
+
+    def titles(self, query):
+        return [r['title'] for r in self.rows(self.admin, f'/api/manuals/?page=1&{query}')['results']]
+
+    def test_each_sort(self):
+        self.assertEqual(self.titles('sort=title'),
+                         ['ACA 1', 'FAM 1', 'FAM 10', 'FAM 2', 'FAM 8', 'FAM 9', 'Loose document'])
+        series_order = [r['series'] for r in
+                        self.rows(self.admin, '/api/manuals/?page=1&sort=series')['results']]
+        self.assertEqual(series_order, sorted(series_order, key=lambda c: (c is not None, c or '')))
+        self.assertEqual(self.titles('sort=newest')[:3], ['FAM 9', 'Loose document', 'FAM 10'])
+        self.assertEqual(self.titles('sort=oldest')[:2], ['ACA 1', 'FAM 8'])
+        counts = [r['section_count'] for r in
+                  self.rows(self.admin, '/api/manuals/?page=1&sort=sections')['results']]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+        self.assertGreater(counts[0], counts[-1])
+
+    def test_the_range_includes_both_days(self):
+        today = timezone.localdate()
+        since = (today - datetime.timedelta(days=5)).isoformat()
+        until = (today - datetime.timedelta(days=2)).isoformat()
+        self.assertEqual(sorted(self.titles(f'uploaded_from={since}&uploaded_to={until}')),
+                         ['FAM 10', 'FAM 2', 'Loose document'])
+        # With no page asked for, the summary counts the same range.
+        groups = self.rows(self.admin, f'/api/manuals/?uploaded_from={since}&uploaded_to={until}')
+        self.assertEqual(groups['total'], 3)
+
+    def test_refusals_name_the_reason(self):
+        for query, reason in (('sort=size', 'invalid_sort'),
+                              ('uploaded_from=24-10-2026', 'invalid_date'),
+                              ('uploaded_to=yesterday', 'invalid_date'),
+                              ('uploaded_from=2026-10-20&uploaded_to=2026-10-01', 'invalid_range')):
+            response = self.as_(self.admin).get(f'/api/manuals/?page=1&{query}')
+            self.assertEqual(response.status_code, 400, query)
+            self.assertEqual(response.data['reason'], reason, query)
+
+
 class TheSummary(ListFixture):
 
     def test_series_with_counts_and_the_unassigned_last(self):
@@ -229,6 +276,7 @@ class QueriesDoNotGrowWithThePage(ListFixture):
                  (self.acc_head, '/api/staff/manuals/'),
                  (self.imr, '/api/staff/manuals/?page=1'),
                  (self.admin, '/api/manuals/?page=1'),
+                 (self.admin, '/api/manuals/?page=1&sort=sections'),
                  (self.acc_head, '/api/proposals/awaiting/'),
                  (self.acc_head, '/api/proposals/involving/'),
                  (self.imr, '/api/qms/queue/'),

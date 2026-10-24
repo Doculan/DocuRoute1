@@ -272,3 +272,5 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   opened, then the series, folded except the one with most deadlines.
   Requests shows its counts first. At full scale the slowest went from
   8.7 s to under 75 ms.
+- Admin Manuals sorts on the server and filters by an upload-date range,
+  on new indexes (migration `0047`).

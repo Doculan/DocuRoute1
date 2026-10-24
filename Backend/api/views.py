@@ -8,9 +8,9 @@ from django.core.exceptions import ValidationError
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.db.models import F, Q
+from django.db.models import Count, F, Q
 from django.db import transaction
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from .models import (
     Announcement, Concurrence, CustomUser,
     Manual, ManualSection, Office, OfficeLink,
@@ -741,16 +741,62 @@ def staff_list_manuals(request):
     return _manual_list(request, lists.manuals_in_reach(request.user))
 
 
+# The admin's sorts. All but the section count read an index on `Manual`
+# (0047); the section count is counted through ManualSection's own index.
+MANUAL_SORTS = {
+    'title': ('title', 'pk'),
+    'series': ('series__code', 'title', 'pk'),
+    'newest': ('-uploaded_at', '-pk'),
+    'oldest': ('uploaded_at', 'pk'),
+    'sections': ('-section_total', 'title', 'pk'),
+}
+
+
+def _upload_range(params):
+    """`uploaded_from` / `uploaded_to` (YYYY-MM-DD, both days included) as
+    bounds on the indexed `uploaded_at`, not a date function over it.
+    Returns (filters, refusal)."""
+    days = {}
+    for name in ('uploaded_from', 'uploaded_to'):
+        if params.get(name):
+            try:
+                days[name] = date.fromisoformat(params[name])
+            except ValueError:
+                return None, lists.refuse('Give the date as YYYY-MM-DD.', 'invalid_date')
+    if len(days) == 2 and days['uploaded_from'] > days['uploaded_to']:
+        return None, lists.refuse('The range starts after it ends.', 'invalid_range')
+    def start(day):
+        return timezone.make_aware(datetime.combine(day, datetime.min.time()))
+
+    filters = {}
+    if 'uploaded_from' in days:
+        filters['uploaded_at__gte'] = start(days['uploaded_from'])
+    if 'uploaded_to' in days:
+        filters['uploaded_at__lt'] = start(days['uploaded_to'] + timedelta(days=1))
+    return filters, None
+
+
 def _manual_list(request, manuals, admin=False):
     user, params = request.user, request.query_params
     if params.get('picker'):
         return Response({'manuals': list(manuals.order_by('series__code', 'title').values(
             'id', 'title', series_code=F('series__code')))})
-    if admin and params.get('uploader'):
-        try:
-            manuals = manuals.filter(uploaded_by_id=int(params['uploader']))
-        except ValueError:
-            return lists.refuse('Choose an uploader from the list.', 'invalid_uploader')
+    sort = MANUAL_SORTS['title']
+    if admin:
+        if params.get('uploader'):
+            try:
+                manuals = manuals.filter(uploaded_by_id=int(params['uploader']))
+            except ValueError:
+                return lists.refuse('Choose an uploader from the list.', 'invalid_uploader')
+        bounds, refusal = _upload_range(params)
+        if refusal:
+            return refusal
+        manuals = manuals.filter(**bounds)
+        if params.get('sort'):
+            if params['sort'] not in MANUAL_SORTS:
+                return lists.refuse('Sort by title, series, newest, oldest or sections.',
+                                    'invalid_sort')
+            sort = MANUAL_SORTS[params['sort']]
 
     q = (params.get('q') or '').strip()
     series = params.get('series')
@@ -777,8 +823,10 @@ def _manual_list(request, manuals, admin=False):
     page = lists.page_number(params)
     if page is None:
         return lists.refuse('Pages are numbered from 1.', 'invalid_page')
+    if sort is MANUAL_SORTS['sections']:
+        manuals = manuals.annotate(section_total=Count('sections'))
     rows, paging = lists.page_of(
-        manuals.select_related(*lists.MANUAL_RELATED).order_by('title', 'pk'), page)
+        manuals.select_related(*lists.MANUAL_RELATED).order_by(*sort), page)
     return Response({**paging, 'results': lists.manual_rows(user, rows)})
 
 
