@@ -365,12 +365,9 @@ def proposal_detail(request, proposal_id):
         return Response({'error': 'Access denied'}, status=403)
 
     version = proposal.current_version()
-    if not proposal.is_open:
-        return Response({
-            'error': f'This proposal is {proposal.get_status_display().lower()} '
-                     f'and can no longer be edited.',
-            'reason': 'not_open',
-        }, status=409)
+    refusal = _not_editable(proposal)
+    if refusal:
+        return refusal
 
     if 'overall_reason' in request.data:
         version.overall_reason = (request.data.get('overall_reason') or '').strip()
@@ -497,14 +494,28 @@ def _editable_proposal(request, proposal_id):
     if proposal.initiating_office_id not in offices:
         return None, Response({'error': 'Access denied'}, status=403)
 
-    if not proposal.is_open:
-        return None, Response({
+    refusal = _not_editable(proposal)
+    if refusal:
+        return None, refusal
+
+    return proposal, None
+
+
+def _not_editable(proposal):
+    """Why this proposal's text cannot be changed now, or None."""
+    if proposal.status == Proposal.WITH_HEAD:
+        return Response({
+            'error': ('It is with the Head. Recall it to change it, or wait for '
+                      'the Head to submit or return it.'),
+            'reason': 'with_head',
+        }, status=409)
+    if not proposal.is_editable:
+        return Response({
             'error': f'This proposal is {proposal.get_status_display().lower()} '
                      f'and can no longer be edited.',
             'reason': 'not_open',
         }, status=409)
-
-    return proposal, None
+    return None
 
 
 @api_view(['POST'])

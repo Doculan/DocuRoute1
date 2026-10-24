@@ -693,6 +693,29 @@ a:hover { color: var(--brand-500); }
 .notif-page .notif-msg { font-size: 0.9rem; }
 .notif-page .notif-detail { font-size: 0.85rem; }
 
+/* The action banner: persistent, never dismissible, one row at the top of
+   the page. Visually apart from announcements (which are dismissible). */
+.action-banner {
+  border-bottom: 1px solid var(--rule);
+  border-left: 4px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+  padding: 0.55rem 1.75rem;
+  font-size: 0.85rem;
+}
+.action-banner.is-collapsed { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+.action-banner-line { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.action-banner-link {
+  border: 0; background: none; padding: 0; font: inherit; color: inherit;
+  text-align: left; text-decoration: underline; cursor: pointer;
+}
+.action-banner-toggle {
+  margin-left: auto; border: 0; background: none; padding: 0; font: inherit;
+  font-size: 0.75rem; color: inherit; cursor: pointer; opacity: 0.8;
+}
+.action-banner-list { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+.action-banner-list li + li { margin-top: 0.15rem; }
+
 .app-content {
   flex: 1;
   overflow-y: auto;

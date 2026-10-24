@@ -219,6 +219,22 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   - `run_monitoring` flags stalled proposals and vacant posts (schedule
     "QMS CDMS monitoring").
   - Migrations `0042`–`0044`.
+- Phase 2B: **the Encoder-to-Head step.**
+  - The Encoder sends a ready draft to the Head; it is then "With the
+    Head" and frozen. The Head submits it (password) or returns it with a
+    note; the Encoder can recall it until the Head acts.
+  - A Head submits a draft directly only when they drafted it, or the
+    office has no Encoder.
+  - Each step is recorded and notifies. With no current Head, the office
+    above and the system admin are told; with no current Encoder, the
+    Head is.
+  - "With the Head" counts as a stall after 3 days.
+  - A persistent action banner names work returned to the office, until
+    it is sent on.
+  - Migration `0045`.
+- **Fixed:** a proposal's last activity (`updated_at`) never moved after it
+  was created, because transitions saved only their status.
+- The QMS landing shows its queue as counts that open Requests.
 - **Fixed:** admin Proposals rows could not be told apart when one document
   had several proposals from one office, and the status filter listed
   "Closed" beside "Withdrawn". Rows now carry the DCR number or start date,

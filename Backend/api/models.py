@@ -882,6 +882,9 @@ class Proposal(models.Model):
     """One office's proposed change to one document."""
 
     DRAFT = 'draft'
+    # Sent by the Encoder, waiting for the Head to submit or return it.
+    # Frozen while there, so the Head reads exactly what the Encoder sent.
+    WITH_HEAD = 'with_head'
     CONCURRENCE = 'concurrence'
     LOCKED = 'locked'
     AWAITING_SIGNATURE = 'awaiting_signature'
@@ -895,6 +898,7 @@ class Proposal(models.Model):
 
     STATUS_CHOICES = [
         (DRAFT, 'Draft'),
+        (WITH_HEAD, 'With the Head'),
         (CONCURRENCE, 'Out for concurrence'),
         (LOCKED, 'Locked'),
         (AWAITING_SIGNATURE, 'Awaiting signature'),
@@ -929,9 +933,14 @@ class Proposal(models.Model):
     # has already judged is refused - reopening it is the IMR's act.
     SCAN_STATUSES = (AWAITING_SIGNATURE, READY_FOR_IMR)
 
-    # Still open for work: drafting or concurring. What can be edited,
-    # returned and withdrawn.
-    OPEN_STATUSES = (DRAFT, CONCURRENCE)
+    # Still open for work: drafting, with the Head, or concurring. What can
+    # be returned and withdrawn, and what holds its office's slot.
+    OPEN_STATUSES = (DRAFT, WITH_HEAD, CONCURRENCE)
+
+    # What the office may still edit. Not while it is with the Head: the
+    # Head decides on the text the Encoder sent, and recalling it is how
+    # the Encoder takes it back.
+    EDITABLE_STATUSES = (DRAFT, CONCURRENCE)
 
     # Holding its sections: everything not yet closed. A locked request is
     # still on its way to being made effective, and until then nobody else
@@ -995,7 +1004,7 @@ class Proposal(models.Model):
             # spelled out because a nested class cannot see the outer one.
             models.UniqueConstraint(
                 fields=['manual', 'initiating_office'],
-                condition=Q(status__in=['draft', 'concurrence']),
+                condition=Q(status__in=['draft', 'with_head', 'concurrence']),
                 name='one_open_proposal_per_office_and_document',
             ),
         ]
@@ -1003,9 +1012,22 @@ class Proposal(models.Model):
     def __str__(self):
         return f"{self.manual.title} — {self.get_status_display()}"
 
+    def save(self, *args, **kwargs):
+        # Every transition saves with `update_fields=['status']`, which
+        # skips `auto_now` - so `updated_at` never moved after creation,
+        # and "most recent activity" was creation order.
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'updated_at' not in update_fields:
+            kwargs['update_fields'] = list(update_fields) + ['updated_at']
+        super().save(*args, **kwargs)
+
     @property
     def is_open(self):
         return self.status in self.OPEN_STATUSES
+
+    @property
+    def is_editable(self):
+        return self.status in self.EDITABLE_STATUSES
 
     @property
     def holds_sections(self):
@@ -1351,9 +1373,15 @@ class AuditEvent(models.Model):
     PACKAGE_RETURNED = 'package_returned'
     MADE_EFFECTIVE = 'made_effective'
     WITHDRAWN = 'withdrawn'
+    SENT_TO_HEAD = 'sent_to_head'
+    RECALLED = 'recalled'
+    RETURNED_TO_ENCODER = 'returned_to_encoder'
 
     EVENT_CHOICES = [
         (CREATED, 'Created'),
+        (SENT_TO_HEAD, 'Sent to the Head'),
+        (RECALLED, 'Recalled by the Encoder'),
+        (RETURNED_TO_ENCODER, 'Returned to the Encoder'),
         (SUBMITTED, 'Submitted for concurrence'),
         (CONCURRED, 'Concurred'),
         (RETURNED, 'Returned with feedback'),
@@ -1592,8 +1620,14 @@ class Notification(models.Model):
     WITHDRAWN = 'withdrawn'
     STALLED = 'stalled'
     POSITION_VACANT = 'position_vacant'
+    SENT_TO_HEAD = 'sent_to_head'
+    RETURNED_TO_ENCODER = 'returned_to_encoder'
+    RECALLED = 'recalled'
 
     KIND_CHOICES = [
+        (SENT_TO_HEAD, 'Sent to the Head'),
+        (RETURNED_TO_ENCODER, 'Returned to the Encoder'),
+        (RECALLED, 'Recalled by the Encoder'),
         (CONCURRENCE_REQUESTED, 'Concurrence requested'),
         (RETURNED_BY_OFFICE, 'Returned by an office'),
         (CONCURRED, 'An office concurred'),

@@ -86,6 +86,9 @@ urlpatterns = [
     # any return makes a new version and resets every concurrence.
     path('proposals/<int:proposal_id>/full/', concurrence.proposal_full),
     path('proposals/<int:proposal_id>/submit/', concurrence.submit),
+    path('proposals/<int:proposal_id>/send-to-head/', concurrence.send_to_head),
+    path('proposals/<int:proposal_id>/recall/', concurrence.recall),
+    path('proposals/<int:proposal_id>/return-to-encoder/', concurrence.return_to_encoder),
     path('proposals/<int:proposal_id>/decide/', concurrence.decide),
     path('proposals/<int:proposal_id>/withdraw/', concurrence.withdraw),
     path('proposals/awaiting/', concurrence.awaiting_my_office),
@@ -94,6 +97,7 @@ urlpatterns = [
     path('notifications/read/', inbox.mark_read),
     # What is waiting on this person, derived from the data, not the inbox.
     path('needs-action/', action_views.needs_action),
+    path('action-banner/', action_views.action_banner),
     path('proposals/<int:proposal_id>/package/', package.package),
     path('proposals/<int:proposal_id>/trail-report/', trail.generate),
     path('proposals/<int:proposal_id>/trail-report/log/', trail.log),

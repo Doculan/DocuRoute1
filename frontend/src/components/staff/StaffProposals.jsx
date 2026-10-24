@@ -272,7 +272,23 @@ function Proposal({ proposalId, onBack, onSay }) {
     }
   };
 
-  const editable = data.status === "draft" && data.can_submit !== undefined;
+  // Moves inside the office, with no password: Send to Head, Recall and
+  // Return to Encoder commit nothing outside it.
+  const move = async (url, body, success) => {
+    try {
+      await axios.post(`${BASE_URL}${url}`, body || {}, getAuth());
+      onSay(success);
+      setDecision(null);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.error || "That did not work.");
+    }
+  };
+
+  // Whose turn it is inside the office, from the latest step that says so.
+  const lastTurn = [...data.events].reverse().find((e) => [
+    "sent_to_head", "recalled", "returned_to_encoder", "submitted", "redrafted", "created",
+  ].includes(e.event));
 
   return (
     <div>
@@ -306,9 +322,26 @@ function Proposal({ proposalId, onBack, onSay }) {
         <ProposalPackage key={data.status} proposalId={proposalId} onChanged={load} />
       )}
 
+      {data.status === "with_head" && (
+        <div className="alert alert-info">
+          {data.can_return_to_encoder
+            ? "Sent to you by the Encoder. Submit it, or return it with a note."
+            : `With the Head since ${when(lastTurn?.at)}. Recall it to change anything.`}
+        </div>
+      )}
+
+      {data.status === "draft" && lastTurn?.event === "returned_to_encoder" && (
+        <div className="alert alert-warning">
+          <div className="strong">
+            {data.can_send_to_head ? "Returned by your Head" : "Returned to the Encoder"}
+          </div>
+          {lastTurn.detail && <p style={{ margin: "0.3rem 0 0" }}>“{lastTurn.detail}”</p>}
+        </div>
+      )}
+
       {data.status === "draft" && data.blockers.length > 0 && (
         <div className="alert alert-warning">
-          <div className="strong">Not ready to submit</div>
+          <div className="strong">Not ready yet</div>
           <ul style={{ margin: "0.4rem 0 0", paddingLeft: "1.1rem" }}>
             {data.blockers.map((b) => <li key={b}>{b}</li>)}
           </ul>
@@ -354,6 +387,31 @@ function Proposal({ proposalId, onBack, onSay }) {
       </section>
 
       <div className="row-wrap" style={{ gap: "0.5rem", marginTop: "1.75rem" }}>
+        {data.can_send_to_head && (
+          <button
+            className="btn btn-primary"
+            disabled={!data.ready_to_submit}
+            onClick={() => move(`/api/proposals/${proposalId}/send-to-head/`, null,
+                                "Sent to your Head.")}
+          >
+            Send to Head
+          </button>
+        )}
+
+        {data.can_recall && (
+          <button className="btn btn-ghost"
+                  onClick={() => move(`/api/proposals/${proposalId}/recall/`, null,
+                                      "Recalled. It is back in draft.")}>
+            Recall
+          </button>
+        )}
+
+        {data.can_return_to_encoder && (
+          <button className="btn btn-ghost" onClick={() => setDecision("to_encoder")}>
+            Return to Encoder
+          </button>
+        )}
+
         {data.can_submit && (
           <button
             className="btn btn-primary"
@@ -429,6 +487,14 @@ function Proposal({ proposalId, onBack, onSay }) {
               success: "Returned with your feedback.",
             });
           }}
+        />
+      )}
+
+      {decision === "to_encoder" && (
+        <ReturnToEncoderForm
+          onCancel={() => setDecision(null)}
+          onSend={(note) => move(`/api/proposals/${proposalId}/return-to-encoder/`,
+                                 { note }, "Returned to the Encoder with your note.")}
         />
       )}
 
@@ -872,6 +938,45 @@ function FeedbackForm({ data, feedback, onFeedback, section, onSection, onCancel
             <button type="submit" className="btn btn-danger"
                     disabled={busy || !feedback.trim() || !password}>
               {busy ? "Working…" : "Return it"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/** The Head's note to the Encoder. No password: it stays inside the office. */
+function ReturnToEncoderForm({ onCancel, onSend }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (busy || !note.trim()) return;
+    setBusy(true);
+    await onSend(note);
+    setBusy(false);
+  };
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal" style={{ maxWidth: "460px" }}>
+        <form onSubmit={submit}>
+          <div className="modal-head">
+            <h3 className="modal-title">Return to the Encoder?</h3>
+          </div>
+          <div className="modal-body col" style={{ gap: "1rem" }}>
+            <div className="field">
+              <label className="label" htmlFor="to-encoder-note">What needs changing</label>
+              <textarea id="to-encoder-note" className="textarea" rows={3} autoFocus
+                        value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={busy || !note.trim()}>
+              {busy ? "Working…" : "Return"}
             </button>
           </div>
         </form>

@@ -22,7 +22,13 @@ function since(value) {
  * `compact` shows each section as a count that opens its screen, for a
  * landing where reading must not be pushed down the page (the QMS portal);
  * the lists themselves live on that screen.
+ *
+ * Otherwise, by the spec's density rules (§11.1): a section lists rows only
+ * where this person can act, and only the first few; one where they can
+ * only wait - an Encoder whose Head must act - is a count.
  */
+const ROWS = 5;
+
 export default function NeedsAction({ onOpenProposal, onGo, refreshKey, compact = false }) {
   const [data, setData] = useState(null);
 
@@ -40,13 +46,15 @@ export default function NeedsAction({ onOpenProposal, onGo, refreshKey, compact 
     <section style={{ marginBottom: "1.75rem" }}>
       <h2 className="section-title">Needs your action</h2>
       <div className={compact ? "row-wrap" : "col"} style={{ gap: compact ? "0.6rem" : "1rem" }}>
-        {data.sections.map((section) => (
+        {data.sections.map((section) => {
+          const actionable = section.items.filter((i) => i.severity === "action").slice(0, ROWS);
+          return (
           <div key={section.key}>
-            {compact || section.items.length === 0 ? (
+            {compact || actionable.length === 0 ? (
               <button className="card card-pad card-interactive row"
                       style={{ gap: "0.75rem", alignItems: "center", textAlign: "left",
                                width: compact ? "auto" : "100%" }}
-                      onClick={() => onGo?.(section.go)}>
+                      onClick={() => onGo?.(section.go || "proposals")}>
                 <span className="badge badge-warning">{section.total}</span>
                 <span className="text-sm">{section.title}</span>
               </button>
@@ -56,7 +64,7 @@ export default function NeedsAction({ onOpenProposal, onGo, refreshKey, compact 
                   {section.title} · {section.total}
                 </div>
                 <div className="col" style={{ gap: "0.15rem" }}>
-                  {section.items.map((item) => (
+                  {actionable.map((item) => (
                     <button key={`${section.key}-${item.proposal_id}-${item.office}`}
                             className="series-row"
                             onClick={() => onOpenProposal?.(item.proposal_id)}>
@@ -71,15 +79,16 @@ export default function NeedsAction({ onOpenProposal, onGo, refreshKey, compact 
                     </button>
                   ))}
                 </div>
-                {section.total > section.items.length && (
-                  <span className="subtle text-xs">
-                    {section.total - section.items.length} more
-                  </span>
+                {section.total > actionable.length && (
+                  <button className="link-btn text-xs" onClick={() => onGo?.(section.go || "proposals")}>
+                    {section.total - actionable.length} more
+                  </button>
                 )}
               </>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

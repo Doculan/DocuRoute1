@@ -46,9 +46,14 @@ class NeedsAction(MonitoringFixture):
         self.assertIn('concurrence', self.sections(self.cash_head))
 
     def test_a_returned_draft_and_copies_to_sign_are_the_offices_to_do(self):
+        from api.models import AuditEvent
         returned = self.in_concurrence(days_ago=1)
         Proposal.objects.filter(pk=returned.pk).update(status=Proposal.DRAFT)
-        ProposalVersion.objects.create(proposal=returned, number=2)
+        version = ProposalVersion.objects.create(proposal=returned, number=2)
+        for kind, office in ((AuditEvent.RETURNED, self.bud), (AuditEvent.REDRAFTED, self.acc)):
+            AuditEvent.objects.create(proposal=returned, version=version, event=kind,
+                                      actor=self.bud_head, office=office,
+                                      office_name_at_time=office.name)
         signing = Proposal.objects.create(
             manual=Manual.objects.create(title='FAM 7.01', series=self.manual.series),
             initiating_office=self.acc, status=Proposal.AWAITING_SIGNATURE,
@@ -56,7 +61,7 @@ class NeedsAction(MonitoringFixture):
 
         mine = self.sections(self.acc_enc)
         self.assertEqual(mine['returned']['items'][0]['proposal_id'], returned.pk)
-        self.assertEqual(mine['returned']['items'][0]['label'], 'Redraft')
+        self.assertEqual(mine['returned']['items'][0]['label'], 'Redraft — returned by Budget Office')
         self.assertEqual(mine['signing']['items'][0]['proposal_id'], signing.pk)
 
     def test_the_qms_sees_its_stages(self):

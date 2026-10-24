@@ -135,11 +135,29 @@ class ConcurrenceFixture(TestCase):
         return proposal_id
 
     def submit(self, proposal_id, user=None):
+        """The Head submits. An Encoder's draft goes to the Head first
+        (Phase 2B), as its drafter would send it; a refusal to send - not
+        ready, stale checks, a rejected reason - is returned as the answer,
+        since it is the same bar the submission would have applied."""
         user = user or self.acc_head
+        proposal = Proposal.objects.get(pk=proposal_id)
+        is_head = Position.objects.filter(
+            office=proposal.initiating_office, kind=Position.HEAD,
+            assignments__user=user, assignments__ends_on__isnull=True,
+        ).exists()
+        if (is_head and proposal.status == Proposal.DRAFT
+                and proposal.created_by_id != user.pk):
+            sent = self.send_to_head(proposal_id, proposal.created_by)
+            if sent.status_code != 200:
+                return sent
         return self.as_(user).post(
             f'/api/proposals/{proposal_id}/submit/', {}, format='json',
             HTTP_X_REAUTH_TOKEN=self.token(user),
         )
+
+    def send_to_head(self, proposal_id, user=None):
+        return self.as_(user or self.acc_enc).post(
+            f'/api/proposals/{proposal_id}/send-to-head/', {}, format='json')
 
     def decide(self, proposal_id, user, decision, feedback='', section=None):
         body = {'decision': decision, 'feedback': feedback}
@@ -164,6 +182,7 @@ class SubmissionTests(ConcurrenceFixture):
 
     def test_submitting_needs_a_password(self):
         proposal_id = self.a_draft()
+        self.send_to_head(proposal_id)
         response = self.as_(self.acc_head).post(
             f'/api/proposals/{proposal_id}/submit/', {}, format='json',
         )
@@ -645,7 +664,7 @@ class AuditAndOversightTests(ConcurrenceFixture):
         )
         self.assertEqual(
             events,
-            [AuditEvent.CREATED, AuditEvent.SUBMITTED,
+            [AuditEvent.CREATED, AuditEvent.SENT_TO_HEAD, AuditEvent.SUBMITTED,
              AuditEvent.RETURNED, AuditEvent.REDRAFTED],
         )
 

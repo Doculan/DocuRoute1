@@ -69,7 +69,8 @@ SECTIONS_PER_MANUAL = 5
 
 # Open work, by status. Shares of `open_proposals`.
 OPEN_MIX = [
-    (Proposal.DRAFT, 0.30),
+    (Proposal.DRAFT, 0.25),
+    (Proposal.WITH_HEAD, 0.05),
     (Proposal.CONCURRENCE, 0.40),
     (Proposal.LOCKED, 0.03),
     (Proposal.AWAITING_SIGNATURE, 0.08),
@@ -581,7 +582,7 @@ class Command(BaseCommand):
                 for kind, at, office, detail in version_story['events']:
                     events.append(AuditEvent(
                         proposal=proposal, version=version, event=kind,
-                        actor_id=self._actor(office), office_id=office,
+                        actor_id=self._actor(office, kind), office_id=office,
                         position_id=self._position(office),
                         office_name_at_time=self.office_name[office],
                         detail=detail, at=at,
@@ -638,7 +639,9 @@ class Command(BaseCommand):
         versions = [{'created': at, 'events': [(AuditEvent.CREATED, at, office, '')],
                      'decisions': []}]
         returned_once = rng.random() < 0.25
-        submitted = status != Proposal.DRAFT or returned_once
+        # Still inside the office: drafting, or with its Head.
+        in_office = status in (Proposal.DRAFT, Proposal.WITH_HEAD)
+        submitted = not in_office or returned_once
         withdrawn_early = status == Proposal.WITHDRAWN and rng.random() < 0.5
         if withdrawn_early:
             submitted = False
@@ -653,11 +656,13 @@ class Command(BaseCommand):
                                               'Synthetic feedback.'))
                 versions.append({'created': at, 'events': [(AuditEvent.REDRAFTED, at, office, '')],
                                  'decisions': []})
-                if status != Proposal.DRAFT:
+                if not in_office:
                     versions[-1]['submitted'] = later()
                     versions[-1]['events'].append((AuditEvent.SUBMITTED, at, office, ''))
 
         current = versions[-1]
+        if status == Proposal.WITH_HEAD:
+            current['events'].append((AuditEvent.SENT_TO_HEAD, later(), office, ''))
         locked = None
         if status == Proposal.CONCURRENCE:
             for other in concurring:
@@ -792,6 +797,9 @@ class Command(BaseCommand):
                     AuditEvent.MADE_EFFECTIVE: (
                         Notification.MADE_EFFECTIVE, office_people(initiating + concurring, I, I),
                         f'{manual} is effective'),
+                    AuditEvent.SENT_TO_HEAD: (
+                        Notification.SENT_TO_HEAD, office_people(initiating, A, None),
+                        f'{manual} is with you to submit'),
                     AuditEvent.WITHDRAWN: (
                         Notification.WITHDRAWN, office_people(initiating + concurring, I, I),
                         f'{asker} withdrew {manual}'),
@@ -834,6 +842,10 @@ class Command(BaseCommand):
                 return after
             if kind == Notification.RETURNED_BY_OFFICE and after.event in (
                     AuditEvent.SUBMITTED, AuditEvent.WITHDRAWN):
+                return after
+            if kind == Notification.SENT_TO_HEAD and after.event in (
+                    AuditEvent.SUBMITTED, AuditEvent.RETURNED_TO_ENCODER,
+                    AuditEvent.RECALLED, AuditEvent.WITHDRAWN):
                 return after
             if kind == Notification.LOCKED and after.event == AuditEvent.PACKAGE_COMPLETE:
                 return after
@@ -879,10 +891,12 @@ class Command(BaseCommand):
         held = self.head_of.get(office)
         return held[0] if held else None
 
-    def _actor(self, office):
+    def _actor(self, office, kind=None):
         """Head, else Encoder, else any holder: an office with a vacant Head
-        still has someone to record its act."""
-        for table in (self.head_of, self.encoder_of):
+        still has someone to record its act. The Encoder sends to the Head."""
+        order = ((self.encoder_of, self.head_of) if kind == AuditEvent.SENT_TO_HEAD
+                 else (self.head_of, self.encoder_of))
+        for table in order:
             if office in table:
                 return table[office][0]
         return self.holders[office][0]

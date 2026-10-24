@@ -64,7 +64,8 @@ class SubmissionNotifiesConcurringOffices(NotificationFixture):
     def test_the_proposing_office_is_not_told_of_its_own_submission(self):
         proposal_id = self.a_draft()
         self.submit(proposal_id)
-        self.assertEqual(self.kinds_for(self.acc_head), [])
+        # Only the Encoder's handoff, from inside the office (Phase 2B).
+        self.assertEqual(self.kinds_for(self.acc_head), ['sent_to_head'])
         self.assertEqual(self.kinds_for(self.acc_enc), [])
 
 
@@ -176,8 +177,9 @@ class ActionClearsWhenDone(NotificationFixture):
             self.assertEqual(notice.acted_by, self.acc_head)
         acted = SystemEvent.objects.filter(kind=SystemEvent.NOTIFICATION_ACTED)
         self.assertEqual(acted.count(), before + 1)
-        self.assertEqual(sorted(acted.last().detail['notices']),
-                         sorted(n.pk for n in returned))
+        # One row for the submission, naming every copy of the return it
+        # cleared (with the Head's own handoff notice beside them).
+        self.assertTrue({n.pk for n in returned} <= set(acted.last().detail['notices']))
         self.assertEqual(version.number, 2)
 
     def test_withdrawing_clears_open_requests_and_tells_the_concurring_offices(self):
@@ -264,7 +266,8 @@ class TheTrailOfWhoWasTold(NotificationFixture):
         self.submit(proposal_id)
         event = AuditEvent.objects.get(proposal_id=proposal_id, event=AuditEvent.SUBMITTED)
 
-        notified = SystemEvent.objects.get(kind=SystemEvent.NOTIFIED)
+        notified = SystemEvent.objects.get(kind=SystemEvent.NOTIFIED,
+                                           detail__cause={'audit_event': event.pk})
         self.assertEqual(notified.actor_label, 'system')
         self.assertEqual(notified.detail['cause'], {'audit_event': event.pk})
         self.assertEqual({r['user'] for r in notified.detail['recipients']},
@@ -305,8 +308,9 @@ class ReadingNotifications(NotificationFixture):
         self.assertEqual(self.inbox(self.acc_head)['unread'], 1)
 
     def test_mark_all_read(self):
+        unread = Notification.objects.filter(recipient=self.acc_head, read_at__isnull=True).count()
         response = self.as_(self.acc_head).post('/api/notifications/read/', {}, format='json')
-        self.assertEqual(response.data['marked'], 1)
+        self.assertEqual(response.data['marked'], unread)
         self.assertEqual(self.inbox(self.acc_head)['unread'], 0)
 
     def test_marking_chosen_notices_read(self):

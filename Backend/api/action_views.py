@@ -6,14 +6,14 @@ marked read. Each section is one aggregate query plus a short page of rows
 - never a query per proposal.
 """
 
-from django.db.models import Exists, OuterRef, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import access, monitoring
 from .models import (
-    Concurrence, CustomUser, Position, PositionAssignment, Proposal,
+    AuditEvent, Concurrence, CustomUser, Position, PositionAssignment, Proposal,
     ProposalParticipant, ProposalVersion,
 )
 from .proposal_views import _current_assignments
@@ -43,6 +43,44 @@ def awaiting_count(office_ids):
     if not office_ids:
         return 0
     return awaiting_pairs(office_ids).values('proposal').distinct().count()
+
+
+# The steps that decide whose turn a draft is. The latest one says it.
+TURNS = [AuditEvent.CREATED, AuditEvent.SENT_TO_HEAD, AuditEvent.RECALLED,
+         AuditEvent.RETURNED_TO_ENCODER, AuditEvent.SUBMITTED, AuditEvent.REDRAFTED]
+
+
+def returned_drafts(user):
+    """Drafts sent back to this person's offices and not yet sent on.
+
+    Returned by another office (the redraft opened a new version) for
+    everyone in the office; returned by the Head for its Encoders - or for
+    the Head, where the office has no Encoder to do it. Annotated with
+    `last_turn` and `returned_by`. One query.
+    """
+    posts = _current_assignments(user)
+    office_ids = {a.position.office_id for a in posts}
+    encoder_of = {a.position.office_id for a in posts if a.position.kind == Position.ENCODER}
+    head_of = {a.position.office_id for a in posts if a.position.kind == Position.HEAD}
+    from .notifications import current_posts
+    staffed = {a.position.office_id for a in current_posts(head_of, [Position.ENCODER])}
+    redrafters = encoder_of | (head_of - staffed)
+    latest = AuditEvent.objects.filter(proposal=OuterRef('pk')).order_by('-at', '-pk')
+    return Proposal.objects.filter(
+        initiating_office_id__in=office_ids, status=Proposal.DRAFT,
+    ).annotate(
+        last_turn=Subquery(latest.filter(event__in=TURNS).values('event')[:1]),
+        returned_by=Subquery(latest.filter(event=AuditEvent.RETURNED)
+                             .values('office_name_at_time')[:1]),
+    ).filter(
+        Q(last_turn=AuditEvent.REDRAFTED)
+        | Q(last_turn=AuditEvent.RETURNED_TO_ENCODER, initiating_office_id__in=redrafters)
+    ).select_related('manual', 'initiating_office')
+
+
+def _by(proposal):
+    return ('your Head' if proposal.last_turn == AuditEvent.RETURNED_TO_ENCODER
+            else proposal.returned_by or 'another office')
 
 
 def _row(proposal, kind, label, severity, office=None):
@@ -81,12 +119,19 @@ def staff_sections(user):
 
     mine = Proposal.objects.filter(initiating_office_id__in=office_ids).select_related(
         'manual', 'initiating_office')
-    # Drafting again after a return: a draft whose version is not the first.
-    returned = mine.filter(status=Proposal.DRAFT).filter(
-        Exists(ProposalVersion.objects.filter(proposal=OuterRef('pk'), number__gt=1)))
+    with_head = mine.filter(status=Proposal.WITH_HEAD)
+    waiting = _section(
+        'with_head', 'With the Head', with_head.count(),
+        [_row(p, 'with_head',
+              'Submit or return' if p.initiating_office_id in head_of else 'Waiting on your Head',
+              'action' if p.initiating_office_id in head_of else 'info')
+         for p in with_head.order_by('updated_at')[:SHOWN]],
+    )
+    returned = returned_drafts(user)
     redraft = _section(
         'returned', 'Returned to your office', returned.count(),
-        [_row(p, 'returned', 'Redraft', 'action') for p in returned.order_by('updated_at')[:SHOWN]],
+        [_row(p, 'returned', f'Redraft — returned by {_by(p)}', 'action')
+         for p in returned.order_by('updated_at')[:SHOWN]],
     )
     signing = mine.filter(status__in=(Proposal.LOCKED, Proposal.AWAITING_SIGNATURE,
                                       Proposal.PACKAGE_RETURNED))
@@ -97,7 +142,7 @@ def staff_sections(user):
               else 'Upload signed copies', 'action')
          for p in signing.order_by('updated_at')[:SHOWN]],
     )
-    return [s for s in (concur, redraft, sign) if s]
+    return [s for s in (waiting, concur, redraft, sign) if s]
 
 
 def qms_sections(user):
@@ -137,6 +182,27 @@ def admin_sections():
     ]
     return [{'key': key, 'title': title, 'total': n, 'items': [], 'go': page}
             for key, title, n, page in counts if n]
+
+
+BANNER_SHOWN = 5
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def action_banner(request):
+    """What the persistent banner names: work returned to this person's
+    offices. It cannot be dismissed; it clears when the work is sent on.
+    Derived from the data, so it is right on every page load."""
+    if not access.current_offices(request.user):
+        return Response({'total': 0, 'items': []})
+    returned = returned_drafts(request.user)
+    return Response({
+        'total': returned.count(),
+        'items': [{
+            'proposal_id': p.pk, 'manual': p.manual.title, 'by': _by(p),
+            'office': p.initiating_office.name,
+        } for p in returned.order_by('-updated_at')[:BANNER_SHOWN]],
+    })
 
 
 @api_view(['GET'])

@@ -4,6 +4,7 @@
 
 export const STATUS_LABEL = {
   draft: "Draft",
+  with_head: "With the Head",
   concurrence: "Out for concurrence",
   locked: "Locked",
   awaiting_signature: "Awaiting signature",
@@ -30,7 +31,7 @@ export const WITH_PACKAGE = [
 
 // Still in progress, for list filters. Named, so a new finished status
 // does not arrive in "In progress" by default.
-export const IN_PROGRESS = ["draft", "concurrence", ...FROZEN];
+export const IN_PROGRESS = ["draft", "with_head", "concurrence", ...FROZEN];
 
 // The status-mark modifier: agreed or done, stopped, or still moving.
 export function statusTone(status) {

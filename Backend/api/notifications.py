@@ -22,6 +22,9 @@ told, when, and what they did.
 
 | Event | Who is told | Severity |
 |---|---|---|
+| Sent to the Head | The Head (none: the parent office's Head and the system admin) | action |
+| Returned to the Encoder | The Encoders (none: the Head) | action |
+| Recalled by the Encoder | The Head | info |
 | Submitted (or resubmitted) | Each concurring office | Head action, Encoder info |
 | Returned by an office | Initiating office | action |
 | Concurred | Initiating office | info |
@@ -245,7 +248,8 @@ def _actor_label(event):
 
 
 def _messages(event):
-    """(kind, recipients, title, body) for each notice this event sends."""
+    """(kind, recipients, title, body[, tell_the_actor]) for each notice
+    this event sends. The actor is left out unless the fifth is True."""
     proposal = event.proposal
     manual = proposal.manual.title
     initiating = [proposal.initiating_office_id]
@@ -253,6 +257,31 @@ def _messages(event):
     number = proposal.dcr_number or manual
     kind = event.event
 
+    if kind == AuditEvent.SENT_TO_HEAD:
+        heads = office_recipients(initiating, head=ACTION, encoder=None)
+        if heads:
+            return [(Notification.SENT_TO_HEAD, heads, f'{manual} is with you to submit',
+                     f'Sent by {office} — Encoder. Submit it, or return it with a note.')]
+        # No Head to send it to: the office above, and the admin who fills posts.
+        from .monitoring import system_admins
+        parent = proposal.initiating_office.parent_id
+        above = office_recipients([parent], head=ACTION, encoder=None) if parent else []
+        return [(Notification.SENT_TO_HEAD, above + system_admins(),
+                 f'{manual} is waiting for a Head',
+                 f'{office} has no current Head to submit it.')]
+    if kind == AuditEvent.RETURNED_TO_ENCODER:
+        encoders = office_recipients(initiating, head=None, encoder=ACTION)
+        if encoders:
+            return [(Notification.RETURNED_TO_ENCODER, encoders,
+                     f'Your Head returned {manual}', f'“{_excerpt(event.detail)}”')]
+        # No Encoder to redraft it: it stays with the Head, who is told so.
+        return [(Notification.RETURNED_TO_ENCODER,
+                 office_recipients(initiating, head=ACTION, encoder=None),
+                 f'{manual} is back in draft', 'The office has no current Encoder to redraft it.',
+                 True)]
+    if kind == AuditEvent.RECALLED:
+        return [(Notification.RECALLED, office_recipients(initiating, head=INFO, encoder=None),
+                 f'{manual} was recalled by the Encoder', 'It is back in draft.')]
     if kind == AuditEvent.SUBMITTED:
         version = event.version.number if event.version else 1
         return [(Notification.CONCURRENCE_REQUESTED,
@@ -322,7 +351,12 @@ def _messages(event):
 # Which open notices an event clears. `None` for the office means every
 # office's copy; 'event' means only the office that acted.
 _CLEARS = {
-    AuditEvent.SUBMITTED: [(Notification.RETURNED_BY_OFFICE, None)],
+    AuditEvent.SENT_TO_HEAD: [(Notification.RETURNED_TO_ENCODER, None)],
+    AuditEvent.RECALLED: [(Notification.SENT_TO_HEAD, None)],
+    AuditEvent.RETURNED_TO_ENCODER: [(Notification.SENT_TO_HEAD, None)],
+    AuditEvent.SUBMITTED: [(Notification.RETURNED_BY_OFFICE, None),
+                           (Notification.SENT_TO_HEAD, None),
+                           (Notification.RETURNED_TO_ENCODER, None)],
     AuditEvent.CONCURRED: [(Notification.CONCURRENCE_REQUESTED, 'event'),
                            (Notification.STALLED, 'event')],
     AuditEvent.RETURNED: [(Notification.CONCURRENCE_REQUESTED, None)],
@@ -340,6 +374,7 @@ _CLEARS = {
 
 # Events that move a proposal to a new stage end any stall in the old one.
 _ENDS_STALLS = {
+    AuditEvent.SENT_TO_HEAD, AuditEvent.RECALLED, AuditEvent.RETURNED_TO_ENCODER,
     AuditEvent.SUBMITTED, AuditEvent.RETURNED, AuditEvent.LOCKED,
     AuditEvent.DOCUMENTS_GENERATED, AuditEvent.PACKAGE_COMPLETE,
     AuditEvent.IMR_ACCEPTED, AuditEvent.IMR_DENIED, AuditEvent.APPROVAL_UPLOADED,
@@ -376,11 +411,12 @@ def notify(event):
         resolve(clearing, by=event.actor, label=_actor_label(event),
                 proposal=event.proposal, now=event.at)
     created = 0
-    for kind, recipients, title, body in _messages(event):
+    for kind, recipients, title, body, *tell_actor in _messages(event):
         created += len(create(
             kind, recipients, title=title, body=body,
             dedupe_key=f'audit:{event.pk}',
             proposal=event.proposal, manual=event.proposal.manual,
-            audit_event=event, exclude_user_id=event.actor_id, now=event.at,
+            audit_event=event, now=event.at,
+            exclude_user_id=None if tell_actor and tell_actor[0] else event.actor_id,
         ))
     return created

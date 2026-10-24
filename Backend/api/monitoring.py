@@ -44,6 +44,7 @@ DASHBOARD_AFTER = timedelta(minutes=15)
 
 # status -> (threshold stage, events that put a proposal in that status)
 STAGES = {
+    Proposal.WITH_HEAD: (MonitoringSetting.WITH_HEAD, [AuditEvent.SENT_TO_HEAD]),
     Proposal.CONCURRENCE: (MonitoringSetting.CONCURRENCE, [AuditEvent.SUBMITTED]),
     Proposal.AWAITING_SIGNATURE: (MonitoringSetting.AWAITING_SIGNATURE,
                                   [AuditEvent.DOCUMENTS_GENERATED, AuditEvent.LOCKED]),
@@ -56,6 +57,7 @@ STAGES = {
 }
 
 STAGE_LABEL = {
+    MonitoringSetting.WITH_HEAD: 'with the Head',
     MonitoringSetting.CONCURRENCE: 'in concurrence',
     MonitoringSetting.AWAITING_SIGNATURE: 'awaiting signed copies',
     MonitoringSetting.WITH_IMR: 'with the IMR',
@@ -140,6 +142,14 @@ def _undecided(proposals):
 
 def _holders(proposal, status, waiting):
     """Who holds the proposal now, as recipients, and what they are called."""
+    if status == Proposal.WITH_HEAD:
+        office = proposal.initiating_office
+        heads = notifications.office_recipients([office.pk], head=ACTION, encoder=None)
+        if heads:
+            return heads, [f'the Head of {office.name}']
+        above = (notifications.office_recipients([office.parent_id], head=ACTION, encoder=None)
+                 if office.parent_id else [])
+        return above + system_admins(), [f'a Head for {office.name} (none appointed)']
     if status == Proposal.CONCURRENCE:
         offices = waiting.get(proposal.pk, [])
         return (notifications.office_recipients([o.pk for o in offices], head=ACTION, encoder=INFO),

@@ -3,6 +3,71 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — v4.2 Phase 2B: Encoder to Head, action banner (Checkpoint 2B)
+
+- **New status "With the Head"** (`with_head`, migration `0045`).
+  - The Encoder sends a ready draft. Ready means the same bar as
+    submitting: every changed section checked, an acceptable reason.
+  - While it is with the Head, the text is frozen and the draft still
+    holds its office's slot.
+  - The Head submits it (password) or returns it with a required note
+    (no password). The Encoder may recall it until then (no password).
+  - A Head submits a draft directly only when they drafted it, or the
+    office has no current Encoder.
+  - The screen offers each person only the actions they can take.
+- **Notifications:**
+  - sent to Head → the Head (action); with no current Head, the parent
+    office's Head and the system admin
+  - returned to Encoder → the Encoders (action), with the note; with no
+    current Encoder, the Head
+  - recalled → the Head (info)
+  - each clears the earlier notice
+- **Stalls:** with the Head past 3 days notifies the Head (action) and the
+  Encoders (info).
+- **Needs your action:**
+  - "With the Head" says whose turn it is ("Submit or return" or "Waiting
+    on your Head").
+  - "Returned to your office" is read from the latest step, so returns by
+    another office and by the Head are both caught, and a recall is not.
+  - By §11.1, a section lists at most 5 rows, and only where the person
+    can act; otherwise it is a count.
+- **The action banner** (staff portal) names work returned to the office
+  on every page. It cannot be dismissed, only resolved. It is one line by
+  default, with "Show all" for the list.
+- **Fixed:** `Proposal.updated_at` now moves on every transition.
+- **Approved at Checkpoint 2B (24 Oct 2026).** Phase 2 tagged `v4.2.0-p2`.
+- **Also, before 2B:** the admin Proposals duplicate report (rows that
+  could not be told apart; nothing was listed twice), and the QMS landing
+  collapsed to counts.
+
+**What was run, and why:**
+- **During 2B:** the new `tests_head_step` and every module importing the
+  changed code (concurrence, notifications, needs-action, monitoring,
+  admin proposals, proposals): 206 tests. 6 older tests needed their
+  expectations updated for the new step and its notices.
+- **Code-removal proof:** 24 cases, each removed piece of code failing its
+  tests.
+- **Full suite** at the end of 2B, and before `0045` (which rebuilds
+  `api_proposal`) went live: **762 tests passed**.
+- **Migration `0045`:** applied to a copy first (statuses and timestamps
+  identical before and after), then live (backup
+  `db.sqlite3.bak-20261024-pre-0045`).
+- **`check_setup.py`:** Ready, fingerprint `6a6a5c667a3c4d11`.
+- **At full scale:** needs-action 21 ms, banner 8 ms, staff home 23 ms.
+  The first monitoring run took 40 s with the test suite running
+  alongside; it flagged 3,329 stalls, including 233 with the Head.
+- **Headless Chrome on the scale copy:**
+  - the Head returns a draft with a note
+  - the Encoder sees the banner and the Head's note
+  - the Encoder recalls a draft
+  - the banner folds and opens
+
+  No console errors.
+- **Not run:** `evaluate_folds.py`, because no pipeline code was touched.
+  The full run-docuroute demo paths were not run either; the
+  submit-and-concur flow is covered by the suite and was not re-driven in
+  the browser.
+
 ## 24 October 2026 — Admin Proposals: rows that looked repeated
 
 **Cause.** No proposal was ever listed twice. The data, the endpoint (every

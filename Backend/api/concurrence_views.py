@@ -185,41 +185,13 @@ def _head_of(user, office):
 
 # ─── Submitting ──────────────────────────────────────────────
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def submit(request, proposal_id):
-    """Send a draft out for concurrence, or straight to locked.
+def _readiness_refusal(proposal, version):
+    """Why this draft cannot leave the drafter yet, or None.
 
-    Freezes the participants at this moment. If no other office has to
-    concur, there is nobody to ask and it locks immediately - the process
-    has reached agreement by having only one party to it.
+    The same bar for Send to Head as for Submit, so the Head sees exactly
+    what the Encoder read: every changed section checked against its
+    current text, and an acceptable reason.
     """
-
-    proposal, error = _load(request, proposal_id)
-    if error:
-        return error
-
-    office = proposal.initiating_office
-    if _head_of(request.user, office) is None:
-        return Response({
-            'error': (
-                f'Only the Head of {office} can submit this. On the form the '
-                f'Head signs alongside the requester.'
-            ),
-            'reason': 'not_head',
-        }, status=403)
-
-    if proposal.status != Proposal.DRAFT:
-        return Response({
-            'error': f'This proposal is {proposal.get_status_display().lower()}.',
-            'reason': 'not_draft',
-        }, status=409)
-
-    failure = reauth_failure(request)
-    if failure:
-        return failure
-
-    version = proposal.current_version()
     changes = list(
         SectionChange.objects.filter(version=version).select_related('section')
     )
@@ -259,6 +231,74 @@ def submit(request, proposal_id):
             ),
             'reason': 'stale_checks',
         }, status=409)
+    return None
+
+
+def has_current_encoder(office):
+    return bool(notifications.current_posts([office.pk], [Position.ENCODER]))
+
+
+def head_may_submit_draft(user, proposal):
+    """A Head submits a draft directly - without it being sent - only when
+    they drafted it themselves, or the office has no Encoder to send it."""
+    return (proposal.created_by_id == user.pk
+            or not has_current_encoder(proposal.initiating_office))
+
+
+def _encoder_of(user, office):
+    """The Encoder post this person holds there - and not the Head's: a
+    Head who drafts submits directly rather than sending it to themselves."""
+    if _head_of(user, office) is not None:
+        return None
+    return _held_position(user, office, kinds=[Position.ENCODER])
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit(request, proposal_id):
+    """Send it out for concurrence, or straight to locked.
+
+    From the Head: a draft the Encoder sent (`with_head`), or one the Head
+    may submit directly. Freezes the participants at this moment. If no
+    other office has to concur, there is nobody to ask and it locks
+    immediately - the process has reached agreement by having only one
+    party to it.
+    """
+
+    proposal, error = _load(request, proposal_id)
+    if error:
+        return error
+
+    office = proposal.initiating_office
+    if _head_of(request.user, office) is None:
+        return Response({
+            'error': (
+                f'Only the Head of {office} can submit this. On the form the '
+                f'Head signs alongside the requester.'
+            ),
+            'reason': 'not_head',
+        }, status=403)
+
+    if proposal.status not in (Proposal.DRAFT, Proposal.WITH_HEAD):
+        return Response({
+            'error': f'This proposal is {proposal.get_status_display().lower()}.',
+            'reason': 'not_draft',
+        }, status=409)
+    if proposal.status == Proposal.DRAFT and not head_may_submit_draft(request.user, proposal):
+        return Response({
+            'error': ('This draft is the Encoder\'s. It comes to you when they '
+                      'send it to you.'),
+            'reason': 'send_to_head_first',
+        }, status=409)
+
+    failure = reauth_failure(request)
+    if failure:
+        return failure
+
+    version = proposal.current_version()
+    refusal = _readiness_refusal(proposal, version)
+    if refusal:
+        return refusal
 
     with transaction.atomic():
         concurring = _freeze_participants(proposal)
@@ -285,6 +325,111 @@ def submit(request, proposal_id):
 
         proposal.refresh_open_changes()
 
+    return Response(_full_payload(proposal))
+
+
+# ─── Encoder and Head ────────────────────────────────────────
+#
+# Drafting (Encoder) --Send to Head--> With Head --Submit--> In concurrence
+#        ^                                |
+#        '-- Return to Encoder / Recall --'
+#
+# No password on these three: they move a draft inside one office and
+# commit nothing to anyone outside it (CLAUDE.md, re-authentication).
+
+def _move(proposal, status, event, user, office, position, detail=''):
+    with transaction.atomic():
+        proposal.status = status
+        proposal.save(update_fields=['status'])
+        _record(proposal, proposal.current_version(), event, user, office,
+                detail=detail, position=position)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_to_head(request, proposal_id):
+    """The Encoder hands a ready draft to the Head."""
+    proposal, error = _load(request, proposal_id)
+    if error:
+        return error
+    office = proposal.initiating_office
+    if _head_of(request.user, office) is not None:
+        return Response({
+            'error': 'You are the Head of this office: submit it directly.',
+            'reason': 'head_submits_directly',
+        }, status=409)
+    position = _encoder_of(request.user, office)
+    if position is None:
+        return Response({
+            'error': f'Only an Encoder of {office} sends its drafts to the Head.',
+            'reason': 'not_encoder',
+        }, status=403)
+    if proposal.status != Proposal.DRAFT:
+        return Response({
+            'error': f'This proposal is {proposal.get_status_display().lower()}.',
+            'reason': 'not_draft',
+        }, status=409)
+    refusal = _readiness_refusal(proposal, proposal.current_version())
+    if refusal:
+        return refusal
+
+    _move(proposal, Proposal.WITH_HEAD, AuditEvent.SENT_TO_HEAD,
+          request.user, office, position)
+    return Response(_full_payload(proposal))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def recall(request, proposal_id):
+    """The Encoder takes it back before the Head has acted."""
+    proposal, error = _load(request, proposal_id)
+    if error:
+        return error
+    office = proposal.initiating_office
+    position = _encoder_of(request.user, office)
+    if position is None:
+        return Response({
+            'error': f'Only an Encoder of {office} recalls a draft from the Head.',
+            'reason': 'not_encoder',
+        }, status=403)
+    if proposal.status != Proposal.WITH_HEAD:
+        return Response({
+            'error': 'It is not with the Head, so there is nothing to recall.',
+            'reason': 'not_with_head',
+        }, status=409)
+
+    _move(proposal, Proposal.DRAFT, AuditEvent.RECALLED, request.user, office, position)
+    return Response(_full_payload(proposal))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def return_to_encoder(request, proposal_id):
+    """The Head sends it back to the Encoder, saying what to change."""
+    proposal, error = _load(request, proposal_id)
+    if error:
+        return error
+    office = proposal.initiating_office
+    position = _head_of(request.user, office)
+    if position is None:
+        return Response({
+            'error': f'Only the Head of {office} returns a draft to the Encoder.',
+            'reason': 'not_head',
+        }, status=403)
+    if proposal.status != Proposal.WITH_HEAD:
+        return Response({
+            'error': 'It is not with you, so there is nothing to return.',
+            'reason': 'not_with_head',
+        }, status=409)
+    note = (request.data.get('note') or '').strip()
+    if not note:
+        return Response({
+            'error': 'Say what needs changing, so the Encoder knows what to do.',
+            'reason': 'note_required',
+        }, status=400)
+
+    _move(proposal, Proposal.DRAFT, AuditEvent.RETURNED_TO_ENCODER,
+          request.user, office, position, detail=note)
     return Response(_full_payload(proposal))
 
 
@@ -631,10 +776,18 @@ def proposal_full(request, proposal_id):
         for o in access.current_offices(request.user)
         if o.pk in undecided
     )
-    data['can_submit'] = bool(
-        proposal.status == Proposal.DRAFT
-        and _head_of(request.user, proposal.initiating_office) is not None
-    )
+    # Each action offered only where the server would accept it: an
+    # Encoder never sees a button they cannot use.
+    office = proposal.initiating_office
+    is_head = _head_of(request.user, office) is not None
+    is_encoder = _encoder_of(request.user, office) is not None
+    data['can_submit'] = bool(is_head and (
+        proposal.status == Proposal.WITH_HEAD
+        or (proposal.status == Proposal.DRAFT
+            and head_may_submit_draft(request.user, proposal))))
+    data['can_send_to_head'] = is_encoder and proposal.status == Proposal.DRAFT
+    data['can_recall'] = is_encoder and proposal.status == Proposal.WITH_HEAD
+    data['can_return_to_encoder'] = is_head and proposal.status == Proposal.WITH_HEAD
     # The server's own rule for withdrawing, so the screen offers it exactly
     # where it works. The screen used `can_submit`, which ends at the
     # draft: a request out for concurrence could be withdrawn, and nobody

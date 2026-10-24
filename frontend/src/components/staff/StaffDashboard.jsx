@@ -9,6 +9,7 @@ import StaffProposals from "./StaffProposals";
 import Topbar from "../Topbar";
 import NotificationBell from "../NotificationBell";
 import NotificationsPage from "../NotificationsPage";
+import ActionBanner from "../ActionBanner";
 import Account from "../Account";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
@@ -248,6 +249,8 @@ export default function StaffDashboard({ onLogout }) {
             />
           }
         />
+
+        <ActionBanner onOpenProposal={openProposal} refreshKey={`${bellKey}-${activePage}`} />
 
         <main className="app-content">
           <div
