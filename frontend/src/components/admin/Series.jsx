@@ -3,6 +3,7 @@ import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import Pager from "../Pager";
 
 const BASE_URL = "";
 
@@ -151,13 +152,15 @@ export default function Series() {
 function UnassignedList({ series, onSay, onChanged }) {
   const [shown, setShown] = useState(false);
   const [documents, setDocuments] = useState([]);
+  const [paging, setPaging] = useState(null);
   const [pending, setPending] = useState(null);
 
-  const open = async () => {
+  const open = async (page = paging?.page || 1) => {
     const { data } = await axios.get(
-      `${BASE_URL}/api/org/documents/?unassigned=true`, getAuth()
+      `${BASE_URL}/api/org/documents/`, { ...getAuth(), params: { unassigned: "true", page } }
     );
     setDocuments(data.documents);
+    setPaging(data);
     setShown(true);
   };
 
@@ -179,7 +182,7 @@ function UnassignedList({ series, onSay, onChanged }) {
   };
 
   if (!shown) {
-    return <button className="btn btn-ghost btn-sm" onClick={open}>Show them</button>;
+    return <button className="btn btn-ghost btn-sm" onClick={() => open(1)}>Show them</button>;
   }
 
   return (
@@ -188,6 +191,7 @@ function UnassignedList({ series, onSay, onChanged }) {
         <div key={d.id} className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
           <span className="doc-ref">{d.title}</span>
           <span className="subtle text-xs">{d.section_count} sections</span>
+          <DeadlineTag tag={d.deadline} />
           <select
             className="select"
             style={{ maxWidth: "16rem" }}
@@ -208,6 +212,7 @@ function UnassignedList({ series, onSay, onChanged }) {
       {documents.length === 0 && (
         <span className="subtle text-sm">All documents are placed.</span>
       )}
+      <Pager paging={paging} onPage={(n) => open(n)} />
 
       {pending && (
         <ConfirmDestructive
@@ -228,6 +233,7 @@ function UnassignedList({ series, onSay, onChanged }) {
 
 function SeriesDetail({ seriesId, onBack, onSay }) {
   const [data, setData] = useState(null);
+  const [page, setPage] = useState(1);
   const [offices, setOffices] = useState([]);
   const [error, setError] = useState("");
   const [editingLinks, setEditingLinks] = useState(false);
@@ -238,12 +244,12 @@ function SeriesDetail({ seriesId, onBack, onSay }) {
 
   const load = useCallback(async () => {
     const [detail, tree] = await Promise.all([
-      axios.get(`${BASE_URL}/api/org/series/${seriesId}/`, getAuth()),
+      axios.get(`${BASE_URL}/api/org/series/${seriesId}/`, { ...getAuth(), params: { page } }),
       axios.get(`${BASE_URL}/api/org/offices/`, getAuth()),
     ]);
     setData(detail.data);
     setOffices(tree.data.offices);
-  }, [seriesId]);
+  }, [seriesId, page]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -358,7 +364,9 @@ function SeriesDetail({ seriesId, onBack, onSay }) {
           </section>
 
           <section>
-            <h2 className="section-title">Documents</h2>
+            <h2 className="section-title">
+              Documents{data.documents_paging ? ` · ${data.documents_paging.count.toLocaleString()}` : ""}
+            </h2>
             {data.documents.length === 0 ? (
               <p className="subtle text-sm" style={{ margin: 0 }}>
                 No documents in this series yet.
@@ -379,8 +387,10 @@ function SeriesDetail({ seriesId, onBack, onSay }) {
                     {!d.can_be_proposed_against && (
                       <span className="badge badge-warning">nobody can propose</span>
                     )}
+                    <DeadlineTag tag={d.deadline} />
                   </button>
                 ))}
+                <Pager paging={data.documents_paging} onPage={setPage} />
               </div>
             )}
           </section>

@@ -18,12 +18,14 @@ in one transaction, or not at all.
 """
 
 from django.db import transaction
+from django.db.models import OuterRef, Q, Subquery
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, deadlines, notifications
+from . import access, deadlines, lists, notifications
+from .deadline_tags import tag_rows
 from .concurrence_views import _full_payload, _load, can_see
 from .document_status import read_status_fields, status_payload, suggested_status
 from .generation.common import position_title
@@ -86,48 +88,92 @@ def me(request):
 
 # --- the queue -----------------------------------------------
 
-def _queue_row(proposal):
-    last = proposal.events.order_by('-at').first()
-    return {
-        'id': proposal.id,
-        'manual': proposal.manual.title,
-        'dcr_number': proposal.dcr_number,
-        'office': proposal.initiating_office.name,
-        'status': proposal.status,
-        'status_label': proposal.get_status_display(),
-        'since': last.at if last else proposal.updated_at,
-    }
+QUEUES = ('imr', 'approval', 'custodian')
+
+
+def _queues(user):
+    """{queue: proposals} for the queues this person's QMS positions
+    hold. None where they hold no such position. A fixed number of
+    queries whatever the queues hold."""
+    queues = {name: None for name in QUEUES}
+    if qms_position(user, Position.IMR):
+        # Their own office's requests are another IMR's to decide.
+        own = [a.position.office_id for a in _current_assignments(user)]
+        queues['imr'] = Proposal.objects.filter(status=Proposal.READY_FOR_IMR)
+        # A returned package waits on the IMR only when the custodian's
+        # latest return named the approving authority's signed DCR (as
+        # `package_views.latest_return` reads it). One query over the
+        # returned packages, never one per request.
+        latest = {}
+        for proposal_id, kinds in QmsDecision.objects.filter(
+                stage=QmsDecision.CUSTODIAN, outcome=QmsDecision.RETURN,
+                proposal__status=Proposal.PACKAGE_RETURNED,
+        ).order_by('proposal_id', '-decided_at').values_list('proposal_id', 'returned_kinds'):
+            latest.setdefault(proposal_id, kinds or [])
+        returned = [pk for pk, kinds in latest.items() if Attachment.APPROVED_DCR in kinds]
+        queues['approval'] = Proposal.objects.filter(
+            Q(status=Proposal.AWAITING_APPROVAL) | Q(pk__in=returned),
+        ).exclude(initiating_office_id__in=own)
+    if qms_position(user, Position.DOCUMENT_CUSTODIAN):
+        # Not a returned package: that waits on the requesting office.
+        queues['custodian'] = Proposal.objects.filter(status=Proposal.WITH_CUSTODIAN)
+    return queues
+
+
+def _queue_rows(user, proposals):
+    """One page of a queue, oldest first, each with when it last moved
+    (the latest event, by subquery) and its deadline tag."""
+    rows = [{
+        'id': p.id,
+        'manual_id': p.manual_id,
+        'manual': p.manual.title,
+        'dcr_number': p.dcr_number,
+        'office': p.initiating_office.name,
+        'status': p.status,
+        'status_label': p.get_status_display(),
+        'since': p.last_at or p.updated_at,
+    } for p in proposals]
+    return tag_rows(user, rows)
+
+
+def _queue_page(user, proposals, page):
+    rows, paging = lists.page_of(
+        proposals.select_related('manual', 'initiating_office')
+        .annotate(last_at=Subquery(AuditEvent.objects.filter(proposal=OuterRef('pk'))
+                                   .order_by('-at').values('at')[:1]))
+        .order_by('updated_at', 'pk'), page)
+    return _queue_rows(user, rows), paging
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def queue(request):
-    """What is waiting on this person's QMS positions. Empty lists, not
-    an error, for someone who holds neither - the screen then shows
-    nothing rather than a queue that can never fill."""
-    user = request.user
-    waiting = {'imr': [], 'approval': [], 'custodian': []}
-    base = Proposal.objects.select_related('manual', 'initiating_office')
-    if qms_position(user, Position.IMR):
-        waiting['imr'] = [
-            _queue_row(p) for p in base.filter(status=Proposal.READY_FOR_IMR)
-        ]
-        waiting['approval'] = [
-            _queue_row(p) for p in base.filter(status=Proposal.AWAITING_APPROVAL)
-            if conflicting_office(user, p) is None
-        ]
-        from .package_views import latest_return
-        for proposal in base.filter(status=Proposal.PACKAGE_RETURNED):
-            returned = latest_return(proposal)
-            if (returned and Attachment.APPROVED_DCR in returned.returned_kinds
-                    and conflicting_office(user, proposal) is None):
-                waiting['approval'].append(_queue_row(proposal))
-    if qms_position(user, Position.DOCUMENT_CUSTODIAN):
-        # Not a returned package: that waits on the requesting office.
-        waiting['custodian'] = [
-            _queue_row(p) for p in base.filter(status=Proposal.WITH_CUSTODIAN)
-        ]
-    return Response(waiting)
+    """What is waiting on this person's QMS positions: counts first, then
+    each queue's first page of 50 (`imr`, `approval`, `custodian`).
+    `?queue=<name>&page=<n>` is one page of one queue. Empty lists, not an
+    error, for someone who holds neither position."""
+    queues = _queues(request.user)
+    name = request.query_params.get('queue')
+    if name:
+        if name not in QUEUES:
+            return lists.refuse('Unknown queue.', 'invalid_queue')
+        page = lists.page_number(request.query_params)
+        if page is None:
+            return lists.refuse('Pages are numbered from 1.', 'invalid_page')
+        if queues[name] is None:
+            return Response({'results': [], 'count': 0, 'page': 1,
+                             'page_size': lists.PAGE_SIZE, 'pages': 1})
+        rows, paging = _queue_page(request.user, queues[name], page)
+        return Response({**paging, 'results': rows})
+
+    data, totals = {}, {}
+    for key in QUEUES:
+        if queues[key] is None:
+            data[key], totals[key] = [], 0
+            continue
+        data[key], paging = _queue_page(request.user, queues[key], 1)
+        totals[key] = paging['count']
+    return Response({**data, 'totals': totals})
 
 
 # --- the IMR's decision --------------------------------------

@@ -265,3 +265,10 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   one.
 - **Fixed (tests):** a test that commits no longer removes the rows the
   migrations insert for the tests after it.
+- Phase 3B-2: **the long lists rebuilt.** My Manuals, the QMS and admin
+  Manuals lists, Awaiting, Involving, Requests and the organisation's
+  document lists open on a summary or a page of 50, filtered on the
+  server, each with its deadline tags. My Manuals leads with Recently
+  opened, then the series, folded except the one with most deadlines.
+  Requests shows its counts first. At full scale the slowest went from
+  8.7 s to under 75 ms.

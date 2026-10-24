@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db import transaction
 from datetime import timedelta
 from .models import (
@@ -17,7 +17,7 @@ from .models import (
     Position, Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
 )
 from ml.ocr_engine import extract_text
-from api import access, document_status
+from api import access, document_status, lists
 from api.deadline_tags import deadline_tags_for, tag_rows
 from ml.svm_model import predict_section
 import difflib
@@ -728,30 +728,58 @@ def reject_user(request, user_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_list_manuals(request):
-    """The documents linked to the offices where this person holds a position."""
+    """My Manuals, and the QMS Manuals list: the documents this person reads.
+
+    Reading first (spec §11.1). With none of `series`, `q` or `page`, the
+    summary: what they opened last, then the series with their counts and
+    how many of each have an open deadline. With any of them, one page of
+    50 manuals (`series=<id>|none`, `q=` title or series code). `picker=1`
+    is every id and title, by series, for a filter's drop-down.
+    """
     if not access.has_unit(request.user):
         return _no_unit_error()
-    manuals = access.manuals_for(
-        request.user, Manual.objects.all()
-    ).order_by('-uploaded_at')
-    data = [{
-        'id': m.id,
-        'title': m.title,
-        # What this document *is* to the reader's offices, which is the
-        # question a list of manuals actually answers.
-        'series': m.series.code if m.series_id else None,
-        'series_title': m.series.title if m.series_id else None,
-        'owner': str(m.effective_owner) if m.effective_owner else None,
-        'relationship': _relationship_for(request.user, m),
-        'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
-        'uploaded_at': m.uploaded_at,
-        'section_count': m.sections.count(),
-        'version': m.version,
-        'revision': m.revision,
-        'display_status': f"v{m.version} rev{m.revision}",
-        'status': document_status.status_payload(m.current_status),
-    } for m in manuals]
-    return Response(data)
+    return _manual_list(request, lists.manuals_in_reach(request.user))
+
+
+def _manual_list(request, manuals, admin=False):
+    user, params = request.user, request.query_params
+    if params.get('picker'):
+        return Response({'manuals': list(manuals.order_by('series__code', 'title').values(
+            'id', 'title', series_code=F('series__code')))})
+    if admin and params.get('uploader'):
+        try:
+            manuals = manuals.filter(uploaded_by_id=int(params['uploader']))
+        except ValueError:
+            return lists.refuse('Choose an uploader from the list.', 'invalid_uploader')
+
+    q = (params.get('q') or '').strip()
+    series = params.get('series')
+    if not (q or series or params.get('page')):
+        data = {'total': manuals.count(),
+                'groups': lists.series_groups(manuals, lists.open_deadlines_by_series(user, manuals))}
+        if admin:
+            data['uploaders'] = list(CustomUser.objects.filter(
+                pk__in=Manual.objects.values('uploaded_by_id')).order_by('username')
+                .values('id', 'username'))
+        else:
+            data['recently_opened'] = _recently_opened(user)
+        return Response(data)
+
+    if series == 'none':
+        manuals = manuals.filter(series__isnull=True)
+    elif series:
+        try:
+            manuals = manuals.filter(series_id=int(series))
+        except ValueError:
+            return lists.refuse('Choose a series from the list.', 'invalid_series')
+    if q:
+        manuals = lists.search_manuals(manuals, q)
+    page = lists.page_number(params)
+    if page is None:
+        return lists.refuse('Pages are numbered from 1.', 'invalid_page')
+    rows, paging = lists.page_of(
+        manuals.select_related(*lists.MANUAL_RELATED).order_by('title', 'pk'), page)
+    return Response({**paging, 'results': lists.manual_rows(user, rows)})
 
 
 # How many places to remember. Long enough to cover a morning's work,
@@ -1050,6 +1078,19 @@ def _recent_proposals(user):
     return tag_rows(user, rows)
 
 
+def _recently_opened(user):
+    """What this person opened last, newest first, tagged: Home and My
+    Manuals both lead with it."""
+    return tag_rows(user, [{
+        'manual_id': row.manual_id,
+        'manual': row.manual.title,
+        'section_id': row.section_id,
+        'section': row.section.subtitle if row.section else None,
+        'opened_at': row.opened_at,
+    } for row in RecentlyOpened.objects.filter(user=user)
+        .select_related('manual', 'section')[:RECENTLY_OPENED_LIMIT]])
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_dashboard(request):
@@ -1061,16 +1102,7 @@ def staff_dashboard(request):
     """
     user = request.user
 
-    # -- recently opened -----------------------------------------
-    recent = [{
-        'manual_id': row.manual_id,
-        'manual': row.manual.title,
-        'section_id': row.section_id,
-        'section': row.section.subtitle if row.section else None,
-        'opened_at': row.opened_at,
-    } for row in RecentlyOpened.objects.filter(user=user)
-        .select_related('manual', 'section')[:RECENTLY_OPENED_LIMIT]]
-    tag_rows(user, recent)
+    recent = _recently_opened(user)
 
     # -- proposals: how much is waiting on this person's offices ---
     # One aggregate query; it used to loop over every proposal in
@@ -1153,75 +1185,9 @@ def staff_sections(request):
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def list_manuals(request):
-    manuals = Manual.objects.all()
-
-    # Apply search filter with searchBy parameter
-    search_query = request.query_params.get('search')
-    search_by = request.query_params.get('searchBy', 'all')  # 'all', 'title', 'series', 'author'
-
-    if search_query:
-        if search_by == 'all':
-            manuals = manuals.filter(
-                Q(title__icontains=search_query) |
-                Q(series__code__icontains=search_query) |
-                Q(series__title__icontains=search_query) |
-                Q(uploaded_by__username__icontains=search_query)
-            )
-        elif search_by == 'title':
-            manuals = manuals.filter(title__icontains=search_query)
-        elif search_by == 'series':
-            manuals = manuals.filter(
-                Q(series__code__icontains=search_query) |
-                Q(series__title__icontains=search_query)
-            )
-        elif search_by == 'author':
-            manuals = manuals.filter(uploaded_by__username__icontains=search_query)
-
-    series_filter = request.query_params.get('series')
-    if series_filter:
-        manuals = manuals.filter(series_id=series_filter)
-
-    # Apply author filter
-    author_filter = request.query_params.get('author')
-    if author_filter:
-        manuals = manuals.filter(uploaded_by__username__icontains=author_filter)
-
-    # Apply section count filter (minimum sections)
-    min_sections = request.query_params.get('minSections')
-    if min_sections:
-        try:
-            min_count = int(min_sections)
-            manual_ids = [m.id for m in manuals if m.sections.count() >= min_count]
-            manuals = manuals.filter(id__in=manual_ids)
-        except ValueError:
-            pass
-
-    # Apply sorting
-    sort_by = request.query_params.get('sortBy', 'newest')
-    if sort_by == 'oldest':
-        manuals = manuals.order_by('uploaded_at')
-    else:
-        manuals = manuals.order_by('-uploaded_at')
-
-    data = [{
-        'id': m.id,
-        'title': m.title,
-        # What this document *is* to the reader's offices, which is the
-        # question a list of manuals actually answers.
-        'series': m.series.code if m.series_id else None,
-        'series_title': m.series.title if m.series_id else None,
-        'owner': str(m.effective_owner) if m.effective_owner else None,
-        'relationship': _relationship_for(request.user, m),
-        'series_id': m.series_id,
-        'uploaded_by': m.uploaded_by.username if m.uploaded_by else 'N/A',
-        'uploaded_at': m.uploaded_at,
-        'section_count': m.sections.count(),
-        'version': m.version,
-        'revision': m.revision,
-        'display_status': f"v{m.version} rev{m.revision}",
-        'status': document_status.status_payload(m.current_status),
-    } for m in manuals]
-    return Response(data)
+    """Admin Manuals: the same summary and pages as My Manuals, over every
+    document, with an uploader filter (`uploader=<user id>`)."""
+    return _manual_list(request, Manual.objects.all(), admin=True)
 
 
 @api_view(['POST'])

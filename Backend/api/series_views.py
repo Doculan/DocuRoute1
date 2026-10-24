@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from .models import (
     Manual, ManualOffice, ManualSeries, ManualSeriesOffice, Office, OfficeLink,
 )
+from . import lists
 from .deadline_tags import tag_rows
 from .organisation_views import IsSystemAdmin
 from .views import reauth_failure
@@ -47,7 +48,7 @@ def _links_payload(links):
     ]
 
 
-def _series_payload(series, detail=False):
+def _series_payload(series, detail=False, user=None, page=1):
     documents = list(series.documents.select_related('owning_office'))
     overriding = [d for d in documents if d.offices_overridden]
 
@@ -80,7 +81,13 @@ def _series_payload(series, detail=False):
     )
 
     if detail:
-        data['documents'] = [_document_payload(d) for d in documents]
+        # A page of 50: a series can hold hundreds of documents.
+        rows, paging = lists.page_of(
+            series.documents.select_related('series', 'series__owning_office', 'owning_office')
+            .order_by('title', 'pk'), page, total=len(documents))
+        data['documents'] = lists.document_rows(user, rows, _office_brief)
+        tag_rows(user, data['overriding_documents'], key='id')
+        data['documents_paging'] = paging
         data['approval_route'] = _route_for_series(series)
     return data
 
@@ -268,7 +275,10 @@ def series_detail(request, series_id):
         return Response({'error': 'Series not found'}, status=404)
 
     if request.method == 'GET':
-        return Response(_series_payload(series, detail=True))
+        page = lists.page_number(request.query_params)
+        if page is None:
+            return lists.refuse('Pages are numbered from 1.', 'invalid_page')
+        return Response(_series_payload(series, detail=True, user=request.user, page=page))
 
     # Naming is free; ownership and the approval route are not.
     changes_authority = (
@@ -321,7 +331,7 @@ def series_detail(request, series_id):
             transaction.set_rollback(True)
             return _conflict_response(problems)
 
-    return Response(_series_payload(series, detail=True))
+    return Response(_series_payload(series, detail=True, user=request.user))
 
 
 @api_view(['PUT'])
@@ -361,7 +371,7 @@ def series_offices(request, series_id):
             transaction.set_rollback(True)
             return _conflict_response(problems)
 
-    payload = _series_payload(series, detail=True)
+    payload = _series_payload(series, detail=True, user=request.user)
     payload['did_not_reach'] = payload['overriding_documents']
     return Response(payload)
 
@@ -371,24 +381,37 @@ def series_offices(request, series_id):
 @api_view(['GET'])
 @permission_classes([IsSystemAdmin])
 def documents_list(request):
-    """Every document, or only the ones nobody owns yet.
+    """Documents, a page of 50 at a time: every one, or only the ones
+    nobody owns yet (`unassigned=true`), or one series' (`series=<id>`),
+    or by title (`q=`).
 
     The unassigned list is the one that matters at the start: nineteen
     documents arrive from v3 with no series and no owner, and the job of
     this phase is to empty it.
     """
+    params = request.query_params
     queryset = Manual.objects.select_related(
         'series', 'series__owning_office', 'owning_office'
-    ).order_by('title')
+    ).order_by('title', 'pk')
 
-    if request.query_params.get('unassigned') == 'true':
+    if params.get('unassigned') == 'true':
         queryset = queryset.filter(series__isnull=True, owning_office__isnull=True)
-    series_id = request.query_params.get('series')
-    if series_id:
-        queryset = queryset.filter(series_id=series_id)
+    if params.get('series'):
+        try:
+            queryset = queryset.filter(series_id=int(params['series']))
+        except ValueError:
+            return lists.refuse('Choose a series from the list.', 'invalid_series')
+    q = (params.get('q') or '').strip()
+    if q:
+        queryset = queryset.filter(title__icontains=q)
+    page = lists.page_number(params)
+    if page is None:
+        return lists.refuse('Pages are numbered from 1.', 'invalid_page')
 
+    rows, paging = lists.page_of(queryset, page)
     return Response({
-        'documents': [_document_payload(d) for d in queryset],
+        **paging,
+        'documents': lists.document_rows(request.user, rows, _office_brief),
         'unassigned_total': Manual.objects.filter(
             series__isnull=True, owning_office__isnull=True
         ).count(),

@@ -103,7 +103,7 @@ fresh copies.
 Commands are listed at the top of `cdp.mjs`: `nav`, `wait`, `slowwait`
 (3 minutes, for the AI check), `waitgone`, `slowwaitgone`, `click`, `type`, `fill`
 (replaces what the field holds; a literal `\n` types a newline), `set`
-(date inputs, which take no typed text), `select`, `upload`, `shot`,
+(date inputs, which take no typed text), `select`, `pick` (an option by its exact value, when texts overlap), `upload`, `shot`,
 `text`, `value` (an input's value), `errors`, and `? ` for an optional
 step. `${NAME}` is filled from the environment - `package-encoder.cdp`
 needs `SCRATCH` holding `signed-dcr.pdf`, `signed-dcr-rescan.pdf` and

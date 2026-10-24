@@ -3,6 +3,89 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — v4.2 Phase 3B-2: the long lists rebuilt (Checkpoint 3B-2)
+
+- **Seven endpoints, rebuilt** (`api/lists.py`): paged at 50, filtered on
+  the server, built from bulk queries whose number does not grow with the
+  page, each carrying the deadline tag. The coverage test's pending list
+  is gone; the walk now also asks for each list's pages.
+  - `staff/manuals/` (My Manuals; the QMS Manuals list) and `manuals/`
+    (admin): with no `series`, `q` or `page`, a **summary** - the series
+    with counts and how many have an open deadline the reader's office
+    owes (every office's, for QMS and admin), the unassigned group last,
+    and Recently opened (staff) or the uploaders (admin). With any of
+    them, one page. `picker=1` is ids and titles by series, one query,
+    for the drop-downs.
+  - `proposals/awaiting/` on the Needs-your-action aggregate, and
+    `proposals/involving/`, each one query for its ids: `total`, page, `q`.
+  - `qms/queue/`: `totals` per queue, then each queue's first page;
+    `?queue=&page=`. The latest event by subquery; the IMR's own office
+    excluded in the query; a returned package found in one query over
+    the returned packages.
+  - `org/documents/` and `org/series/<id>/`: the documents paged, their
+    rows (concurring offices, conflict check) built in bulk.
+  - **Same values as before**: the bulk rows are tested against the
+    per-row code for every viewer and kind of document.
+- **Screens** (§11.1, reading first):
+  - My Manuals and QMS Manuals: Recently opened on top, then the series,
+    folded; the one with most open deadlines opens. A server-side search
+    finds a document on any page. (The QMS list is titled "Manuals".)
+  - Requests: the counts first, then each queue, 50 a page.
+  - Proposals: Awaiting and Involving show their totals on the tabs and
+    page at 50.
+  - Admin Manuals: the same series groups, with series and uploader
+    filters and the search. **Removed:** the client-side sort, minimum
+    sections and date-range filters, which worked only over a full list.
+  - Sections search and admin Sections: the manual drop-down is grouped
+    by series (`picker=1`).
+  - The organisation's unassigned list and a series' documents page at 50.
+- **Driver:** `cdp.mjs` gains `pick <css> | <value>` (an option by its
+  exact value) - the deadline form's "Add a manual" shares its text with
+  "Add a manual series". `SKILL.md` says so.
+
+**Before and after, at full scale** (ms, queries; ">9,000" where Django's
+query log overflowed):
+
+| Endpoint | Before | After |
+|---|---|---|
+| My Manuals (Head), summary | 551, 1,003 | 45, 7 |
+| My Manuals, a page of 50 | (the whole list) | 71, 10 |
+| QMS Manuals (IMR) | 8,694, >9,000 | 8, 4 (summary); 43, 6 (a page) |
+| admin Manuals | 5,931, >9,000 | 8, 4 (summary); 29, 5 (a page) |
+| Awaiting (Head) | 330, 540 | 40, 8 |
+| Involving (Head) | 686, 1,000 | 37, 7 |
+| Requests (IMR) | 605, 905 | 28, 10 |
+| Requests (custodian) | 150, 303 | 14, 5 |
+| org documents, all | 8,539, >9,000 | 42, 7 |
+| a series of 100 documents | 281, 404 | 50, 9 |
+
+None near the 800 ms budget, so no design limit is proposed.
+`DEPLOYMENT.md`'s measured limits updated.
+
+**What was run, and why:**
+- **New `tests_lists`** (17): same values as before, paging and refusals
+  (each asserting its reason), the summary, reach, query counts that do
+  not grow, and the queue rules. The coverage test reworked.
+- **Affected modules** (views, concurrence, QMS, series and their
+  importers: 17 modules): **444 tests passed**.
+- **Code-removal proof:** 24 cases, each failing on its assertion without
+  its code. The first run found two weak spots, both fixed: an override
+  that changed nothing in the fixture (a read-only override added) and a
+  removal that left invalid code; all 24 were then run again cleanly.
+- **Headless Chrome at scale:** My Manuals (a Head owing 102 manuals),
+  QMS Manuals, Requests, Proposals and its second page of Awaiting, admin
+  Manuals, the search, and the admin's manual picker tag reached by
+  option value ("Advised: … +5 · deadline upcoming 8 Dec 2026"). No
+  console errors. Fixed from the screenshots: QMS staff saw every series
+  with a deadline open at once (now only the one with most), the QMS list
+  was titled "My Manuals", and a lower-cased "dcr".
+- **Lint:** no finding on a changed line.
+- **Not run:** the full suite (end of Phase 3, before the tag);
+  `evaluate_folds.py` and `check_setup.py` (no pipeline code, no
+  migration). No live database change.
+- **Not changed, noted:** "From my office" (`proposals/`) is not paged;
+  an office with many proposals will want the same treatment.
+
 ## 24 October 2026 — v4.2 Phase 3B-1: the deadline tag (Checkpoint 3B-1)
 
 - **One helper**, `deadline_tags.deadline_tags_for(user, manual_ids)`,

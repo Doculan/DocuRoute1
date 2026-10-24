@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, deadlines, documents, notifications
+from . import access, deadlines, documents, lists, notifications
 from .ai_notes import compose_version_note
 from .deadline_tags import tag_rows
 from .generation.common import position_title
@@ -818,65 +818,68 @@ def proposal_full(request, proposal_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def awaiting_my_office(request):
-    """Proposals in concurrence where one of my offices has not decided.
+    """Proposals in concurrence where one of my offices has not concurred
+    on the current version, newest activity first, a page of 50 at a time
+    (`page`, `q` for a title). `total` is the count for the tab.
 
-    Derived rather than notified - notifications are P5. A count only
-    when it is not zero: a badge showing nothing is a badge people learn
-    to stop reading.
+    Built on the same aggregate as Needs your action (`awaiting_pairs`),
+    so the two never disagree, in a fixed number of queries.
     """
-
+    from .action_views import awaiting_pairs
     mine = [o.pk for o in access.current_offices(request.user)]
     if not mine:
-        return Response({'proposals': [], 'total': 0})
-
-    rows = []
-    for proposal in Proposal.objects.filter(
-        status=Proposal.CONCURRENCE,
-        participants__office_id__in=mine,
-        participants__role=ProposalParticipant.CONCURRING,
-    ).distinct().select_related(
-        'manual', 'manual__series', 'initiating_office', 'created_by'
-    ):
-        version = proposal.current_version()
-        undecided = [
-            p for p in _offices_yet_to_decide(proposal, version)
-            if p.office_id in mine
-        ]
-        if undecided:
-            payload = _proposal_payload(proposal)
-            payload['my_offices'] = [p.office_name_at_time for p in undecided]
-            rows.append(payload)
-
-    return Response({'proposals': rows, 'total': len(rows)})
+        return Response({'proposals': [], 'total': 0, 'count': 0, 'page': 1,
+                         'page_size': lists.PAGE_SIZE, 'pages': 1})
+    pairs = awaiting_pairs(mine)
+    proposals = Proposal.objects.filter(pk__in=pairs.values('proposal'))
+    response = _proposal_page(request, proposals)
+    if isinstance(response, Response):
+        return response
+    rows, paging = response
+    undecided = {}
+    for proposal_id, name in pairs.filter(proposal_id__in=[r['id'] for r in rows]).values_list(
+            'proposal_id', 'office_name_at_time'):
+        undecided.setdefault(proposal_id, []).append(name)
+    for row in rows:
+        row['my_offices'] = undecided.get(row['id'], [])
+    return Response({'proposals': rows, 'total': paging['count'], **paging})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def involving_my_office(request):
     """Other offices' requests my office concurs on, once they no longer
-    wait on us.
+    wait on us, a page of 50 at a time (`page`, `q`).
 
     Without this a concurring office lost sight of a request the moment it
     concurred: "Awaiting my office" holds only what is waiting, and "From
     my office" only its own. An IMR's denial - whose reason every office
     involved is meant to read - had no way to reach them on screen.
     """
-
+    from .action_views import awaiting_pairs
     mine = [o.pk for o in access.current_offices(request.user)]
     if not mine:
-        return Response({'proposals': []})
+        return Response({'proposals': [], 'total': 0, 'count': 0, 'page': 1,
+                         'page_size': lists.PAGE_SIZE, 'pages': 1})
+    proposals = Proposal.objects.filter(pk__in=ProposalParticipant.objects.filter(
+        office_id__in=mine, role=ProposalParticipant.CONCURRING,
+    ).values('proposal')).exclude(pk__in=awaiting_pairs(mine).values('proposal'))
+    response = _proposal_page(request, proposals)
+    if isinstance(response, Response):
+        return response
+    rows, paging = response
+    return Response({'proposals': rows, 'total': paging['count'], **paging})
 
-    rows = []
-    for proposal in Proposal.objects.filter(
-        participants__office_id__in=mine,
-        participants__role=ProposalParticipant.CONCURRING,
-    ).distinct().select_related(
-        'manual', 'manual__series', 'initiating_office', 'created_by'
-    ):
-        if proposal.status == Proposal.CONCURRENCE:
-            version = proposal.current_version()
-            if any(p.office_id in mine
-                   for p in _offices_yet_to_decide(proposal, version)):
-                continue            # on "Awaiting my office" instead
-        rows.append(_proposal_payload(proposal))
-    return Response({'proposals': rows})
+
+def _proposal_page(request, proposals):
+    """(rows, paging) for one page of a Proposals tab, or a refusal."""
+    page = lists.page_number(request.query_params)
+    if page is None:
+        return lists.refuse('Pages are numbered from 1.', 'invalid_page')
+    q = (request.query_params.get('q') or '').strip()
+    if q:
+        proposals = proposals.filter(manual__title__icontains=q)
+    rows, paging = lists.page_of(
+        lists.with_latest_version(proposals.select_related(*lists.PROPOSAL_RELATED))
+        .order_by('-updated_at', '-pk'), page)
+    return lists.proposal_rows(request.user, rows), paging

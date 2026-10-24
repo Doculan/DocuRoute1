@@ -7,6 +7,7 @@ import { parseTableRow, isTableSeparator } from "../../docTable";
 import { revisionLine } from "../documentStatus";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import { bySeries } from "../manualPicker";
 
 const formatOCRContent = (content = "") => {
   return content
@@ -291,8 +292,9 @@ export default function Sections({ openManualId = null }) {
   };
 
   useEffect(() => {
-    axios.get(`/api/manuals/`, getAuth())
-      .then((res) => setManuals(res.data))
+    // Ids and titles only, by series: one query however many there are.
+    axios.get(`/api/manuals/?picker=1`, getAuth())
+      .then((res) => setManuals(res.data.manuals.map((m) => ({ ...m, series: m.series_code }))))
       .catch(console.error);
   }, []);
 
@@ -581,8 +583,10 @@ export default function Sections({ openManualId = null }) {
         <div className="row-wrap" style={{ gap: "0.6rem" }}>
           <select className="select" style={{ width: "auto", minWidth: "260px" }} onChange={handleManualChange} defaultValue="">
             <option value="">— Select a manual —</option>
-            {manuals.map((m) => (
-              <option key={m.id} value={m.id}>{m.title}{m.series ? ` (${m.series})` : ""}</option>
+            {bySeries(manuals).map(([code, rows]) => (
+              <optgroup key={code} label={code}>
+                {rows.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
+              </optgroup>
             ))}
           </select>
           {selectedManual && (

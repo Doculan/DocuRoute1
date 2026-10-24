@@ -217,7 +217,7 @@ class ApprovalPlacesThemTests(TestCase):
         position = Position.objects.create(office=self.office, kind=Position.ENCODER)
         PositionAssignment.objects.create(user=user, position=position,
                                           starts_on=timezone.localdate())
-        self.assertEqual([m['title'] for m in staff.get('/api/staff/manuals/').data],
+        self.assertEqual([m['title'] for m in staff.get('/api/staff/manuals/?page=1').data['results']],
                          ['FAM 6.02'])
         self.assertEqual(staff.get(f'/api/manuals/{manual.id}/sections/').status_code, 200)
 

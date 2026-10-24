@@ -153,7 +153,9 @@ export default function StaffDashboard({ onLogout }) {
           />
         );
       case "manuals":
-        return <StaffManuals onSelectManual={openManual} />;
+        return <StaffManuals onSelectManual={openManual}
+                             onSelectSection={(manualId, sectionId) =>
+                               openSection({ manual_id: manualId, id: sectionId })} />;
       case "sections":
         return selectedManualId ? (
           <StaffSections
@@ -190,7 +192,9 @@ export default function StaffDashboard({ onLogout }) {
       case "deadlines":
         return <DeadlinesPage onOpenManual={openManual} />;
       default:
-        return <StaffManuals onSelectManual={openManual} />;
+        return <StaffManuals onSelectManual={openManual}
+                             onSelectSection={(manualId, sectionId) =>
+                               openSection({ manual_id: manualId, id: sectionId })} />;
     }
   };
 

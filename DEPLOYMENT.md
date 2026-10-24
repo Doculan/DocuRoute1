@@ -370,13 +370,16 @@ with 8 threads:
 | 100 bells while a full monitoring run writes | p95 1.4 s |
 | First `run_monitoring` over the whole organisation (3,096 stalls) | 25–30 s, in batches |
 | Bell, notifications page, Needs your action, staff home (one request) | 2–21 ms |
+| My Manuals, QMS and admin Manuals, Awaiting, Involving, Requests, organisation documents: summary or one page of 50 (one request, rebuilt in v4.2 Phase 3B-2) | 5–71 ms, 1–10 queries |
 
 SQLite serialises writers. A burst of simultaneous writes queues; it does
 not fail, because transactions are immediate and wait up to the 20-second
 busy timeout. The answer to a slow burst is shorter transactions and
 fewer writes per request, not another engine. Phase 0's slower figures
 (`MONITORING_PHASE0_REPORT.md`) were query-per-row loops, which are being
-replaced screen by screen.
+replaced screen by screen. The seven long lists were rebuilt in Phase 3B-2:
+before it, QMS Manuals took 8.7 s, admin Manuals 5.9 s and the organisation's
+documents 8.5 s, each with more than 9,000 queries.
 
 Two limits are structural and accepted: one application server (SQLite
 cannot be shared across hosts), and backups by file copy through the

@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 import { formatDate, formatRevision } from "../documentStatus";
+import DeadlineTag from "../DeadlineTag";
+import Pager from "../Pager";
+import { seriesToOpen } from "../manualPicker";
 
 // Empty on purpose: every request goes out as a relative path, so the
 // browser sends it to whatever host served the page and Vite's proxy
@@ -11,8 +14,10 @@ import { formatDate, formatRevision } from "../documentStatus";
 const BACKEND_BASE_URL = "";
 
 export default function Manuals({ initialSearch = "", onOpenSections }) {
-  const [manuals, setManuals] = useState([]);
-  const [seriesList, setSeriesList] = useState([]);
+  // The summary (`/api/manuals/`): series with counts, the uploaders.
+  const [summary, setSummary] = useState(null);
+  // Bumped after an upload or a delete, so open lists load again.
+  const [reloadKey, setReloadKey] = useState(0);
   const [form, setForm] = useState({ title: "", file: null });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -33,23 +38,14 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   const [mergeSourceIndex, setMergeSourceIndex] = useState(null);
 
   // Pagination & Filters
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [selectedManualIds, setSelectedManualIds] = useState([]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [needle, setNeedle] = useState(initialSearch.trim());
   // Uploading is occasional; reading the list is constant. The form stays
   // folded away so it costs nothing on the visits where you are not uploading.
   const [showUpload, setShowUpload] = useState(false);
-  const [filters, setFilters] = useState({
-    series: "",
-    author: "",
-    minSections: "",
-    dateFrom: "",
-    dateTo: "",
-    sortBy: "newest",
-  });
+  const [filters, setFilters] = useState({ series: "", uploader: "" });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -58,31 +54,25 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
       setLoading(false);
       return;
     }
-    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
     try {
-      const params = new URLSearchParams();
-      if (searchQuery.trim()) {
-        params.append('search', searchQuery.trim());
-        params.append('searchBy', 'title');
-      }
-      if (filters.series) params.append('series', filters.series);
-      if (filters.author.trim()) params.append('author', filters.author.trim());
-      if (filters.minSections) params.append('minSections', filters.minSections);
-      if (filters.sortBy) params.append('sortBy', filters.sortBy);
-
-      const [manualsRes, seriesRes] = await Promise.all([
-        axios.get(`/api/manuals/?${params.toString()}`, authHeaders),
-        axios.get(`/api/org/series/`, authHeaders),
-      ]);
-      setManuals(manualsRes.data);
-      setSeriesList(seriesRes.data.series || []);
+      const { data } = await axios.get(`/api/manuals/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSummary(data);
+      setReloadKey((k) => k + 1);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
       setLoadedOnce(true);
     }
-  }, [searchQuery, filters.series, filters.author, filters.minSections, filters.sortBy]);
+  }, []);
+
+  // The server searches, a moment after typing stops.
+  useEffect(() => {
+    const timer = setTimeout(() => setNeedle(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -247,14 +237,6 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
     );
   };
 
-  const toggleSelectAll = (isChecked) => {
-    if (isChecked) {
-      setSelectedManualIds(paginatedManuals.map((m) => m.id));
-    } else {
-      setSelectedManualIds([]);
-    }
-  };
-
   const handleBulkDelete = () => {
     if (selectedManualIds.length === 0) {
       showMessage("❌ Select at least one manual first.");
@@ -345,51 +327,91 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
     setExpandedRows(newExpanded);
   };
 
-  // Filter and sort manuals
-  const getFilteredAndSortedManuals = () => {
-    let filtered = manuals.filter((m) => {
-      // Series filter
-      if (filters.series && String(m.series_id) !== String(filters.series)) {
-        return false;
-      }
-      // Date range filter
-      const uploadDate = new Date(m.uploaded_at);
-      if (filters.dateFrom) {
-        const fromDate = new Date(filters.dateFrom);
-        if (uploadDate < fromDate) return false;
-      }
-      if (filters.dateTo) {
-        const toDate = new Date(filters.dateTo);
-        toDate.setHours(23, 59, 59, 999);
-        if (uploadDate > toDate) return false;
-      }
-      return true;
-    });
+  const filtering = Boolean(needle || filters.series || filters.uploader);
 
-    // Sort
-    filtered.sort((a, b) => {
-      if (filters.sortBy === "newest") {
-        return new Date(b.uploaded_at) - new Date(a.uploaded_at);
-      } else if (filters.sortBy === "oldest") {
-        return new Date(a.uploaded_at) - new Date(b.uploaded_at);
-      } else if (filters.sortBy === "recentEdit") {
-        // Fall back to uploaded_at since updated_at isn't available
-        return new Date(b.uploaded_at) - new Date(a.uploaded_at);
-      }
-      return 0;
-    });
+  // One admin row: expands for its details, deletes, opens its sections.
+  const renderRow = (m) => (
+    <div key={m.id} className="list-row">
+      <div className="list-row-head" onClick={() => toggleExpandRow(m.id)}>
+        <input
+          type="checkbox"
+          checked={selectedManualIds.includes(m.id)}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => toggleManualSelection(m.id)}
+          aria-label={`Select ${m.title}`}
+        />
+        <span className={`chevron${expandedRows.has(m.id) ? " is-open" : ""}`}>▾</span>
 
-    return filtered;
-  };
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* The title is a document number, so it is set in mono
+              and never mistaken for the sentence beneath it. */}
+          <div className="list-row-title">{m.title}</div>
+          <div className="list-row-sub">
+            Uploaded {new Date(m.uploaded_at).toLocaleDateString()} by {m.uploaded_by}
+          </div>
+        </div>
 
-  const filteredManuals = getFilteredAndSortedManuals();
-  const totalPages = Math.ceil(filteredManuals.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedManuals = filteredManuals.slice(startIndex, startIndex + itemsPerPage);
+        <DeadlineTag tag={m.deadline} />
+        {m.series ? <span className="badge">{m.series}</span>
+          : <span className="badge badge-warning">unassigned</span>}
+        {/* The section count is the obvious way into a
+            manual's sections, so it is the thing you click.
+            stopPropagation because the row itself expands. */}
+        {onOpenSections ? (
+          <button
+            className="badge badge-neutral"
+            style={{ cursor: "pointer", border: "none" }}
+            title={`Open the ${m.section_count} sections of ${m.title}`}
+            onClick={(e) => { e.stopPropagation(); onOpenSections(m.id); }}
+          >
+            {m.section_count} sections →
+          </button>
+        ) : (
+          <span className="badge badge-neutral">{m.section_count} sections</span>
+        )}
+        {m.status && <span className="badge badge-id">{formatRevision(m.status.revision)}</span>}
+      </div>
 
-  const hasActiveFilters =
-    searchQuery || filters.series || filters.author ||
-    filters.dateFrom || filters.dateTo;
+      {expandedRows.has(m.id) && (
+        <div className="list-row-body">
+          <dl className="detail-grid">
+            <dt>Document status</dt>
+            <dd>
+              {m.status
+                ? `${m.status.document_number} · version ${m.status.version} · ${formatRevision(m.status.revision)} · effective ${formatDate(m.status.effective_on)}`
+                : "Not recorded yet"}
+            </dd>
+
+            <dt>Uploaded by</dt>
+            <dd>{m.uploaded_by}</dd>
+
+            <dt>Upload date</dt>
+            <dd>{new Date(m.uploaded_at).toLocaleString()}</dd>
+
+            <dt>Sections</dt>
+            <dd>{m.section_count}</dd>
+          </dl>
+
+          <div className="row" style={{ gap: "0.5rem", paddingTop: "0.9rem", borderTop: "1px solid var(--border-soft)" }}>
+            {onOpenSections && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => onOpenSections(m.id)}
+              >
+                Open sections →
+              </button>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={() => toggleExpandRow(m.id)}>
+              ◀ Collapse
+            </button>
+            <button className="btn btn-danger-soft btn-sm" onClick={() => setPendingDelete({ ids: [m.id], label: m.title })}>
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div>
@@ -573,13 +595,12 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
 
       {message && <div className="toast">{message}</div>}
 
-      {loading && !loadedOnce ? (
+      {(loading && !loadedOnce) || !summary ? (
         <div className="loading-row"><span className="spinner" /> Loading manuals…</div>
       ) : (
         <div>
-          {/* ── Filters ── */}
-          {/* ── Filters read as a toolbar: no card, no "Search" label,
-                 and the rarely-touched fields fold away behind a pill. ── */}
+          {/* Filters read as a toolbar: search, series, uploader. With none
+              set the list is the series, folded (spec §11.1). */}
           <div className="filter-panel">
             <div className="filter-row">
               <input
@@ -589,253 +610,71 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
                 placeholder="Search by title…"
                 aria-label="Search manuals by title"
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-
               <select
                 className="select"
                 style={{ width: "auto" }}
+                aria-label="Filter by series"
                 value={filters.series}
-                onChange={(e) => { setFilters({ ...filters, series: e.target.value }); setCurrentPage(1); }}
+                onChange={(e) => setFilters({ ...filters, series: e.target.value })}
               >
                 <option value="">All series</option>
-                {seriesList.map((sr) => (
-                  <option key={sr.id} value={sr.id}>{sr.code}</option>
+                {summary.groups.map((g) => (
+                  <option key={g.series_id ?? "none"} value={g.series_id ?? "none"}>
+                    {g.code || "Not in a series"} ({g.count.toLocaleString()})
+                  </option>
                 ))}
               </select>
-
               <select
                 className="select"
                 style={{ width: "auto" }}
-                value={filters.sortBy}
-                onChange={(e) => { setFilters({ ...filters, sortBy: e.target.value }); setCurrentPage(1); }}
+                aria-label="Filter by uploader"
+                value={filters.uploader}
+                onChange={(e) => setFilters({ ...filters, uploader: e.target.value })}
               >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="recentEdit">Recently edited</option>
+                <option value="">Any uploader</option>
+                {summary.uploaders.map((u) => (
+                  <option key={u.id} value={u.id}>{u.username}</option>
+                ))}
               </select>
-
-              <button
-                className={`pill${showAdvanced ? " is-on" : ""}`}
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                More filters
-                <span className={`chevron${showAdvanced ? " is-open" : ""}`}>▾</span>
-              </button>
-
-              {hasActiveFilters && (
+              {filtering && (
                 <button
                   className="pill"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setShowAdvanced(false);
-                    setFilters({ series: "", author: "", minSections: "", dateFrom: "", dateTo: "", sortBy: "newest" });
-                    setCurrentPage(1);
-                  }}
+                  onClick={() => { setSearchQuery(""); setNeedle(""); setFilters({ series: "", uploader: "" }); }}
                 >
                   Clear
                 </button>
               )}
             </div>
 
-            {showAdvanced && (
-              <div className="filter-row filter-row-nested">
-                <div className="field">
-                  <label className="label">Author</label>
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder="Uploader…"
-                    value={filters.author}
-                    onChange={(e) => { setFilters({ ...filters, author: e.target.value }); setCurrentPage(1); }}
-                  />
-                </div>
-                <div className="field">
-                  <label className="label">Min sections</label>
-                  <input
-                    className="input"
-                    type="number"
-                    placeholder="e.g. 5"
-                    value={filters.minSections}
-                    onChange={(e) => { setFilters({ ...filters, minSections: e.target.value }); setCurrentPage(1); }}
-                  />
-                </div>
-                <div className="field">
-                  <label className="label">From date</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setCurrentPage(1); }}
-                  />
-                </div>
-                <div className="field">
-                  <label className="label">To date</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setCurrentPage(1); }}
-                  />
-                </div>
+            {selectedManualIds.length > 0 && (
+              <div className="filter-summary">
+                <button className="btn btn-danger-soft btn-sm" onClick={handleBulkDelete}>
+                  Delete selected ({selectedManualIds.length})
+                </button>
               </div>
             )}
-
-            <div className="filter-summary">
-              <div className="row" style={{ gap: "0.75rem" }}>
-                <label className="row text-sm subtle" style={{ gap: "0.4rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedManualIds.length === paginatedManuals.length && paginatedManuals.length > 0}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                  />
-                  Select all
-                </label>
-                {selectedManualIds.length > 0 && (
-                  <button className="btn btn-danger-soft btn-sm" onClick={handleBulkDelete}>
-                    Delete selected ({selectedManualIds.length})
-                  </button>
-                )}
-              </div>
-
-              <span className="subtle text-sm">
-                {filteredManuals.length === 0 ? 0 : startIndex + 1}–
-                {Math.min(startIndex + itemsPerPage, filteredManuals.length)} of {filteredManuals.length}
-              </span>
-            </div>
           </div>
 
-          <h3 className="section-title">Master copies</h3>
+          <h3 className="section-title">Master copies · {summary.total.toLocaleString()}</h3>
 
-          {/* ── List ── */}
-          {manuals.length === 0 && !hasActiveFilters ? (
+          {summary.total === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">📚</div>
               <p className="empty-title">No manuals yet</p>
               <p className="empty-text">Upload a master copy above to get started.</p>
             </div>
-          ) : filteredManuals.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">🔍</div>
-              <p className="empty-title">No results</p>
-              <p className="empty-text">No manuals match your current filters.</p>
-            </div>
+          ) : filtering ? (
+            <AdminPaged key={`${needle}|${filters.series}|${filters.uploader}|${reloadKey}`}
+                        params={{ q: needle, series: filters.series, uploader: filters.uploader }}
+                        renderRow={renderRow} />
           ) : (
-            <div>
-              <div style={{ marginBottom: "1.25rem" }}>
-                {paginatedManuals.map((m) => (
-                  <div key={m.id} className="list-row">
-                    <div className="list-row-head" onClick={() => toggleExpandRow(m.id)}>
-                      <input
-                        type="checkbox"
-                        checked={selectedManualIds.includes(m.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => toggleManualSelection(m.id)}
-                      />
-                      <span className={`chevron${expandedRows.has(m.id) ? " is-open" : ""}`}>▾</span>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        {/* The title is a document number, so it is set in mono
-                            and never mistaken for the sentence beneath it. */}
-                        <div className="list-row-title">{m.title}</div>
-                        <div className="list-row-sub">
-                          Uploaded {new Date(m.uploaded_at).toLocaleDateString()} by {m.uploaded_by}
-                        </div>
-                      </div>
-
-                      {m.series ? <span className="badge">{m.series}</span>
-                        : <span className="badge badge-warning">unassigned</span>}
-                      {/* The section count is the obvious way into a
-                          manual's sections, so it is the thing you click.
-                          stopPropagation because the row itself expands. */}
-                      {onOpenSections ? (
-                        <button
-                          className="badge badge-neutral"
-                          style={{ cursor: "pointer", border: "none" }}
-                          title={`Open the ${m.section_count} sections of ${m.title}`}
-                          onClick={(e) => { e.stopPropagation(); onOpenSections(m.id); }}
-                        >
-                          {m.section_count} sections →
-                        </button>
-                      ) : (
-                        <span className="badge badge-neutral">{m.section_count} sections</span>
-                      )}
-                      {m.status && <span className="badge badge-id">{formatRevision(m.status.revision)}</span>}
-                    </div>
-
-                    {expandedRows.has(m.id) && (
-                      <div className="list-row-body">
-                        <dl className="detail-grid">
-                          <dt>Document status</dt>
-                          <dd>
-                            {m.status
-                              ? `${m.status.document_number} · version ${m.status.version} · ${formatRevision(m.status.revision)} · effective ${formatDate(m.status.effective_on)}`
-                              : "Not recorded yet"}
-                          </dd>
-
-                          <dt>Uploaded by</dt>
-                          <dd>{m.uploaded_by}</dd>
-
-                          <dt>Upload date</dt>
-                          <dd>{new Date(m.uploaded_at).toLocaleString()}</dd>
-
-                          <dt>Sections</dt>
-                          <dd>{m.section_count}</dd>
-                        </dl>
-
-                        <div className="row" style={{ gap: "0.5rem", paddingTop: "0.9rem", borderTop: "1px solid var(--border-soft)" }}>
-                          {onOpenSections && (
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => onOpenSections(m.id)}
-                            >
-                              Open sections →
-                            </button>
-                          )}
-                          <button className="btn btn-ghost btn-sm" onClick={() => toggleExpandRow(m.id)}>
-                            ◀ Collapse
-                          </button>
-                          <button className="btn btn-danger-soft btn-sm" onClick={() => setPendingDelete({ ids: [m.id], label: m.title })}>
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {totalPages > 1 && (
-                <div className="pagination">
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setCurrentPage(currentPage - 1)}
-                    disabled={currentPage === 1}
-                  >
-                    ◀ Prev
-                  </button>
-
-                  <div className="row" style={{ gap: "0.25rem" }}>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <button
-                        key={page}
-                        className={`page-num${page === currentPage ? " is-active" : ""}`}
-                        onClick={() => setCurrentPage(page)}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setCurrentPage(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next ▶
-                  </button>
-                </div>
-              )}
+            <div className="col" style={{ gap: "0.5rem" }}>
+              {summary.groups.map((g) => (
+                <AdminGroup key={`${g.series_id ?? "none"}|${reloadKey}`} group={g} renderRow={renderRow}
+                            startOpen={g === seriesToOpen(summary.groups)} />
+              ))}
             </div>
           )}
         </div>
@@ -859,3 +698,58 @@ export default function Manuals({ initialSearch = "", onOpenSections }) {
   );
 }
 
+/** One series, folded unless it has the most open deadlines; 50 a page inside. */
+function AdminGroup({ group, renderRow, startOpen }) {
+  const [open, setOpen] = useState(startOpen);
+  return (
+    <div className={`card accordion${group.open_deadlines > 0 ? " is-warning" : ""}`}>
+      <button type="button" className="accordion-head" aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}>
+        <span style={{ flex: 1, minWidth: 0 }} className="list-row-title">
+          {group.code ? `${group.code} — ${group.title}` : "Not in a series"}
+        </span>
+        {group.open_deadlines > 0 && (
+          <span className="badge badge-warning">{group.open_deadlines} with a deadline</span>
+        )}
+        <span className="subtle text-xs">{group.count.toLocaleString()} manuals</span>
+        <span className={`chevron${open ? " is-open" : ""}`} aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="accordion-body">
+          <AdminPaged params={{ series: group.series_id ?? "none" }} renderRow={renderRow} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A page of the admin's manuals for these filters, with its pager. */
+function AdminPaged({ params, renderRow }) {
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState(null);
+  const key = JSON.stringify(params);
+
+  useEffect(() => {
+    const wanted = Object.fromEntries(Object.entries(JSON.parse(key)).filter(([, v]) => v));
+    axios.get(`/api/manuals/`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+      params: { ...wanted, page },
+    }).then((res) => setData(res.data)).catch(() => setData({ results: [], pages: 1 }));
+  }, [key, page]);
+
+  if (!data) return <div className="loading-row"><span className="spinner" /> Loading…</div>;
+  if (data.results.length === 0) {
+    return (
+      <div className="empty-state">
+        <p className="empty-title">No results</p>
+        <p className="empty-text">No manuals match your current filters.</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div>{data.results.map(renderRow)}</div>
+      <Pager paging={data} onPage={setPage} />
+    </>
+  );
+}

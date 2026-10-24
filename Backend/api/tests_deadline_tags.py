@@ -26,7 +26,7 @@ from api import deadlines, urls
 from api.deadline_tags import deadline_tags_for
 from api.models import (
     CustomUser, Deadline, DeadlineObligation, DeadlineTarget, Manual, ManualOffice, Office,
-    OfficeLink, Position,
+    OfficeLink, Position, Proposal, ProposalParticipant, ProposalVersion,
 )
 
 from .tests_concurrence import ConcurrenceFixture
@@ -311,16 +311,18 @@ EXEMPT_PARTS = {
     'admin/deadlines/<int:deadline_id>/': ('.targets', "the deadline's own targets"),
 }
 
-# Rebuilt in 3B-2, with their tags; this list empties then.
-PENDING_3B2 = {
-    'staff/manuals/': 'My Manuals and QMS Manuals, rebuilt in 3B-2',
-    'manuals/': 'admin Manuals, rebuilt in 3B-2',
-    'proposals/awaiting/': 'rebuilt in 3B-2',
-    'proposals/involving/': 'rebuilt in 3B-2',
-    'qms/queue/': 'Requests, rebuilt in 3B-2',
-    'org/documents/': 'paged in 3B-2',
-    'org/series/<int:series_id>/': 'its documents paged in 3B-2',
+# Long lists answer with a summary by default (3B-2), so the walk also
+# asks for their pages, where the manuals are.
+ALSO_ASK = {
+    'staff/manuals/': ['?page=1', '?q=FAM', '?picker=1'],
+    'manuals/': ['?page=1', '?picker=1'],
+    'qms/queue/': ['?queue=imr', '?queue=approval'],
+    'org/documents/': ['?page=1'],
 }
+
+# A drop-down's options: a title to choose, not a place to read a tag.
+PICKER = ('.manuals', 'drop-down options')
+EXEMPT_ASKED = {'staff/manuals/?picker=1': PICKER, 'manuals/?picker=1': PICKER}
 
 # Routes that answer with a file, or only take other methods.
 NOT_JSON = {'proposals/<int:proposal_id>/attachments/<int:attachment_id>/download/',
@@ -345,6 +347,17 @@ MANUAL_KEYS = {'manual', 'manuals', 'document', 'documents', 'overriding_documen
 
 # A route that opens one manual answers with its tag at the top.
 OPENS_A_MANUAL = ('<int:manual_id>', '<int:document_id>')
+
+
+def _manuals_named(data, key=None):
+    """How many manuals an answer names, by the same reading as `_untagged`."""
+    if isinstance(data, dict):
+        here = int(data.get('manual_id') is not None or data.get('manual') is not None
+                   or ({'id', 'title'} <= data.keys() and ('series' in data or key in MANUAL_KEYS)))
+        return here + sum(_manuals_named(v, k) for k, v in data.items())
+    if isinstance(data, list):
+        return sum(_manuals_named(v, key) for v in data)
+    return 0
 
 
 def _untagged(data, path='$', key=None, tagged=False):
@@ -395,6 +408,15 @@ class EveryScreenCarriesTheTag(ConcurrenceFixture):
         deadlines.materialise(self.deadline, self.admin)
         self.proposal_id = self.a_draft()
         self.submit(self.proposal_id)
+        # Something in the IMR's two queues, and a finished request Budget
+        # concurred on, for its Involving tab.
+        for status in (Proposal.READY_FOR_IMR, Proposal.AWAITING_APPROVAL, Proposal.EFFECTIVE):
+            other = Proposal.objects.create(manual=self.manual, initiating_office=self.cash,
+                                            status=status, created_by=self.cmo_head)
+            ProposalVersion.objects.create(proposal=other, number=1)
+            ProposalParticipant.objects.create(proposal=other, office=self.budget,
+                                               office_name_at_time=self.budget.name,
+                                               role=ProposalParticipant.CONCURRING)
         self.viewers = [self.acc_head, self.bud_head, self.vpaf_head, self.imr, self.admin]
         for user in self.viewers:      # so Recently opened has a row
             self.as_(user).get(f'/api/manuals/{self.manual.pk}/sections/')
@@ -409,31 +431,40 @@ class EveryScreenCarriesTheTag(ConcurrenceFixture):
         }
 
     def test_every_manual_in_every_answer_has_a_deadline_key(self):
-        missing, called = {}, 0
+        missing, called, rows_seen = {}, 0, {}
         for route, callback in _routes(urls.urlpatterns):
-            if route in EXEMPT or route in PENDING_3B2 or route in NOT_JSON:
+            if route in EXEMPT or route in NOT_JSON:
                 continue
             if not _answers_get(callback):
                 continue
             url = '/api/' + route
             for name, value in self.kwargs().items():
                 url = url.replace(f'<int:{name}>', str(value)).replace(f'<str:{name}>', str(value))
-            for user in self.viewers:
-                response = self.as_(user).get(url)
+            asking = [(asked, user) for asked in [''] + ALSO_ASK.get(route, [])
+                      for user in self.viewers]
+            for asked, user in asking:
+                response = self.as_(user).get(url + asked)
                 if response.status_code != 200 or 'json' not in response.get('Content-Type', ''):
                     continue
                 called += 1
+                rows_seen.setdefault(route + asked, 0)
                 data = json.loads(response.content)
                 if (any(part in route for part in OPENS_A_MANUAL)
                         and isinstance(data, dict) and 'deadline' not in data):
                     missing.setdefault(route, set()).add(f'{user.username}: $ (opens a manual)')
-                part = EXEMPT_PARTS.get(route, (None,))[0]
-                for where in _untagged(data):
+                part = (EXEMPT_ASKED.get(route + asked) or EXEMPT_PARTS.get(route, (None,)))[0]
+                found = _untagged(data)
+                rows_seen[route + asked] += _manuals_named(data)
+                for where in found:
                     if part and part in where:
                         continue
-                    missing.setdefault(route, set()).add(f'{user.username}: {where}')
+                    missing.setdefault(route + asked, set()).add(f'{user.username}: {where}')
         self.assertGreater(called, 30)
         self.assertEqual({route: sorted(paths)[:3] for route, paths in missing.items()}, {})
+        # The long lists' pages really held manuals, or the walk proved nothing.
+        empty = [asked for asked, n in rows_seen.items()
+                 if n == 0 and any(asked == r + a for r, extra in ALSO_ASK.items() for a in extra)]
+        self.assertEqual(empty, [])
 
     def test_the_tag_reaches_the_screen_with_its_label(self):
         """Not only a key: the owing office's Head sees the words."""
@@ -450,5 +481,5 @@ class EveryScreenCarriesTheTag(ConcurrenceFixture):
     def test_the_exemptions_still_exist(self):
         """A renamed route must not leave a stale exemption behind."""
         routes = {route for route, _ in _routes(urls.urlpatterns)}
-        self.assertEqual((set(EXEMPT) | set(EXEMPT_PARTS) | set(PENDING_3B2) | NOT_JSON) - routes,
+        self.assertEqual((set(EXEMPT) | set(EXEMPT_PARTS) | set(ALSO_ASK) | NOT_JSON) - routes,
                          set())

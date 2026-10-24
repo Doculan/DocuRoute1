@@ -15,6 +15,8 @@
 //   waitgone <css> | <text>      wait until no <css> element contains <text>
 //   slowwaitgone <css> | <text>  waitgone, for up to 3 minutes (the AI check)
 //   select <css> | <text>        choose the option whose text contains <text>
+//   pick <css> | <value>         choose the option whose value is exactly <value>
+//                                (when option texts overlap: "manual", "manual series")
 //   upload <css> | <path>        set a file input's file (fires change)
 //   shot <name>                  screenshot to <dir>/<name>.png
 //   text <css>                   print the innerText of <css>
@@ -119,15 +121,17 @@ for (const raw of lines) {
         if (!el) return false; el.scrollIntoView({block: 'center'}); el.click(); return true; })()`);
       if (!clicked) throw new Error('nothing to click');
       await sleep(600);
-    } else if (cmd === 'select') {
-      // Choose the option whose text contains <text>. React listens for
-      // `change` on a select, so the event is dispatched after the value
-      // is set through the native setter React tracks.
+    } else if (cmd === 'select' || cmd === 'pick') {
+      // Choose the option whose text contains <text> (`pick`: whose value
+      // is exactly <value>). React listens for `change` on a select, so the
+      // event is dispatched after the value is set through the native
+      // setter React tracks.
       const [css, text] = split(rest);
+      const match = cmd === 'pick' ? 'o.value === ' : 'o.text.includes(';
       const chosen = await evaluate(`(() => {
         const el = document.querySelector(${JSON.stringify(css)});
         if (!el) return 'no such select';
-        const option = [...el.options].find((o) => o.text.includes(${JSON.stringify(text)}));
+        const option = [...el.options].find((o) => ${match}${JSON.stringify(text)}${cmd === 'pick' ? '' : ')'});
         if (!option) return 'no such option';
         const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
         setter.call(el, option.value);

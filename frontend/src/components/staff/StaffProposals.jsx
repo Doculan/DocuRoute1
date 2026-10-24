@@ -13,6 +13,7 @@ import AiNote from "../AiNote";
 import SectionContentEditor from "../SectionContentEditor";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import Pager from "../Pager";
 
 const BASE_URL = "";
 
@@ -45,8 +46,9 @@ function when(value) {
 export default function StaffProposals({ startManualId, onDone, openRequest, onOpened }) {
   const [tab, setTab] = useState("mine");
   const [mine, setMine] = useState([]);
-  const [awaiting, setAwaiting] = useState([]);
-  const [involving, setInvolving] = useState([]);
+  // Each a page of 50 with its total: { proposals, total, page, pages, ... }.
+  const [awaiting, setAwaiting] = useState(null);
+  const [involving, setInvolving] = useState(null);
   const [open, setOpen] = useState(null);       // proposal id
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,8 +65,8 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
         axios.get(`${BASE_URL}/api/proposals/involving/`, getAuth()),
       ]);
       setMine(ours.data.proposals);
-      setAwaiting(theirs.data.proposals);
-      setInvolving(others.data.proposals);
+      setAwaiting(theirs.data);
+      setInvolving(others.data);
       setError("");
     } catch (err) {
       setError(err.response?.data?.error || "Could not load proposals.");
@@ -141,7 +143,20 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
     return <div className="loading-row"><span className="spinner" /> Loading…</div>;
   }
 
-  const rows = { mine, awaiting, involving }[tab] || [];
+  const turnPage = async (name, page) => {
+    try {
+      const { data } = await axios.get(`${BASE_URL}/api/proposals/${name}/`,
+                                        { ...getAuth(), params: { page } });
+      (name === "awaiting" ? setAwaiting : setInvolving)(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not load proposals.");
+    }
+  };
+
+  const paged = { awaiting, involving }[tab];
+  const rows = tab === "mine" ? mine : paged?.proposals || [];
+  const awaitingTotal = awaiting?.total || 0;
+  const involvingTotal = involving?.total || 0;
 
   return (
     <div>
@@ -174,14 +189,14 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
         </button>
         <button className={`tab${tab === "awaiting" ? " is-active" : ""}`}
                 onClick={() => setTab("awaiting")}>
-          Awaiting my office{awaiting.length > 0 ? ` (${awaiting.length})` : ""}
+          Awaiting my office{awaitingTotal > 0 ? ` (${awaitingTotal.toLocaleString()})` : ""}
         </button>
         {/* Requests my office agreed to, after they stop waiting on us -
             including what became of them. Only when there are any. */}
-        {involving.length > 0 && (
+        {involvingTotal > 0 && (
           <button className={`tab${tab === "involving" ? " is-active" : ""}`}
                   onClick={() => setTab("involving")}>
-            Other offices' requests
+            Other offices' requests ({involvingTotal.toLocaleString()})
           </button>
         )}
       </div>
@@ -215,6 +230,7 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
               )}
             </button>
           ))}
+          {tab !== "mine" && <Pager paging={paged} onPage={(n) => turnPage(tab, n)} />}
         </div>
       )}
     </div>

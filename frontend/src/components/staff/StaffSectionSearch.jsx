@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import DeadlineTag from "../DeadlineTag";
+import { bySeries } from "../manualPicker";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -41,8 +42,9 @@ export default function StaffSectionSearch({ onOpenSection }) {
   const debounce = useRef(null);
 
   useEffect(() => {
-    axios.get(`${BASE_URL}/api/staff/manuals/`, getAuth())
-      .then((res) => setManuals(res.data))
+    // Ids and titles only, by series: a list of thousands stays one query.
+    axios.get(`${BASE_URL}/api/staff/manuals/?picker=1`, getAuth())
+      .then((res) => setManuals(res.data.manuals))
       .catch(() => setManuals([]));
   }, []);
 
@@ -113,8 +115,10 @@ export default function StaffSectionSearch({ onOpenSection }) {
           aria-label="Filter by manual"
         >
           <option value="">All manuals</option>
-          {manuals.map((m) => (
-            <option key={m.id} value={m.id}>{m.title}</option>
+          {bySeries(manuals).map(([code, rows]) => (
+            <optgroup key={code} label={code}>
+              {rows.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
+            </optgroup>
           ))}
         </select>
         <select

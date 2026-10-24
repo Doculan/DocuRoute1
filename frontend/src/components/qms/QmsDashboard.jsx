@@ -47,7 +47,8 @@ export default function QmsDashboard({ onLogout }) {
           axios.get("/api/qms/queue/", getAuth()),
         ]);
         setMe(who);
-        setWaiting(queue.imr.length + (queue.approval?.length || 0) + queue.custodian.length);
+        const t = queue.totals || {};
+        setWaiting((t.imr || 0) + (t.approval || 0) + (t.custodian || 0));
       } catch {
         // The pages report their own errors; the sidebar can do without.
       }
@@ -88,7 +89,8 @@ export default function QmsDashboard({ onLogout }) {
       <>
         {/* Reading comes first: this shows only when something is waiting. */}
         <NeedsAction compact onGo={() => go("requests")} />
-        <StaffManuals onSelectManual={(id) => setManualId(id)} />
+        <StaffManuals onSelectManual={(id) => setManualId(id)} title="Manuals"
+                      subtitle="Every controlled document, by series." />
       </>
     );
   };

@@ -397,7 +397,7 @@ class ReaderTests(EffectiveFixture):
 
     def test_the_manual_list_carries_the_status(self):
         self.make_effective()
-        rows = self.as_(self.bud_enc).get('/api/staff/manuals/').data
+        rows = self.as_(self.bud_enc).get('/api/staff/manuals/?page=1').data['results']
         row = [r for r in rows if r['id'] == self.manual.id][0]
         self.assertEqual(row['status']['revision'], '3')
         self.assertEqual(row['status']['effective_on'], self.today)

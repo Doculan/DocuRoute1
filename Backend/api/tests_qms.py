@@ -247,7 +247,8 @@ class QmsReadingTests(QmsFixture):
     def test_qms_staff_read_a_document_their_office_is_not_linked_to(self):
         response = self.as_(self.custodian).get(f'/api/manuals/{self.manual.id}/sections/')
         self.assertEqual(response.status_code, 200, response.data)
-        titles = [m['title'] for m in self.as_(self.custodian).get('/api/staff/manuals/').data]
+        titles = [m['title'] for m in
+                  self.as_(self.custodian).get('/api/staff/manuals/?page=1').data['results']]
         self.assertIn(self.manual.title, titles)
 
     def test_reading_is_not_proposing(self):
@@ -261,9 +262,9 @@ class ListsNeedAnOfficeTests(QmsFixture):
     """A current position is what the lists ask for."""
 
     def test_a_position_holder_sees_their_documents(self):
-        response = self.as_(self.acc_enc).get('/api/staff/manuals/')
+        response = self.as_(self.acc_enc).get('/api/staff/manuals/?page=1')
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertIn(self.manual.title, [m['title'] for m in response.data])
+        self.assertIn(self.manual.title, [m['title'] for m in response.data['results']])
 
     def test_someone_with_no_office_is_still_told_so(self):
         nobody = CustomUser.objects.create_user(username='nobody', password='x', is_approved=True)
