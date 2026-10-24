@@ -6,6 +6,7 @@ import DocTable from "../DocTable";
 import { parseTableRow, isTableSeparator } from "../../docTable";
 import { revisionLine } from "../documentStatus";
 import Icon from "../Icon";
+import DeadlineTag from "../DeadlineTag";
 
 const formatOCRContent = (content = "") => {
   return content
@@ -248,6 +249,7 @@ export default function Sections({ openManualId = null }) {
   const [selectedManual, setSelectedManual] = useState(null);
   const [sections, setSections] = useState([]);
   const [docStatus, setDocStatus] = useState(null);
+  const [docDeadline, setDocDeadline] = useState(null);
   // Sections an admin may still merge or split to correct extraction.
   const [restructurable, setRestructurable] = useState(new Set());
   const [manualFileUrl, setManualFileUrl] = useState(null);
@@ -328,6 +330,7 @@ export default function Sections({ openManualId = null }) {
       const sectionList = res.data.sections;
       setSections(sectionList);
       setDocStatus(res.data.status || null);
+      setDocDeadline(res.data.deadline || null);
       setRestructurable(new Set(res.data.restructurable_ids || []));
       setManualFileUrl(res.data.file_url ? `${BACKEND_BASE_URL}${res.data.file_url}` : null);
       if (sectionList.length > 0) setIsFullDoc(true);
@@ -667,6 +670,7 @@ export default function Sections({ openManualId = null }) {
                   {docStatus.document_number} · {revisionLine(docStatus)}
                 </div>
               )}
+              <DeadlineTag tag={docDeadline} />
             </div>
 
             <div className="toc-list">

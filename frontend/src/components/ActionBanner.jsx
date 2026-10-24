@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { dueText } from "./deadlineText";
+import DeadlineTag from "./DeadlineTag";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -105,6 +106,7 @@ export default function ActionBanner({ onOpenProposal, onOpenDeadlines, refreshK
                       onClick={() => onOpenProposal?.(item.proposal_id)}>
                 {item.manual}, returned by {item.by} — redraft
               </button>
+              {item.deadline && <> <DeadlineTag tag={item.deadline} /></>}
             </li>
           ))}
           {data.total > returned.length && (

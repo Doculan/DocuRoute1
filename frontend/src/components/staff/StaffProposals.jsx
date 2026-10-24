@@ -12,6 +12,7 @@ import DocDiff from "../DocDiff";
 import AiNote from "../AiNote";
 import SectionContentEditor from "../SectionContentEditor";
 import Icon from "../Icon";
+import DeadlineTag from "../DeadlineTag";
 
 const BASE_URL = "";
 
@@ -204,6 +205,7 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
               <span className="series-title">
                 {p.changed_sections} section{p.changed_sections === 1 ? "" : "s"}
                 {p.version > 1 ? ` · version ${p.version}` : ""}
+                {p.deadline && <> <DeadlineTag tag={p.deadline} /></>}
               </span>
               <span className={`status-mark is-${statusTone(p.status)}`}>
                 {STATUS_LABEL[p.status]}
@@ -300,6 +302,7 @@ function Proposal({ proposalId, onBack, onSay }) {
           <p className="page-subtitle">
             {STATUS_LABEL[data.status]} · version {data.version} ·
             {" "}from {data.initiating_office}
+            {data.deadline && <> <DeadlineTag tag={data.deadline} /></>}
           </p>
         </div>
       </header>

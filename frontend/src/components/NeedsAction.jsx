@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import DeadlineTag from "./DeadlineTag";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -71,6 +72,7 @@ export default function NeedsAction({ onOpenProposal, onGo, refreshKey, compact 
                       <span className="series-code">{item.manual}</span>
                       <span className="series-title">
                         {item.dcr_number ? `${item.dcr_number} · ` : ""}{item.office}
+                        {item.deadline && <> <DeadlineTag tag={item.deadline} /></>}
                       </span>
                       <span className={`status-mark is-${item.severity === "action" ? "pending" : "approved"}`}>
                         {item.label}

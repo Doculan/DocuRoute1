@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Icon from "../Icon";
 import { dueText } from "../deadlineText";
+import DeadlineTag from "../DeadlineTag";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -179,7 +180,9 @@ function ManualPicker({ onPick }) {
       <div className="col" style={{ gap: "0.1rem", maxHeight: "12rem", overflowY: "auto" }}>
         {query.trim() && rows.map((m) => (
           <button key={m.id} type="button" className="link-btn text-sm" style={{ textAlign: "left" }}
-                  onClick={() => onPick(m)}>{m.title}</button>
+                  onClick={() => onPick(m)}>
+            {m.title}{m.deadline && <> <DeadlineTag tag={m.deadline} /></>}
+          </button>
         ))}
       </div>
     </div>

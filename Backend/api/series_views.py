@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from .models import (
     Manual, ManualOffice, ManualSeries, ManualSeriesOffice, Office, OfficeLink,
 )
+from .deadline_tags import tag_rows
 from .organisation_views import IsSystemAdmin
 from .views import reauth_failure
 
@@ -226,8 +227,10 @@ def _apply_links(model, owner_field, owner, rows):
 def series_list(request):
     if request.method == 'GET':
         rows = ManualSeries.objects.select_related('owning_office').all()
+        payloads = [_series_payload(s) for s in rows]
+        tag_rows(request.user, [d for p in payloads for d in p['overriding_documents']], key='id')
         return Response({
-            'series': [_series_payload(s) for s in rows],
+            'series': payloads,
             'unassigned_documents': Manual.objects.filter(
                 series__isnull=True
             ).count(),
@@ -403,7 +406,8 @@ def document_detail(request, document_id):
         return Response({'error': 'Document not found'}, status=404)
 
     if request.method == 'GET':
-        return Response(_document_payload(document, detail=True))
+        return Response(tag_rows(request.user, [_document_payload(document, detail=True)],
+                                 key='id')[0])
 
     changes_authority = (
         ('series_id' in request.data

@@ -27,6 +27,7 @@ from rest_framework.response import Response
 from ml.revision_pipeline.layer4_explain import without_legacy_verdict
 
 from . import access, ai_notes, pre_assessment
+from .deadline_tags import tag_rows
 from .models import (
     AuditEvent, Manual, ManualSection, Office, OfficeLink, Position,
     PositionAssignment, Proposal, ProposalVersion, RevisionPreAssessment,
@@ -242,7 +243,7 @@ def proposals(request):
         rows = Proposal.objects.filter(
             initiating_office__in=offices
         ).select_related('manual', 'manual__series', 'initiating_office', 'created_by')
-        return Response({'proposals': [_proposal_payload(p) for p in rows]})
+        return Response({'proposals': tag_rows(request.user, [_proposal_payload(p) for p in rows])})
 
     try:
         manual = Manual.objects.select_related('series').get(
@@ -358,6 +359,7 @@ def proposal_detail(request, proposal_id):
             return Response({'error': 'Access denied'}, status=403)
         data = _proposal_payload(proposal, detail=True)
         data['all_sections'] = _document_sections(proposal)
+        tag_rows(request.user, [data])
         return Response(data)
 
     offices = {o.pk for o in access.current_offices(request.user)}

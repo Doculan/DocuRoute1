@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import notifications
+from .deadline_tags import tag_rows
 from .models import Notification
 
 PAGE_SIZE = 20
@@ -54,7 +55,7 @@ def inbox(request):
         'count': total,
         'page': page,
         'pages': max(1, -(-total // PAGE_SIZE)),
-        'notifications': [notifications.payload(n) for n in rows],
+        'notifications': tag_rows(request.user, [notifications.payload(n) for n in rows]),
     })
 
 

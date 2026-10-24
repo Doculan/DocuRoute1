@@ -5,6 +5,7 @@ import { parseTableRow, isTableSeparator } from "../../docTable";
 import BaselineForm from "../qms/BaselineForm";
 import { formatDate, formatRevision, revisionLine } from "../documentStatus";
 import Icon from "../Icon";
+import DeadlineTag from "../DeadlineTag";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
 // server diffs submitted text against content normalized the same way.
@@ -139,6 +140,7 @@ export default function StaffSections({
         // v3's version counters are not shown to readers.
         setManual({
           status: res.data.status,
+          deadline: res.data.deadline,
           canRecordBaseline: res.data.can_record_baseline,
           canCorrectBaseline: res.data.can_correct_baseline,
         });
@@ -182,6 +184,7 @@ export default function StaffSections({
     <div className="reader">
       <div className="reader-bar">
         <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />Back to manuals</button>
+        <DeadlineTag tag={manual?.deadline} />
         {fileUrl && (
           <button
             className={`btn btn-sm ${showOriginal ? "btn-primary" : "btn-ghost"}`}

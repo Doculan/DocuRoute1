@@ -3,6 +3,7 @@ import axios from "axios";
 import { STATUS_LABEL, statusTone } from "../proposalStatus";
 import Icon from "../Icon";
 import NeedsAction from "../NeedsAction";
+import DeadlineTag from "../DeadlineTag";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -332,6 +333,7 @@ function RecentProposals({ rows, onGo }) {
             <span className="decision-what">
               <span className="doc-ref">{row.manual}</span>
               <span className="subtle text-xs"> · from {row.office}</span>
+              {row.deadline && <> <DeadlineTag tag={row.deadline} /></>}
             </span>
             <span className="subtle text-xs decision-who">
               {row.of > 0 ? `${row.concurred} of ${row.of} concurred` : ""}

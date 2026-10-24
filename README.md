@@ -6,6 +6,8 @@ them into sections, and routing changes through the official Document Change
 Request process - drafting, concurrence, signing, the IMR's decision and the
 Document Custodian making them effective.
 
+`FLOWCHART_v3_OUTDATED.png` shows the old v3 flow (admin approval, no IMR); it does not match the current process.
+
 ### Complete draft manuals
 
 When a proposal completes concurrence, its **Draft copy** contains every section

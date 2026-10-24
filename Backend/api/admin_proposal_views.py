@@ -14,6 +14,7 @@ from django.db.models.functions import Coalesce
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from .deadline_tags import tag_rows
 from .models import Concurrence, Proposal, ProposalParticipant, ProposalVersion
 from .views import IsAdminRole
 
@@ -104,7 +105,7 @@ def admin_proposals(request):
         'page': page,
         'page_size': PAGE_SIZE,
         'pages': max(1, -(-total // PAGE_SIZE)),
-        'results': [{
+        'results': tag_rows(request.user, [{
             'id': p.id,
             'manual_id': p.manual_id,
             'manual': p.manual.title,
@@ -122,5 +123,5 @@ def admin_proposals(request):
             'concurred': p.concurred_total,
             'of': p.concurring_total,
             'updated_at': p.updated_at,
-        } for p in rows],
+        } for p in rows]),
     })

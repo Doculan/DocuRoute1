@@ -16,6 +16,7 @@ from .models import (
     AuditEvent, Concurrence, CustomUser, Position, PositionAssignment, Proposal,
     ProposalParticipant, ProposalVersion,
 )
+from .deadline_tags import tag_rows
 from .proposal_views import _current_assignments
 
 SHOWN = 10
@@ -203,6 +204,10 @@ def action_banner(request):
     from .notice_views import deadline_groups
     owed = deadline_groups(request.user)
     returned = returned_drafts(request.user)
+    rows = tag_rows(request.user, [{
+        'proposal_id': p.pk, 'manual_id': p.manual_id, 'manual': p.manual.title,
+        'by': _by(p), 'office': p.initiating_office.name,
+    } for p in returned.order_by('-updated_at')[:BANNER_SHOWN]])
     level = owed[0]['urgency'] if owed else None
     if level == 'later' or (level is None and returned.exists()):
         level = 'returned' if returned.exists() else level
@@ -211,10 +216,7 @@ def action_banner(request):
         'deadlines': {'total': len(owed), 'items': owed[:BANNER_SHOWN]},
         # Returned work, as before.
         'total': returned.count(),
-        'items': [{
-            'proposal_id': p.pk, 'manual': p.manual.title, 'by': _by(p),
-            'office': p.initiating_office.name,
-        } for p in returned.order_by('-updated_at')[:BANNER_SHOWN]],
+        'items': rows,
     })
 
 
@@ -230,6 +232,7 @@ def needs_action(request):
     sections += qms_sections(user)
     if access.current_offices(user):
         sections += staff_sections(user)
+    tag_rows(user, [row for section in sections for row in section['items']])
     return Response({
         'total': sum(s['total'] for s in sections),
         'sections': sections,

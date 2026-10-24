@@ -20,6 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import access, deadlines, system_log
+from .deadline_tags import tag_rows
 from .models import (
     Announcement, AnnouncementDismissal, AnnouncementOffice, Deadline, DeadlineObligation,
     DeadlineTarget, DeadlineType, Manual, ManualSeries, Office, Position, SystemEvent,
@@ -543,6 +544,6 @@ def manual_search(request):
     rows = Manual.objects.select_related('series')
     if q:
         rows = rows.filter(Q(title__icontains=q) | Q(series__code__icontains=q))
-    return Response({'manuals': [
+    return Response({'manuals': tag_rows(request.user, [
         {'id': m.pk, 'title': m.title, 'series': m.series.code if m.series_id else None}
-        for m in rows.order_by('title')[:20]]})
+        for m in rows.order_by('title')[:20]], key='id')})

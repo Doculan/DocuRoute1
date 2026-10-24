@@ -3,6 +3,7 @@ import axios from "axios";
 import Icon from "../Icon";
 import NeedsAction from "../NeedsAction";
 import DeadlinesPage from "../DeadlinesPage";
+import DeadlineTag from "../DeadlineTag";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -110,6 +111,7 @@ function RecentlyOpened({ rows, onOpenSection, onOpenManual }) {
             >
               <span className="doc-ref">{row.section || row.manual}</span>
               {row.section && <span className="subtle text-xs"> · {row.manual}</span>}
+              {row.deadline && <> <DeadlineTag tag={row.deadline} /></>}
             </button>
           ))}
         </div>

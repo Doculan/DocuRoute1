@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 import Icon from "../Icon";
+import DeadlineTag from "../DeadlineTag";
 
 const BASE_URL = "";
 
@@ -506,6 +507,7 @@ function DocumentDetail({ documentId, offices, onBack, onSay }) {
             {data.series_code
               ? `In series ${data.series_code} · ${data.section_count} sections`
               : `Not in a series · ${data.section_count} sections`}
+            {data.deadline && <> <DeadlineTag tag={data.deadline} /></>}
           </p>
         </div>
       </header>

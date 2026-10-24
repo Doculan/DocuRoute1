@@ -29,6 +29,7 @@ from rest_framework.response import Response
 
 from . import access, deadlines, documents, notifications
 from .ai_notes import compose_version_note
+from .deadline_tags import tag_rows
 from .generation.common import position_title
 from .models import (
     AuditEvent, Concurrence, OfficeLink, Position, Proposal,
@@ -810,6 +811,7 @@ def proposal_full(request, proposal_id):
         'can_generate': kind is not None,
         'needs_reason': kind == 'admin',
     }
+    tag_rows(request.user, [data])
     return Response(data)
 
 

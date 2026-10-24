@@ -6,6 +6,7 @@ import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
 import TrailReport from "../TrailReport";
 import Icon from "../Icon";
+import DeadlineTag from "../DeadlineTag";
 import {
   STATUS_LABEL, WITH_PACKAGE, statusTone,
 } from "../proposalStatus";
@@ -165,6 +166,7 @@ export default function Proposals({ openId = null }) {
                 {/* Which request: a document can have several from one office. */}
                 <span className="series-title">
                   from {p.office} · {p.dcr_number || `started ${when(p.created_at)}`}
+                  {p.deadline && <> <DeadlineTag tag={p.deadline} /></>}
                 </span>
                 <span className="subtle text-xs">
                   {p.status === "concurrence"
@@ -246,6 +248,7 @@ export function ProposalDetail({
           <p className="page-subtitle">
             {STATUS_LABEL[data.status]} · version {data.version} ·
             {" "}from {data.initiating_office}
+            {data.deadline && <> <DeadlineTag tag={data.deadline} /></>}
           </p>
         </div>
       </header>

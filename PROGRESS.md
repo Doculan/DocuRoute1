@@ -3,6 +3,94 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — v4.2 Phase 3B-1: the deadline tag (Checkpoint 3B-1)
+
+- **One helper**, `deadline_tags.deadline_tags_for(user, manual_ids)`,
+  and `tag_rows` for a page of rows. Who sees what (spec §6.7):
+  - the office that owes it: "Deadline upcoming 12 Nov 2026", "· 5
+    days" inside the reminder window, "Deadline today", "Overdue · was
+    due …", or the muted "Submitted 10 Nov" until the due date passes;
+    the type, "Advised by admin" and the note on hover
+  - Heads above it, QMS staff and the admin: "Advised: {Office} · …",
+    two offices then "+n"
+  - offices that concur on or read the manual: muted "Revision advised
+    for {Office}"
+  - anyone else, another branch included: nothing
+  - the nearest deadline shows, with "+1 more"; office-level
+    obligations tag no manual (Q-3)
+- **Queries:** one when nothing on the page is owed; two otherwise (the
+  obligations, and the office tree with the viewer's posts marked on it
+  in the same query); a third only when the viewer neither owes nor
+  oversees but may concur. **Deviation from the design's "two
+  queries":** the third, for the muted tag, is only made when needed.
+- **On 14 endpoints:** the manual view header, Sections search, Home's
+  Recently opened, admin home, Proposals list, detail and editor
+  header, Needs your action, the banner's returned work, notifications,
+  admin Proposals, the org series list (overriding documents) and
+  document detail, and the admin's manual search in the deadline form.
+- **One `DeadlineTag` component** on those screens; the words carry the
+  meaning and the colour repeats it. A deadline notice does not repeat
+  its own date as a tag.
+- **The coverage test** calls every GET route as five viewers and fails
+  on any manual without a `deadline` key: a `manual_id`, a `manual`
+  beside a row's fields, an object with `id` and `title` that has a
+  series or sits under a manual-ish key, or a route that opens a manual.
+  Exempt, with reasons: two deadline screens, two parts of answers that
+  are the deadline's own rows, and file downloads. **The 7 slow lists
+  are listed as pending 3B-2** (My Manuals, admin Manuals, awaiting,
+  involving, the QMS queue, org documents, a series' documents); that
+  list empties in 3B-2.
+- **Also, its own commit:** tests that commit no longer wipe the rows
+  the migrations insert (`api/testing.py`). `serialized_rollback` was
+  tried and was not enough: Django reloads too early, and its serializer
+  drops microseconds, so the log's first event failed its hash. The
+  runner now keeps an exact copy. `seed_scale`'s guard stays.
+- **Housekeeping:** `FLOWCHART.png` renamed `FLOWCHART_v3_OUTDATED.png`,
+  with a line in the README.
+
+**What was run, and why:**
+- **The isolation fix:** its new test, shown failing with no restore and
+  with Django's serialized copy (246119 µs came back as 246000); then
+  the affected modules (proposals, migration 0043, migration data,
+  notices, scale seed): 99 tests passed.
+- **3B-1:** the new `tests_deadline_tags` (28 tests: wording,
+  visibility, nearest, query counts, the tag's cost per endpoint, the
+  coverage walk).
+- **Code-removal proof:** 32 cases, each failing without its code. The
+  first run overlapped a mistaken `git stash` of mine, so every case was
+  run again cleanly; one case's removal had left invalid syntax and was
+  rewritten so it fails on the missing tag.
+- **Full suite:** `views.py` is imported almost everywhere, so the
+  partial set is nearly the whole suite: **813 tests passed**, the
+  isolation fix included (no seed errors this time).
+- **At full scale**, with the tag and without it (ms, queries):
+
+  | Endpoint | With | Without |
+  |---|---|---|
+  | Sections search (400 rows) | 145, 6 | 86, 3 |
+  | Proposals (mine) | 64, 41 | 43, 38 |
+  | needs-action | 48, 16 | 36, 13 |
+  | proposal (editor header) | 45, 25 | 40, 22 |
+  | manual view header | 23, 19 | 13, 16 |
+  | notifications | 22, 6 | 9, 3 |
+  | admin manual search | 19, 2 | 3, 1 |
+  | org document detail | 15, 8 | 8, 7 |
+  | admin home | 168, 38 | 165, 37 |
+  | org series list | 148, 63 | 147, 62 |
+
+  At most 3 queries added anywhere.
+- **Headless Chrome on the scale copy** (a Head owing 102 manuals):
+  - Proposals rows and the editor header show their tags
+  - Sections search groups show "Overdue · was due 20 Oct 2026 +1 more"
+    (the missing space before "+1 more" was found here and fixed)
+
+  No console errors. The admin's manual picker could not be reached by
+  the driver (its option text is not unique); the coverage test covers
+  its tag.
+- **Lint:** no finding on a changed line; 8 earlier ones remain.
+- **Not run:** `evaluate_folds.py` and `check_setup.py`, because no
+  pipeline code and no migration were touched. No live database change.
+
 ## 24 October 2026 — v4.2 Phase 3A: deadlines and announcements (Checkpoint 3A)
 
 Design in `MONITORING_PHASE3_DESIGN.md`, approved with changes (§8 there).

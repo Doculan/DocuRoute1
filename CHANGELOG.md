@@ -255,3 +255,13 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   - The approving offices are told when a request is denied or made
     effective.
   - Migration `0046`.
+- Phase 3B-1: **the deadline tag.** A manual with a deadline carries a
+  tag worded for the viewer: the office that owes it, the offices above
+  it, the QMS and the admin, or offices that concur on or read it;
+  another branch sees nothing. It shows on the manual view, Sections
+  search, Home, Proposals and the editor, Needs your action, the banner,
+  notifications, and the admin's Proposals, organisation and deadline
+  screens. A test walks every route and fails on any manual without
+  one.
+- **Fixed (tests):** a test that commits no longer removes the rows the
+  migrations insert for the tests after it.

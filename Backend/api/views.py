@@ -18,6 +18,7 @@ from .models import (
 )
 from ml.ocr_engine import extract_text
 from api import access, document_status
+from api.deadline_tags import deadline_tags_for, tag_rows
 from ml.svm_model import predict_section
 import difflib
 import logging
@@ -1016,14 +1017,14 @@ def admin_dashboard(request):
     return Response({
         'attention': attention,
         'activity': activity,
-        'proposals': _recent_proposals(),
+        'proposals': _recent_proposals(request.user),
         'upcoming': upcoming,
         'upcoming_total': scheduled.count(),
         'system': system,
     })
 
 
-def _recent_proposals():
+def _recent_proposals(user):
     """The last few proposals and where each has got to."""
     rows = []
     for proposal in Proposal.objects.select_related(
@@ -1036,6 +1037,7 @@ def _recent_proposals():
         ).count() if version else 0
         rows.append({
             'id': proposal.id,
+            'manual_id': proposal.manual_id,
             'manual': proposal.manual.title,
             'office': str(proposal.initiating_office),
             'status': proposal.status,
@@ -1045,7 +1047,7 @@ def _recent_proposals():
             'of': participants.count(),
             'updated_at': proposal.updated_at,
         })
-    return rows
+    return tag_rows(user, rows)
 
 
 @api_view(['GET'])
@@ -1068,6 +1070,7 @@ def staff_dashboard(request):
         'opened_at': row.opened_at,
     } for row in RecentlyOpened.objects.filter(user=user)
         .select_related('manual', 'section')[:RECENTLY_OPENED_LIMIT]]
+    tag_rows(user, recent)
 
     # -- proposals: how much is waiting on this person's offices ---
     # One aggregate query; it used to loop over every proposal in
@@ -1142,7 +1145,7 @@ def staff_sections(request):
         'page_number': s.page_number,
         'content_preview': (s.content or '')[:220],
     } for s in sections]
-    return Response({'count': len(data), 'results': data})
+    return Response({'count': len(data), 'results': tag_rows(request.user, data)})
 
 
 # ─── MANUALS ─────────────────────────────────────────────────
@@ -1576,6 +1579,7 @@ def list_sections(request, manual_id):
         'manual_revision': manual.revision,
         'display_status': f"v{manual.version} rev{manual.revision}",
         'status': document_status.status_payload(manual.current_status),
+        'deadline': deadline_tags_for(request.user, [manual.pk]).get(manual.pk),
         'can_record_baseline': can_record_baseline(request.user, manual),
         'can_correct_baseline': can_correct_baseline(request.user, manual),
         'sections': data,

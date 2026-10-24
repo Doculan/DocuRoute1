@@ -732,6 +732,20 @@ a:hover { color: var(--brand-500); }
 .deadline-row { padding: 0.55rem 0.75rem; border-left: 3px solid var(--n-300, #b9b6c8); background: var(--surface); }
 .deadline-row.is-overdue { border-left-color: var(--danger); }
 .deadline-row.is-today, .deadline-row.is-soon { border-left-color: var(--warning); }
+
+/* The deadline tag beside a manual (spec §6.7): a quiet label, the words
+   carrying the meaning and the colour only repeating it. */
+.deadline-tag {
+  display: inline-flex; align-items: center; max-width: 100%; justify-self: start;
+  padding: 0.05rem 0.45rem; border-radius: var(--r-xs);
+  font-size: 0.715rem; font-weight: 500; line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--brand-50); color: var(--brand-700); cursor: default;
+}
+.deadline-tag.is-soon    { background: var(--warning-soft); color: var(--warning-ink); }
+.deadline-tag.is-overdue { background: var(--danger-soft);  color: var(--danger-ink); }
+.deadline-tag.is-muted   { background: var(--paper-2);      color: var(--text-muted); font-weight: 400; }
+.deadline-tag-more { margin-left: 0.35em; opacity: 0.75; font-weight: 400; }
 .action-banner.is-collapsed { padding-top: 0.3rem; padding-bottom: 0.3rem; }
 .action-banner-line { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .action-banner-link {

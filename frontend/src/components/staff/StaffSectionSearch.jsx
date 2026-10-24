@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import DeadlineTag from "../DeadlineTag";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -160,7 +161,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
           <div className="col" style={{ gap: "1.5rem" }}>
             {grouped.map(([manualTitle, rows]) => (
               <section key={manualTitle}>
-                <h2 className="section-title">{manualTitle}</h2>
+                <h2 className="section-title">{manualTitle} <DeadlineTag tag={rows[0].deadline} /></h2>
                 <div className="col" style={{ gap: "0.5rem" }}>
                   {rows.map((section) => (
                     <button

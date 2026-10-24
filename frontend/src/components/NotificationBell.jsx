@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import DeadlineTag from "./DeadlineTag";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -154,6 +155,8 @@ export function NoticeButton({ notice, onPick }) {
       )}
       <span className="notif-msg">{notice.title}</span>
       {notice.body && <span className="notif-detail">{notice.body}</span>}
+      {/* A deadline notice already says the date; the tag would repeat it. */}
+      {notice.kind !== "deadline_set" && <DeadlineTag tag={notice.deadline} />}
       <span className="notif-at">{ago(notice.created_at)}</span>
     </button>
   );
