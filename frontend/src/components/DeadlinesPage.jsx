@@ -43,7 +43,9 @@ export default function DeadlinesPage({ limit, onShowAll, onOpenManual }) {
             <div className="row-wrap" style={{ gap: "0.4rem", marginTop: "0.2rem" }}>
               {d.manuals.slice(0, panel ? 3 : 50).map((m) => (
                 <button key={m.id} type="button" className="link-btn text-xs"
-                        onClick={() => onOpenManual?.(m.id)}>{m.title}</button>
+                        onClick={() => onOpenManual?.(m.id)}>
+                  {m.priority && <span className="badge badge-warning">Priority</span>} {m.title}
+                </button>
               ))}
               {panel && d.manuals.length > 3 && (
                 <span className="subtle text-xs">+{d.manuals.length - 3}</span>

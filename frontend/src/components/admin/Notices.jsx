@@ -388,6 +388,7 @@ function DeadlineDetail({ id, onBack }) {
       </header>
       <p className="subtle text-sm">For: {data.targets.map((t) => targetLabel({
         ...t, name: t.office || t.series || t.manual })).join("; ")}</p>
+      {data.active && <PriorityPanel deadlineId={id} onDone={() => { load(); setRows(null); setBranch(null); }} />}
       <h3 className="section-title">By branch</h3>
       <div className="col" style={{ gap: "0.15rem" }}>
         {data.by_branch.map((b) => (
@@ -402,6 +403,7 @@ function DeadlineDetail({ id, onBack }) {
                   <div key={o.id} className="row text-sm" style={{ gap: "0.6rem", alignItems: "baseline" }}>
                     <span>{o.office}</span>
                     <span className="subtle text-xs">{o.manual || "office-wide"}</span>
+                    {o.priority && <span className="badge badge-warning">Priority</span>}
                     <span className={`status-mark is-${o.state === "open" ? "pending" : "approved"}`}>{o.state_label}</span>
                     {o.met_by && <span className="subtle text-xs">by {o.met_by.dcr_number || `proposal ${o.met_by.proposal_id}`}</span>}
                   </div>
@@ -411,6 +413,90 @@ function DeadlineDetail({ id, onBack }) {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Priority manuals for one office under this deadline (spec §6.4):
+ *  choose the office, then documents it concurs on. Folded until asked. */
+function PriorityPanel({ deadlineId, onDone }) {
+  const offices = useOffices();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [office, setOffice] = useState(null);
+  const [manuals, setManuals] = useState([]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? offices.filter((o) => o.name.toLowerCase().includes(q)).slice(0, 20) : [];
+  }, [offices, query]);
+
+  const save = async () => {
+    setError("");
+    try {
+      const { data } = await axios.post(`/api/admin/deadlines/${deadlineId}/priority/`,
+        { office_id: office.id, manual_ids: manuals.map((m) => m.id) }, getAuth());
+      setMessage(`${data.priority} priority manual${data.priority === 1 ? "" : "s"} for ${office.name}.`);
+      setOffice(null); setManuals([]); setQuery(""); setOpen(false);
+      onDone();
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not set the priority manuals.");
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(true); setMessage(""); }}>
+          Add priority manuals for an office
+        </button>
+        {message && <span className="subtle text-sm">{message}</span>}
+      </div>
+    );
+  }
+  return (
+    <div className="card card-pad col" style={{ gap: "0.6rem", maxWidth: "36rem" }}>
+      <h3 className="card-title" style={{ margin: 0 }}>Priority manuals</h3>
+      {!office ? (
+        <>
+          <input className="input" type="search" placeholder="Search offices" value={query}
+                 onChange={(e) => setQuery(e.target.value)} aria-label="Search offices for priority" />
+          <div className="col" style={{ gap: "0.1rem", maxHeight: "10rem", overflowY: "auto" }}>
+            {shown.map((o) => (
+              <button key={o.id} type="button" className="link-btn text-sm" style={{ textAlign: "left" }}
+                      onClick={() => setOffice(o)}>{o.name}</button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-sm" style={{ margin: 0 }}>
+            For <strong>{office.name}</strong>{" "}
+            <button type="button" className="link-btn text-xs" onClick={() => setOffice(null)}>change</button>
+          </p>
+          {manuals.length > 0 && (
+            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+              {manuals.map((m) => (
+                <li key={m.id} className="text-sm">
+                  {m.title}{" "}
+                  <button type="button" className="link-btn text-xs"
+                          onClick={() => setManuals(manuals.filter((x) => x.id !== m.id))}>remove</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <ManualPicker onPick={(m) => setManuals(manuals.some((x) => x.id === m.id) ? manuals : [...manuals, m])} />
+        </>
+      )}
+      {error && <div className="alert alert-danger">{error}</div>}
+      <div className="row" style={{ gap: "0.5rem" }}>
+        <button className="btn btn-primary btn-sm" disabled={!office || manuals.length === 0} onClick={save}>
+          Mark priority and tell the office
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div>
   );

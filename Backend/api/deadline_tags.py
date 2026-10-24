@@ -20,7 +20,7 @@ office concurs on it or reads it. None grows with the page.
 Only obligations naming a manual tag it (Q-3): an office-wide obligation
 would tag every document the office concurs on, and shows in the banner
 and the Deadlines panel instead. A met obligation shows as "Submitted
-10 Nov" until its due date passes.
+10 Nov" - or "Reviewed, no change 10 Nov" - until its due date passes.
 """
 
 from django.db.models import Exists, OuterRef, Q
@@ -31,6 +31,7 @@ from .deadlines import urgency
 from .models import DeadlineObligation, Manual, Office, Position, PositionAssignment
 
 OWN, ADVISED, RELATED = 'own', 'advised', 'related'
+MET = ('submitted', 'reviewed')
 VIEW_ORDER = {OWN: 0, ADVISED: 1, RELATED: 2}
 SHOWN_OFFICES = 2
 
@@ -101,9 +102,12 @@ def _tag(view, deadline, rows, today):
     else:
         if view == RELATED:
             return None            # nothing left to ask of anyone
-        state, days = 'submitted', (deadline.due_on - today).days
+        # Met by a proposal, or by "Reviewed, no change" (3C) - said as such.
+        reviewed = all(r.state == DeadlineObligation.REVIEWED for r in rows)
+        state, days = ('reviewed' if reviewed else 'submitted'), (deadline.due_on - today).days
+        word = 'Reviewed, no change' if reviewed else 'Submitted'
         met = max((r.office_met_at for r in rows if r.office_met_at), default=None)
-        when = f'Submitted {_short(timezone.localtime(met))}' if met else 'Submitted'
+        when = f'{word} {_short(timezone.localtime(met))}' if met else word
 
     tag = {
         'deadline_id': deadline.pk,
@@ -114,7 +118,7 @@ def _tag(view, deadline, rows, today):
         'type': deadline.type.name,
         'advised': owing[:SHOWN_OFFICES],
         'advised_more': max(len(owing) - SHOWN_OFFICES, 0),
-        'muted': view == RELATED or state == 'submitted',
+        'muted': view == RELATED or state in MET,
         'more': 0,
     }
     if view == OWN:
@@ -176,7 +180,7 @@ def deadline_tags_for(user, manual_ids, today=None):
 
     tags = {}
     for manual_id, candidates in found.items():
-        candidates.sort(key=lambda t: (VIEW_ORDER[t['view']], t['state'] == 'submitted',
+        candidates.sort(key=lambda t: (VIEW_ORDER[t['view']], t['state'] in MET,
                                        t['due_on']))
         tags[manual_id] = {**candidates[0], 'more': len(candidates) - 1}
     return tags

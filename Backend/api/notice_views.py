@@ -12,7 +12,7 @@ counts - never a query per row (spec §9).
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
@@ -25,7 +25,7 @@ from .models import (
     Announcement, AnnouncementDismissal, AnnouncementOffice, Deadline, DeadlineObligation,
     DeadlineTarget, DeadlineType, Manual, ManualSeries, Office, Position, SystemEvent,
 )
-from .org_tree import Tree, concurring_office_ids, expand_offices
+from .org_tree import Tree, concurring_office_ids, concurring_offices_of, expand_offices
 from .views import IsAdminRole
 
 PAGE_SIZE = 50
@@ -455,6 +455,36 @@ def admin_deadline_detail(request, deadline_id):
     return Response(_deadline_payload(deadline, today))
 
 
+@api_view(['POST'])
+@permission_classes([IsAdminRole])
+def admin_deadline_priority(request, deadline_id):
+    """`{office_id, manual_ids}`: these manuals are priority for this office
+    under the deadline (spec §6.4). The office must concur on each. No
+    password: like setting the deadline (Q-2), it asks work of an office
+    but commits nobody."""
+    deadline = Deadline.objects.filter(pk=deadline_id, active=True).first()
+    if deadline is None:
+        return _refuse('Deadline not found', 'not_found', status=404)
+    office = Office.objects.filter(pk=request.data.get('office_id'), is_active=True).first()         if str(request.data.get('office_id') or '').isdigit() else None
+    if office is None:
+        return _refuse('Choose an office from the list.', 'invalid_office')
+    raw = request.data.get('manual_ids')
+    if not isinstance(raw, list) or not raw or not all(str(m).isdigit() for m in raw):
+        return _refuse('Choose at least one manual.', 'invalid_manuals')
+    manuals = list(Manual.objects.filter(pk__in=[int(m) for m in raw]))
+    if len(manuals) != len(set(int(m) for m in raw)):
+        return _refuse('Choose manuals from the list.', 'invalid_manuals')
+    concurring = concurring_offices_of([m.pk for m in manuals])
+    strangers = sorted(m.title for m in manuals if office.pk not in concurring.get(m.pk, []))
+    if strangers:
+        return _refuse(f'{office.name} does not concur on {", ".join(strangers)}.',
+                       'not_concurring')
+    with transaction.atomic():
+        flagged = deadlines.set_priority(deadline, office, manuals, request.user)
+    return Response({'priority': len(flagged), 'open': sum(
+        ob.state == DeadlineObligation.OPEN for ob in flagged)})
+
+
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def admin_deadline_obligations(request, deadline_id):
@@ -479,7 +509,10 @@ def admin_deadline_obligations(request, deadline_id):
         except ValueError:
             return _refuse('Choose a branch from the list.', 'invalid_branch')
         rows = rows.filter(office_id__in=[branch] + tree.descendants(branch))
-    total, pages, rows = _paged(rows.order_by('state', 'office__name', 'manual__title'), page)
+    unmet_first = Case(When(state=DeadlineObligation.OPEN, then=Value(0)), default=Value(1),
+                       output_field=IntegerField())
+    total, pages, rows = _paged(rows.order_by(unmet_first, '-priority', 'office__name',
+                                              'manual__title'), page)
     return Response({'count': total, 'page': page, 'pages': pages, 'obligations': [{
         'id': ob.pk, 'office_id': ob.office_id, 'office': ob.office.name,
         'branch': tree.name[tree.branch(ob.office_id)],
@@ -514,11 +547,17 @@ def deadline_groups(user, today=None):
             'office_level': False, 'note': ob.deadline.note,
         })
         if ob.manual_id:
-            group['manuals'].append({'id': ob.manual_id, 'title': ob.manual.title})
+            group['manuals'].append({'id': ob.manual_id, 'title': ob.manual.title,
+                                     'priority': ob.priority})
+            group['priority'] = group.get('priority', False) or ob.priority
         else:
             group['office_level'] = True
+    for group in groups.values():
+        # Priority manuals first (spec §6.4).
+        group['manuals'].sort(key=lambda m: (not m['priority'], m['title']))
+        group.setdefault('priority', False)
     return sorted(groups.values(), key=lambda g: (deadlines.URGENCY_ORDER[g['urgency']],
-                                                  g['due_on'], g['title']))
+                                                  not g['priority'], g['due_on'], g['title']))
 
 
 @api_view(['GET'])

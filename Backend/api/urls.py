@@ -9,6 +9,7 @@ from . import qms_views as qms
 from . import notification_views as inbox
 from . import account_views as account
 from . import trail_views as trail
+from . import reviews
 from . import structure_views as structure
 from . import admin_proposal_views
 from . import action_views
@@ -103,6 +104,7 @@ urlpatterns = [
     path('proposals/<int:proposal_id>/imr/', qms.imr_decide),
     path('proposals/<int:proposal_id>/custodian/return/', qms.custodian_return),
     path('proposals/<int:proposal_id>/custodian/effective/', qms.make_effective),
+    path('manuals/<int:manual_id>/reviewed-no-change/', reviews.reviewed_no_change),
     path('manuals/<int:manual_id>/status/baseline/', qms.record_baseline),
     path('manuals/<int:manual_id>/status/baseline/correct/', qms.correct_baseline),
     path('qms/queue/', qms.queue),
@@ -168,6 +170,7 @@ urlpatterns = [
     path('admin/deadlines/', notices.admin_deadlines),
     path('admin/deadlines/<int:deadline_id>/', notices.admin_deadline_detail),
     path('admin/deadlines/<int:deadline_id>/obligations/', notices.admin_deadline_obligations),
+    path('admin/deadlines/<int:deadline_id>/priority/', notices.admin_deadline_priority),
     path('admin/manual-search/', notices.manual_search),
     path('deadline-types/', notices.deadline_types),
     path('my-deadlines/', notices.my_deadlines),

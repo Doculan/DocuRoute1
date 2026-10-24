@@ -3,6 +3,105 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — v4.2 Phase 3C-1: the ladder, priority, reviews (Checkpoint 3C-1)
+
+**First, the adjustment to 3B-2 (approved with it):** admin Manuals sorts
+on the server (title, series, newest or oldest upload, most sections) and
+filters by an upload-date range (both days included, as bounds on the
+column, not a date function). Migration `0047` adds indexes on
+`Manual(title)`, `Manual(series, title)` and `Manual(uploaded_at)` (index
+creation only; applied live, row counts identical). The query plans use
+them; **the section count is not a column**, so that sort counts through
+`ManualSection`'s covering index and sorts the totals (164 ms at 3,000
+manuals, against 13-56 ms for the others). The minimum-sections filter
+is not restored.
+
+**Entry condition for Phase 5:** `proposals/` ("From my office") is not
+yet paged. Paging it is a condition for starting Phase 5.
+
+**3C-1:**
+- **The ladder** (`api/deadline_ladder.py`, a `run_monitoring` step). One
+  unit is an office's open obligations on one deadline:
+  - reminders on each of the deadline's `reminder_days`, and the due day:
+    the office's Head and Encoders (action)
+  - overdue, from the day after: the same, and the Head above (info)
+  - escalated at +7 days: the Head of the nearest approving office above,
+    and the IMR and Custodian (info)
+  - weekly from +14 days, once each ISO week: the escalation's recipients
+  - fallbacks: the President's office where there is no approving office
+    above; the system admin where an approving office has no Head
+  - each rung once (its own dedupe key), a reminder from before the
+    obligation existed skipped, a missed day caught up; a hash-chained
+    `deadline_reminder|due|overdue|escalated` event per notice
+  - **met clears** every open action notice of the unit, at once when the
+    office submits or reviews, and in the run for deadlines set inactive
+  - **Choice made:** escalation and the Head above are told for
+    information; only the office that owes it gets action notices.
+- **Priority manuals** (`POST admin/deadlines/<id>/priority/`): the pair's
+  obligation is made or flagged; the office must concur on each manual
+  (`not_concurring`); the office is told; priority comes first in its
+  Deadlines panel, in reminders and in the admin's list.
+- **Reviewed, no change** (`POST manuals/<id>/reviewed-no-change/`): a
+  Head of a concurring office, with the password; meets that office's
+  open obligations on the manual and its office-level ones as
+  `reviewed`; sets `last_reviewed_on` and `next_review_due` (12 months,
+  a setting); writes `ManualReview` and a `reviewed_no_change` event;
+  clears the notices. **Added:** refused while the office has a proposal
+  open on the document (`proposal_open`).
+- **Periodic review** (off): once a month, documents past their review
+  date gathered into "Periodic document review — {month}".
+- **Not built:** the weekly digest, left until Phase 4.
+- **Fixed:** the admin's obligations list put "effective" before "open"
+  (it sorted by the state's name); now unmet first, priority first.
+- **Migration `0048`**: the two `Manual` dates (`ALTER TABLE ADD COLUMN`,
+  no rebuild), `ManualReview`, and the settings rows
+  `review_interval_months` = 12 and `periodic_review` = 0. The new notice
+  and event kinds change only choices (no database operation). Tested on
+  a copy of the live database: every other table identical row for row.
+- **Deviation from the design:** `ManualReview.obligations` is a list of
+  the obligations met, not one optional link - a review can meet a
+  manual-level and an office-level obligation together.
+- **Screens:** "Reviewed, no change" on the manual view for a Head of a
+  concurring office (a note, then the password) with the review dates;
+  "Add priority manuals for an office" on the admin's deadline page; a
+  Priority mark in the Deadlines panel and the admin's obligations.
+
+**What was run, and why:**
+- **New `tests_ladder`** (26): every rung, the fallbacks, the weekly
+  repeat, clearing, priority, the review and its refusals (each asserting
+  its reason), the periodic step. Two of them found by driving the
+  screens: the tag called a review a submission (now "Reviewed, no
+  change 24 Oct"), and the admin list's order.
+- **The sort adjustment**: `tests_lists` (with the new sort and range
+  tests) and the modules that call the manual lists: 162 tests passed;
+  its 5 removal cases each fail without their code.
+- **Code-removal proof (3C-1):** 31 cases, each failing on its assertion.
+  The first run found one weak test - the weekly repeat, which happened to
+  run on a Sunday and never tried the same week twice; it now runs a whole
+  ISO week from a Monday.
+- **Full suite** (`models.py` changed): 859 tests, **1 failure** - the
+  weekly test again. The run crossed midnight in Manila: the test picked
+  its "Monday" by the UTC weekday while the ladder counts days in the
+  project's time zone, so its "week" straddled two. Fixed in the test
+  (local time, as the code); `tests_ladder` re-run, 26 passed, and both
+  weekly removal cases still fail without their code. The full suite was
+  not repeated for a test-only change.
+- **Live:** backup `db.sqlite3.bak-20261025-pre-0048`; `0048` applied;
+  identical to the copy (the new empty `api_manualreview`, the two
+  settings rows, every other table unchanged); the log verifies. `0047`
+  was applied live earlier (backup `db.sqlite3.bak-20261024-pre-0047`).
+- **Headless Chrome on the scale copy:** a Head records "Reviewed, no
+  change" with a note and the password (the dates appear, two of the
+  office's deadlines leave its banner); the admin adds a priority manual
+  for an office. No console errors. A first run seemed to fail with a 401:
+  the drive had signed out while the request was in flight - fixed in the
+  drive, not the app.
+- **Not run:** `evaluate_folds.py`, `check_setup.py` (no pipeline code).
+- **At full scale** (245 open office units): the heaviest day sends 237
+  notices in 2.7 s (about 12 queries a unit - each notice writes two
+  hash-chained log rows); a second run the same day sends nothing, in
+  under 0.3 s. The log verifies afterwards.
+
 ## 24 October 2026 — v4.2 Phase 3B-2: the long lists rebuilt (Checkpoint 3B-2)
 
 - **Seven endpoints, rebuilt** (`api/lists.py`): paged at 50, filtered on

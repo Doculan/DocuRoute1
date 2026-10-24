@@ -1126,6 +1126,14 @@ def _recent_proposals(user):
     return tag_rows(user, rows)
 
 
+def _heads_a_concurring_office(user, manual):
+    from .concurrence_views import _head_of
+    concurring = {link.office_id for link in manual.effective_office_links()
+                  if link.relationship == OfficeLink.CONCURRING}
+    return any(_head_of(user, office) is not None
+               for office in access.current_offices(user) if office.pk in concurring)
+
+
 def _recently_opened(user):
     """What this person opened last, newest first, tagged: Home and My
     Manuals both lead with it."""
@@ -1594,6 +1602,13 @@ def list_sections(request, manual_id):
         'display_status': f"v{manual.version} rev{manual.revision}",
         'status': document_status.status_payload(manual.current_status),
         'deadline': deadline_tags_for(request.user, [manual.pk]).get(manual.pk),
+        # Periodic review (3C): the dates, and whether this person may record
+        # "Reviewed, no change" - a Head of an office that concurs on it.
+        'review': {
+            'last_reviewed_on': manual.last_reviewed_on,
+            'next_review_due': manual.next_review_due,
+            'can_record': _heads_a_concurring_office(request.user, manual),
+        },
         'can_record_baseline': can_record_baseline(request.user, manual),
         'can_correct_baseline': can_correct_baseline(request.user, manual),
         'sections': data,

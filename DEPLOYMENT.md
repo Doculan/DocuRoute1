@@ -64,8 +64,12 @@ uploads are PDFs — and for rate limiting.
 ### Scheduled monitoring ("QMS CDMS monitoring")
 
 `manage.py run_monitoring` does the time-based work: proposals stalled past
-their stage threshold, posts with nobody in them (and, from Phase 3,
-deadline reminders and escalation). Schedule it **every 5 minutes**. It is
+their stage threshold, posts with nobody in them, and the deadline ladder:
+reminders, due day, overdue, escalation and its weekly repeat (Phase 3C).
+With `periodic_review` set to 1 it also gathers, once a month, the
+documents past their review date into one deadline. Schedule it **every 5
+minutes**. Over the full `seed_scale` organisation the heaviest day's
+deadline notices (237 offices) take 2.7 s, in batches. It is
 safe to overlap and to repeat — a second run finds the lock held and exits,
 and no notice is ever sent twice — and it writes in batches of 200, each in
 its own short transaction, so it does not hold the database while the site

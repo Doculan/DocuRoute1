@@ -6,6 +6,7 @@ import BaselineForm from "../qms/BaselineForm";
 import { formatDate, formatRevision, revisionLine } from "../documentStatus";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import ReviewForm from "../ReviewForm";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
 // server diffs submitted text against content normalized the same way.
@@ -112,6 +113,7 @@ export default function StaffSections({
   const [manual, setManual]           = useState(null);
   const [reloadKey, setReloadKey]     = useState(0);
   const [recordingBaseline, setRecordingBaseline] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [sections, setSections]       = useState([]);
   const [activeSection, setActive]    = useState(null);
   const [isFullDoc, setIsFullDoc]     = useState(false);
@@ -141,6 +143,7 @@ export default function StaffSections({
         setManual({
           status: res.data.status,
           deadline: res.data.deadline,
+          review: res.data.review,
           canRecordBaseline: res.data.can_record_baseline,
           canCorrectBaseline: res.data.can_correct_baseline,
         });
@@ -213,6 +216,17 @@ export default function StaffSections({
             {manual?.canCorrectBaseline && !recordingBaseline && (
               <button className="btn btn-ghost btn-sm" onClick={() => setRecordingBaseline(true)}>
                 Correct starting status
+              </button>
+            )}
+            {manual?.review?.last_reviewed_on && (
+              <div className="toc-head-meta">
+                Reviewed {formatDate(manual.review.last_reviewed_on)}
+                {manual.review.next_review_due && ` · next ${formatDate(manual.review.next_review_due)}`}
+              </div>
+            )}
+            {manual?.review?.can_record && !readOnly && !reviewing && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setReviewing(true)}>
+                Reviewed, no change
               </button>
             )}
           </div>
@@ -289,6 +303,13 @@ export default function StaffSections({
 
         {/* ── Content panel ── */}
         <section className="reader-panel">
+          {reviewing && (
+            <ReviewForm
+              manualId={manualId}
+              onCancel={() => setReviewing(false)}
+              onDone={() => { setReviewing(false); setReloadKey((k) => k + 1); }}
+            />
+          )}
           {recordingBaseline && (
             <BaselineForm
               manualId={manualId}

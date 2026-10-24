@@ -274,3 +274,15 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   8.7 s to under 75 ms.
 - Admin Manuals sorts on the server and filters by an upload-date range,
   on new indexes (migration `0047`).
+- Phase 3C-1: **the deadline ladder, priority manuals and reviews.**
+  `run_monitoring` reminds an office on each of a deadline's reminder
+  days and on the due day, tells the Head above when it is overdue, and
+  at a week late the approving office and the QMS (weekly after that),
+  with fallbacks to the President's office and the system admin; every
+  notice clears when the office meets the deadline. The admin can mark
+  priority manuals for an office. A Head can record "Reviewed, no
+  change" on a document (with the password), which meets the office's
+  deadlines on it and sets its review dates. An optional monthly step
+  gathers documents past review into a deadline. Migration `0048`.
+- **Fixed:** the admin's list of a deadline's obligations put met ones
+  first.

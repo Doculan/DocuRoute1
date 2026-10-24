@@ -546,6 +546,11 @@ class Manual(models.Model):
         'DocumentStatus', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+',
     )
+    # Periodic review (spec §6.5): set when an office records "Reviewed, no
+    # change" (`ManualReview`); the next date is that plus the interval in
+    # `MonitoringSetting`. Empty until a first review.
+    last_reviewed_on = models.DateField(null=True, blank=True)
+    next_review_due = models.DateField(null=True, blank=True)
 
     class Meta:
         # The admin's sorts and the upload-date range (3B-2); the lists'
@@ -1470,9 +1475,21 @@ class SystemEvent(models.Model):
     DEADLINE_CHANGED = 'deadline_changed'
     OBLIGATION_MET = 'obligation_met'
     OBLIGATION_REOPENED = 'obligation_reopened'
+    DEADLINE_REMINDER = 'deadline_reminder'
+    DEADLINE_DUE = 'deadline_due'
+    DEADLINE_OVERDUE = 'deadline_overdue'
+    DEADLINE_ESCALATED = 'deadline_escalated'
+    PRIORITY_SET = 'priority_set'
+    REVIEWED_NO_CHANGE = 'reviewed_no_change'
 
     KIND_CHOICES = [
         (DEADLINE_SET, 'Deadline set'),
+        (DEADLINE_REMINDER, 'Deadline reminder'),
+        (DEADLINE_DUE, 'Deadline due today'),
+        (DEADLINE_OVERDUE, 'Deadline overdue'),
+        (DEADLINE_ESCALATED, 'Deadline escalated'),
+        (PRIORITY_SET, 'Priority manuals set'),
+        (REVIEWED_NO_CHANGE, 'Reviewed, no change'),
         (DEADLINE_CHANGED, 'Deadline changed'),
         (OBLIGATION_MET, 'Deadline obligation met'),
         (OBLIGATION_REOPENED, 'Deadline obligation reopened'),
@@ -1595,14 +1612,28 @@ class MonitoringSetting(models.Model):
         WITH_IMR: 7, WITH_CUSTODIAN: 10,
     }
 
+    # Two more settings in the same rows (3C): the review interval in
+    # months (Q-4: 12, to confirm with the QMS office), and whether
+    # `run_monitoring` gathers documents past review into a monthly
+    # deadline (Q-5: 0, off).
+    REVIEW_INTERVAL_MONTHS = 'review_interval_months'
+    PERIODIC_REVIEW = 'periodic_review'
+    OTHER_DEFAULTS = {REVIEW_INTERVAL_MONTHS: 12, PERIODIC_REVIEW: 0}
+
     stage = models.CharField(max_length=32, primary_key=True)
     days = models.PositiveIntegerField()
 
     @classmethod
     def thresholds(cls):
         values = dict(cls.DEFAULT_DAYS)
-        values.update(dict(cls.objects.values_list('stage', 'days')))
+        values.update(dict(cls.objects.filter(stage__in=list(cls.DEFAULT_DAYS))
+                           .values_list('stage', 'days')))
         return values
+
+    @classmethod
+    def value(cls, name):
+        row = cls.objects.filter(stage=name).values_list('days', flat=True).first()
+        return cls.OTHER_DEFAULTS[name] if row is None else row
 
 
 class Notification(models.Model):
@@ -1641,9 +1672,17 @@ class Notification(models.Model):
     RETURNED_TO_ENCODER = 'returned_to_encoder'
     RECALLED = 'recalled'
     DEADLINE_SET = 'deadline_set'
+    DEADLINE_REMINDER = 'deadline_reminder'
+    DEADLINE_DUE = 'deadline_due'
+    DEADLINE_OVERDUE = 'deadline_overdue'
+    DEADLINE_ESCALATED = 'deadline_escalated'
 
     KIND_CHOICES = [
         (DEADLINE_SET, 'Deadline set for your office'),
+        (DEADLINE_REMINDER, 'Deadline reminder'),
+        (DEADLINE_DUE, 'Deadline due today'),
+        (DEADLINE_OVERDUE, 'Deadline overdue'),
+        (DEADLINE_ESCALATED, 'Deadline escalated'),
         (SENT_TO_HEAD, 'Sent to the Head'),
         (RETURNED_TO_ENCODER, 'Returned to the Encoder'),
         (RECALLED, 'Recalled by the Encoder'),
@@ -2256,6 +2295,34 @@ class DeadlineObligation(models.Model):
     @property
     def is_met(self):
         return self.state in self.MET_STATES
+
+
+class ManualReview(models.Model):
+    """An office's "Reviewed, no change" on a document (spec §6.5): its
+    Head attests that no revision is needed. Sets the document's review
+    dates and meets the office's open obligations on it as `reviewed`.
+    Never edited or deleted - the record of an office's word.
+
+    `obligations` lists the obligation ids it met: a review can meet the
+    office's manual-level and office-level obligations together.
+    """
+
+    manual = models.ForeignKey(Manual, on_delete=models.PROTECT, related_name='reviews')
+    office = models.ForeignKey(Office, on_delete=models.PROTECT, related_name='manual_reviews')
+    office_name_at_time = models.CharField(max_length=255)
+    reviewed_by = models.ForeignKey(CustomUser, on_delete=models.PROTECT,
+                                    related_name='manual_reviews')
+    position = models.ForeignKey(Position, on_delete=models.PROTECT, related_name='+')
+    note = models.TextField(blank=True)
+    obligations = models.JSONField(default=list, blank=True)
+    at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-at', '-pk']
+        indexes = [models.Index(fields=['manual', 'at'], name='manual_review_manual_at_idx')]
+
+    def __str__(self):
+        return f'{self.manual} reviewed by {self.office_name_at_time}'
 
 
 class RecentlyOpened(models.Model):

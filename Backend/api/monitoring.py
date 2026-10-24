@@ -13,8 +13,9 @@ transaction, then handled 200 at a time, each batch in its own
 transaction, with the lock extended after each. SQLite holds its write lock
 for one batch, not one run, so the web requests in between are not starved.
 
-Phase 3 adds the deadline steps (reminders, due, overdue, escalation) here
-as further steps; nothing in these two changes.
+Phase 3C adds the deadline ladder (`deadline_ladder`: reminders, due,
+overdue, escalation, weekly) and the optional monthly periodic review
+(`reviews.gather_due_reviews`, off by default) as further steps.
 """
 
 import os
@@ -320,7 +321,7 @@ def clear_filled_vacancies(now=None):
 
 # ─── A run ───────────────────────────────────────────────────
 
-STEPS = ('stalls', 'vacancies')
+STEPS = ('stalls', 'vacancies', 'deadlines', 'periodic_review')
 
 
 def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None):
@@ -340,6 +341,14 @@ def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None):
         if 'vacancies' in steps:
             counts['vacancies_cleared'] = clear_filled_vacancies()
             counts['vacancies_flagged'] = flag_vacancies(holder, offices, max_batches)
+        if 'deadlines' in steps:
+            from . import deadline_ladder
+            counts['deadline_notices_cleared'] = deadline_ladder.clear_met()
+            counts['deadline_notices_sent'] = deadline_ladder.send(
+                lambda: extend(holder), offices, max_batches)
+        if 'periodic_review' in steps and offices is None:
+            from . import reviews
+            counts['periodic_review_set'] = reviews.gather_due_reviews()
     except Exception as error:     # recorded, then raised: a run must not fail silently
         JobRun.objects.filter(pk=job.pk).update(
             finished_at=timezone.now(), counts=counts, error=repr(error))

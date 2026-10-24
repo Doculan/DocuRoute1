@@ -192,16 +192,53 @@ def _notify_set(deadline, obligations, actor, now):
 
 def _clear_set_notices(pairs, by, now):
     """An office whose obligations on a deadline are all met: its "deadline
-    set" notices are done."""
-    for deadline_id, office_id in pairs:
-        if DeadlineObligation.objects.filter(deadline_id=deadline_id, office_id=office_id,
-                                             state=DeadlineObligation.OPEN).exists():
+    set" notice and every reminder of the ladder are done."""
+    from .deadline_ladder import clear
+    clear(pairs, by=by, now=now)
+
+
+# ─── Priority manuals (spec §6.4) ────────────────────────────
+
+def set_priority(deadline, office, manuals, actor, now=None):
+    """Mark these manuals priority for this office under the deadline: the
+    pair's obligation is created if the targets did not make one (met at
+    once if a proposal is already in flight), and flagged. The office is
+    told. Call inside a transaction. Returns the obligations flagged."""
+    now = now or timezone.now()
+    existing = {ob.manual_id: ob for ob in deadline.obligations.filter(
+        office=office, manual__in=manuals)}
+    by_pair, _ = _in_flight({office.pk})
+    fresh = []
+    for manual in manuals:
+        if manual.pk in existing:
             continue
-        notifications.resolve(
-            Notification.objects.filter(kind=Notification.DEADLINE_SET,
-                                        dedupe_key=f'deadline:{deadline_id}:set',
-                                        addressed_office_id=office_id),
-            by=by, now=now, reason='deadline met')
+        proposal = by_pair.get((office.pk, manual.pk))
+        fresh.append(DeadlineObligation(
+            deadline=deadline, office=office, manual=manual, priority=True, created_at=now,
+            state=DeadlineObligation.SUBMITTED if proposal else DeadlineObligation.OPEN,
+            office_met_at=now if proposal else None, met_by_proposal_id=proposal,
+        ))
+    DeadlineObligation.objects.bulk_create(fresh)
+    DeadlineObligation.objects.filter(pk__in=[ob.pk for ob in existing.values()]).update(priority=True)
+    refresh_counts([deadline.pk])
+    flagged = list(deadline.obligations.filter(office=office, manual__in=manuals))
+    titles = sorted(m.title for m in manuals)
+    event = system_log.record(
+        SystemEvent.PRIORITY_SET, user=actor, label='System administrator', office=office, at=now,
+        detail={'deadline': deadline.pk, 'obligations': [ob.pk for ob in flagged],
+                'manuals': [m.pk for m in manuals]},
+    )
+    if any(ob.state == DeadlineObligation.OPEN for ob in flagged):
+        notifications.create(
+            Notification.DEADLINE_SET, notifications.office_recipients([office.pk]),
+            title=f'Priority for {deadline.title} — due {deadline.due_on:%d %b %Y}',
+            body=_owed(titles), manual=manuals[0] if len(manuals) == 1 else None,
+            office_level=len(manuals) != 1, target=('deadline', deadline.pk),
+            # Under the office's unit, so meeting the deadline clears it.
+            dedupe_key=f'deadline:{deadline.pk}:office:{office.pk}:priority:{now:%Y%m%d%H%M%S%f}',
+            system_event=event, now=now,
+        )
+    return flagged
 
 
 # ─── From proposal transitions ───────────────────────────────
