@@ -28,6 +28,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import proposal_views
+from api.testing import KeepsMigrationData
 from api.views import issue_reauth_token
 from api.models import (
     AuditEvent, CustomUser, Manual, ManualSection, ManualSeries,
@@ -684,7 +685,7 @@ class OneDraftAtATimeTests(ProposalFixture):
         self.assertEqual(Proposal.objects.filter(manual=self.manual).count(), 1)
 
 
-class SimultaneousStartTests(ProposalFixture):
+class SimultaneousStartTests(KeepsMigrationData, ProposalFixture):
     """Two requests at the same moment, on two threads and two connections,
     against a real database file.
 
@@ -696,7 +697,8 @@ class SimultaneousStartTests(ProposalFixture):
 
     The data has to be committed to be copied, so this class does not run
     inside TestCase's transaction: it reports the database as lacking
-    transactions, which makes TestCase flush afterwards instead.
+    transactions, which makes TestCase flush afterwards instead - and
+    `KeepsMigrationData` then puts back the rows the migrations inserted.
     """
 
     @classmethod

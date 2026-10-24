@@ -28,6 +28,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import deadlines
+from api.testing import KeepsMigrationData, migrate_to_latest
 from api.models import (
     CustomUser, Deadline, DeadlineObligation, DeadlineTarget, DeadlineType,
     Manual, ManualOffice, ManualSeries, ManualSeriesOffice, Notification, Office,
@@ -403,7 +404,7 @@ class WithdrawingAndDenying(ConcurrenceFixture):
         self.assertEqual(self.row.state, DeadlineObligation.SUBMITTED)
 
 
-class Migration0046(TransactionTestCase):
+class Migration0046(KeepsMigrationData, TransactionTestCase):
     """The three live announcements, and one aimed at an office."""
 
     def migrate(self, target):
@@ -413,7 +414,7 @@ class Migration0046(TransactionTestCase):
         return executor.loader.project_state(target).apps
 
     def tearDown(self):
-        self.migrate([('api', '0046_announcements_and_deadlines')])
+        migrate_to_latest()
 
     def test_dated_items_expire_undated_stay_the_banner_targets_are_kept(self):
         old = self.migrate([('api', '0045_encoder_to_head_step')])

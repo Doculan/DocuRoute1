@@ -7,16 +7,28 @@ which. The whole run gets a temporary `MEDIA_ROOT`, removed afterwards.
 
 The document templates are read from beside `MEDIA_ROOT`, not under it
 (see `api.generation.common`), so they are still found.
+
+It also keeps an exact copy of each freshly migrated test database, for
+the tests that commit to put back after their flush (`api.testing`).
 """
 
 import shutil
 import tempfile
 
+from django.db import connections
 from django.test.runner import DiscoverRunner
 from django.test.utils import override_settings
 
+from api import testing
+
 
 class TemporaryMediaRunner(DiscoverRunner):
+
+    def setup_databases(self, **kwargs):
+        config = super().setup_databases(**kwargs)
+        for conn in connections.all():
+            testing.MIGRATED[conn.alias] = testing.snapshot(conn)
+        return config
 
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)

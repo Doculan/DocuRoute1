@@ -12,11 +12,13 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 
+from api.testing import KeepsMigrationData, migrate_to_latest
+
 BEFORE = [('api', '0041_proposal_status_updated_at_indexes')]
 AFTER = [('api', '0044_notification_constraints')]
 
 
-class BackfillTests(TransactionTestCase):
+class BackfillTests(KeepsMigrationData, TransactionTestCase):
 
     def migrate(self, target):
         executor = MigrationExecutor(connection)
@@ -75,7 +77,7 @@ class BackfillTests(TransactionTestCase):
                     'submitted': submitted.pk, 'manual': manual.pk}
 
     def tearDown(self):
-        self.migrate(AFTER)
+        migrate_to_latest()
 
     def test_each_old_notification_becomes_a_complete_one(self):
         new = self.migrate(AFTER)
