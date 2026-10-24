@@ -32,8 +32,7 @@ What it seeds, at `--fraction 1`:
 | Proposals | 5,000 open (drafting, concurrence and every frozen status) and 2,000 closed |
 | Trail | versions, frozen participants, concurrences, audit events and notifications to match |
 
-**Deadlines are not seeded yet**: the model arrives in Phase 3, and this
-command gains them then.
+| Deadlines | one of each target kind - all offices, an office and everything beneath it, a series, manuals, one office - overdue, due soon and later, materialised and notified as the admin's screen would |
 """
 
 import json
@@ -54,6 +53,7 @@ from api.models import (
     ManualSection, ManualSeries, ManualSeriesOffice, Notification, Office,
     OfficeLink, Position, PositionAssignment, Proposal, ProposalParticipant,
     ProposalVersion, SectionChange, SystemEvent, LogHead,
+    Deadline, DeadlineObligation, DeadlineTarget, DeadlineType,
 )
 
 SCALE_PASSWORD = 'Scale123!'
@@ -87,6 +87,7 @@ CLOSED_MIX = [
 
 # Children before parents, so a PROTECT never fires on the way out.
 CLEAR_ORDER = [
+    DeadlineObligation, DeadlineTarget, Deadline, DeadlineType,
     Notification, SystemEvent, AuditEvent, Concurrence, SectionChange,
     ProposalParticipant, ProposalVersion, Proposal,
     ManualSection, ManualOffice, ManualSeriesOffice, Manual, ManualSeries,
@@ -301,6 +302,7 @@ class Command(BaseCommand):
             self._people()
             self._series_and_manuals()
             self._proposals()
+            self._deadlines()
 
         self.stdout.write(self.style.SUCCESS('\nSynthetic organisation seeded.'))
         for label, count in self._counts.items():
@@ -884,6 +886,45 @@ class Command(BaseCommand):
         self._create(SystemEvent, chain)
         head.seq, head.hash = seq, previous
         head.save(update_fields=['seq', 'hash'])
+
+    # -- deadlines ---------------------------------------------------
+
+    def _deadlines(self):
+        """One deadline of each target kind, through the same code the
+        admin's screen uses, so obligations, in-flight meeting, counts and
+        notices are all real. Set by the synthetic IMR, a recorded user."""
+        from api import deadlines as service
+        setter = CustomUser.objects.get(pk=self.qms_posts[Position.IMR][0])
+        # The presets come from migration 0046; a database flushed since
+        # (as a test that commits does) has none, so make the one used here.
+        dtype, made = DeadlineType.objects.get_or_create(
+            name='ISO 9001 surveillance audit', defaults={'is_preset': True})
+        if made:
+            self._record(DeadlineType, [dtype])
+        series = list(ManualSeries.objects.filter(pk__in=self.series_owner).order_by('code'))
+        plan = [
+            ('Surveillance audit: every office', 20, [DeadlineTarget(kind='all')]),
+            ('VP 1 branch review', 5, [DeadlineTarget(kind='office', office=self.vps[0],
+                                                       include_descendants=True)]),
+            (f'{series[0].code} revision', 45, [DeadlineTarget(kind='series', series=series[0])]),
+            ('Priority documents', -4, [DeadlineTarget(kind='manual', manual=m)
+                                        for m in self.manuals[:12]]),
+            ('One unit', 2, [DeadlineTarget(kind='office', office=self.units[0])]),
+        ]
+        created = []
+        for title, days, targets in plan:
+            deadline = Deadline.objects.create(
+                title=f'Synthetic: {title}', type=dtype, created_by=setter,
+                due_on=self.today + timedelta(days=days))
+            created.append(deadline)
+            for target in targets:
+                target.deadline = deadline
+            DeadlineTarget.objects.bulk_create(targets)
+            self._record(DeadlineTarget, list(deadline.targets.all()))
+            service.materialise(deadline, setter)
+        self._record(Deadline, created)
+        self._record(DeadlineObligation, list(
+            DeadlineObligation.objects.filter(deadline__in=created)))
 
     # -- who acts ---------------------------------------------------
 

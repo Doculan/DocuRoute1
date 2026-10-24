@@ -1,18 +1,15 @@
-"""The staff dashboard: one request, and the announcement split.
+"""The staff dashboard: one request for the landing page.
 
-The split is the part worth testing hardest. One model serves two widgets -
-dated items are Upcoming, undated ones are the banner - so a bug there shows
-up as a message appearing in the wrong place rather than as an error.
+Announcements and deadlines left it in Phase 3A: the banner rows and the
+Deadlines panel read their own endpoints (tests_notices.py).
 """
-
-import datetime
 
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    Announcement, AnnouncementDismissal, CustomUser, Manual, ManualSection,
+    CustomUser, Manual, ManualSection,
     ManualSeries, ManualSeriesOffice, Office, OfficeLink, Position,
     PositionAssignment, RecentlyOpened,
 )
@@ -51,18 +48,11 @@ class StaffDashboardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.data
 
-    def an_announcement(self, title, *, date=None, active=True, office=None):
-        return Announcement.objects.create(
-            title=title, body="Body text.", date=date, active=active,
-            office=office, created_by=self.reviewer,
-        )
-
     # -- one request --------------------------------------------
 
     def test_every_widget_is_answered_by_the_one_call(self):
         data = self.dashboard()
-        for key in ("proposals_awaiting", "proposals_mine", "recently_opened",
-                    "announcement", "upcoming", "stats"):
+        for key in ("proposals_awaiting", "proposals_mine", "recently_opened", "stats"):
             self.assertIn(key, data)
 
     def test_a_brand_new_account_gets_empty_everything_not_an_error(self):
@@ -70,8 +60,6 @@ class StaffDashboardTests(TestCase):
         self.assertEqual(data["proposals_awaiting"], 0)
         self.assertEqual(data["proposals_mine"], 0)
         self.assertEqual(data["recently_opened"], [])
-        self.assertIsNone(data["announcement"])
-        self.assertEqual(data["upcoming"], [])
 
     # -- recently opened ----------------------------------------
 
@@ -99,75 +87,6 @@ class StaffDashboardTests(TestCase):
         )
         self.assertEqual(len(self.dashboard()["recently_opened"]),
                          RECENTLY_OPENED_LIMIT)
-
-    # -- announcements and upcoming: one model, two widgets -----
-
-    def test_an_undated_item_is_the_banner(self):
-        self.an_announcement("Workflow changed")
-        data = self.dashboard()
-        self.assertEqual(data["announcement"]["title"], "Workflow changed")
-        self.assertEqual(data["upcoming"], [])
-
-    def test_a_dated_item_is_upcoming_and_never_the_banner(self):
-        self.an_announcement("Audit week",
-                             date=self.today + datetime.timedelta(days=5))
-        data = self.dashboard()
-        self.assertIsNone(data["announcement"])
-        self.assertEqual(len(data["upcoming"]), 1)
-        self.assertEqual(data["upcoming"][0]["title"], "Audit week")
-
-    def test_todays_item_is_marked(self):
-        self.an_announcement("Refresher session", date=self.today)
-        self.assertTrue(self.dashboard()["upcoming"][0]["is_today"])
-
-    def test_past_items_drop_off(self):
-        self.an_announcement("Last month's audit",
-                             date=self.today - datetime.timedelta(days=30))
-        self.assertEqual(self.dashboard()["upcoming"], [])
-
-    def test_another_offices_announcement_is_not_shown(self):
-        self.an_announcement("Registry only", office=self.registry)
-        self.assertIsNone(self.dashboard()["announcement"])
-
-    def test_my_offices_announcement_is_shown(self):
-        self.an_announcement("Finance only", office=self.finance)
-        self.assertEqual(self.dashboard()["announcement"]["title"], "Finance only")
-
-    def test_an_announcement_for_everyone_is_shown(self):
-        self.an_announcement("Everyone")
-        self.assertEqual(self.dashboard()["announcement"]["title"], "Everyone")
-
-    def test_an_inactive_announcement_is_hidden_without_deleting_it(self):
-        self.an_announcement("Old news", active=False)
-        self.assertIsNone(self.dashboard()["announcement"])
-        self.assertEqual(Announcement.objects.count(), 1)
-
-    def test_dismissing_the_banner_hides_it_for_that_user_only(self):
-        announcement = self.an_announcement("Workflow changed")
-        self.client.post(f"/api/staff/announcements/{announcement.id}/dismiss/")
-        self.assertIsNone(self.dashboard()["announcement"])
-
-        colleague = CustomUser.objects.create_user(
-            username="colleague2", password="pw", role="staff",
-            is_approved=True,
-        )
-        other = APIClient()
-        other.force_authenticate(user=colleague)
-        self.assertEqual(
-            other.get("/api/staff/dashboard/").data["announcement"]["title"],
-            "Workflow changed",
-        )
-
-    def test_a_new_announcement_appears_after_dismissing_an_old_one(self):
-        """Dismissal is per announcement, not a single 'seen' flag."""
-        first = self.an_announcement("First")
-        self.client.post(f"/api/staff/announcements/{first.id}/dismiss/")
-        first.active = False
-        first.save(update_fields=["active"])
-
-        self.an_announcement("Second")
-        self.assertEqual(self.dashboard()["announcement"]["title"], "Second")
-        self.assertEqual(AnnouncementDismissal.objects.count(), 1)
 
     # -- at a glance --------------------------------------------
 

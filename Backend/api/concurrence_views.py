@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, documents, notifications
+from . import access, deadlines, documents, notifications
 from .ai_notes import compose_version_note
 from .generation.common import position_title
 from .models import (
@@ -323,6 +323,8 @@ def submit(request, proposal_id):
             _lock(proposal, version, request.user, office,
                   detail='No other office concurs on this document')
 
+        # Submitted: the office milestone of any deadline this meets.
+        deadlines.on_submitted(proposal, request.user)
         proposal.refresh_open_changes()
 
     return Response(_full_payload(proposal))
@@ -730,6 +732,8 @@ def withdraw(request, proposal_id):
         ])
         _record(proposal, version, AuditEvent.WITHDRAWN,
                 request.user, office, detail=reason)
+        # What it met is owed again (or passes to another proposal in flight).
+        deadlines.on_withdrawn(proposal, request.user)
         # The sections go back to whoever wants them.
         proposal.refresh_open_changes()
 

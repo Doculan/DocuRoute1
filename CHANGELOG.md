@@ -240,3 +240,18 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   "Closed" beside "Withdrawn". Rows now carry the DCR number or start date,
   and group and single-status filters are separated. No proposal had been
   listed twice; a test now guarantees each appears exactly once.
+- Phase 3A: **deadlines and announcements.**
+  - The admin sets deadlines by type, due date and reminder days, aimed
+    at every concurring office, an office (and optionally everything
+    beneath it), a series or named manuals. Each becomes an obligation
+    per office, met when the office submits a proposal and naming the
+    proposal that met it. A withdrawal reopens it.
+  - Saving shows who will be told first, then notifies each office.
+  - Announcements go to everyone or to offices, expire, and are
+    deactivated rather than deleted.
+  - Two banner rows: a pinned action row (deadlines, most urgent first,
+    and returned work) that cannot be dismissed, and an announcement row
+    beneath it that can.
+  - The approving offices are told when a request is denied or made
+    effective.
+  - Migration `0046`.

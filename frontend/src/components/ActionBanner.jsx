@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { dueText } from "./deadlineText";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -15,16 +16,18 @@ function writeExpanded(value) {
   try { localStorage.setItem(EXPANDED_KEY, value ? "1" : "0"); } catch { /* per-viewer only */ }
 }
 
+const TONE = { overdue: "is-overdue", today: "is-soon", soon: "is-soon", returned: "is-soon", later: "is-calm" };
+
 /**
- * The action banner: work returned to your office, on every page.
+ * The pinned action row: the top banner, above announcements.
  *
- * It cannot be dismissed - it goes away only when the work is sent on.
- * One line by default, naming the latest; "Show all" opens the list.
- * Read from the data on every navigation, so it is never stale and never
- * missing. Deadlines join this same row in Phase 3; announcements keep
- * their own, dismissible row.
+ * Deadlines the office owes, most urgent first (overdue, due today, due
+ * soon), and work returned to it. It has no dismiss control: the one-line
+ * summary always stays, only the list folds, and it disappears for an
+ * office only when the office meets its deadlines and sends its returned
+ * work on. Read from the data on every navigation.
  */
-export default function ActionBanner({ onOpenProposal, refreshKey }) {
+export default function ActionBanner({ onOpenProposal, onOpenDeadlines, refreshKey }) {
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(readExpanded);
 
@@ -36,44 +39,76 @@ export default function ActionBanner({ onOpenProposal, refreshKey }) {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  if (!data || data.total === 0) return null;
+  if (!data) return null;
+  const owed = data.deadlines?.items || [];
+  const owedTotal = data.deadlines?.total || 0;
+  const returned = data.items || [];
+  if (owedTotal === 0 && data.total === 0) return null;
 
   const toggle = () => {
     writeExpanded(!expanded);
     setExpanded(!expanded);
   };
-  const [first] = data.items;
-  const summary = data.total === 1
-    ? `Returned to your office: ${first.manual}, by ${first.by}`
-    : `${data.total} returned to your office · latest: ${first.manual}, by ${first.by}`;
+
+  const parts = [];
+  if (owedTotal === 1) {
+    parts.push(`${owed[0].title} · ${dueText(owed[0])}`);
+  } else if (owedTotal > 1) {
+    parts.push(`${owedTotal} deadlines · next: ${owed[0].title}, ${dueText(owed[0])}`);
+  }
+  if (data.total === 1 && owedTotal === 0) {
+    parts.push(`Returned to your office: ${returned[0].manual}, by ${returned[0].by}`);
+  } else if (data.total > 0) {
+    parts.push(`${data.total} returned to your office`);
+  }
+  const listed = owedTotal + data.total > 1;
+  const openFirst = () => (owedTotal > 0
+    ? onOpenDeadlines?.()
+    : onOpenProposal?.(returned[0].proposal_id));
 
   return (
-    <div className={`action-banner${expanded ? "" : " is-collapsed"}`} role="status">
+    <div className={`action-banner ${TONE[data.urgency] || "is-calm"}${expanded ? "" : " is-collapsed"}`}
+         role="status">
       <div className="action-banner-line">
         <strong>Action needed</strong>
-        <button type="button" className="action-banner-link"
-                onClick={() => onOpenProposal(first.proposal_id)}>
-          {summary}
+        <button type="button" className="action-banner-link" onClick={openFirst}>
+          {parts.join(" · ")}
         </button>
-        {data.total > 1 && (
+        {listed && (
           <button type="button" className="action-banner-toggle" onClick={toggle}
                   aria-expanded={expanded}>
             {expanded ? "Hide list" : "Show all"}
           </button>
         )}
       </div>
-      {expanded && data.total > 1 && (
+      {expanded && listed && (
         <ul className="action-banner-list">
-          {data.items.map((item) => (
-            <li key={item.proposal_id}>
+          {owed.map((item) => (
+            <li key={`d-${item.deadline_id}-${item.office}`}>
+              <button type="button" className="action-banner-link" onClick={() => onOpenDeadlines?.()}>
+                <strong>{dueText(item)}</strong> — {item.title}
+                <span className="subtle"> · {item.type} · {item.office}</span>
+                {item.manuals.length > 0 && (
+                  <span className="subtle">
+                    {" "}· {item.manuals.length === 1 ? item.manuals[0].title : `${item.manuals.length} manuals`}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+          {owedTotal > owed.length && (
+            <li className="subtle text-xs">{owedTotal - owed.length} more deadlines</li>
+          )}
+          {returned.map((item) => (
+            <li key={`r-${item.proposal_id}`}>
               <button type="button" className="action-banner-link"
-                      onClick={() => onOpenProposal(item.proposal_id)}>
+                      onClick={() => onOpenProposal?.(item.proposal_id)}>
                 {item.manual}, returned by {item.by} — redraft
               </button>
             </li>
           ))}
-          {data.total > data.items.length && (
-            <li className="subtle text-xs">{data.total - data.items.length} more in Proposals</li>
+          {data.total > returned.length && (
+            <li className="subtle text-xs">{data.total - returned.length} more returned</li>
           )}
         </ul>
       )}

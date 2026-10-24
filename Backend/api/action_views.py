@@ -190,13 +190,26 @@ BANNER_SHOWN = 5
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def action_banner(request):
-    """What the persistent banner names: work returned to this person's
-    offices. It cannot be dismissed; it clears when the work is sent on.
-    Derived from the data, so it is right on every page load."""
+    """The pinned top row: deadlines this person's offices owe, most urgent
+    first (overdue, due today, due soon), and work returned to them.
+
+    It has no dismiss route: it clears for an office only when the office
+    meets its deadlines and sends its returned work on. Derived from the
+    data on every request, so it is never stale and never missing.
+    """
     if not access.current_offices(request.user):
-        return Response({'total': 0, 'items': []})
+        return Response({'urgency': None, 'deadlines': {'total': 0, 'items': []},
+                         'total': 0, 'items': []})
+    from .notice_views import deadline_groups
+    owed = deadline_groups(request.user)
     returned = returned_drafts(request.user)
+    level = owed[0]['urgency'] if owed else None
+    if level == 'later' or (level is None and returned.exists()):
+        level = 'returned' if returned.exists() else level
     return Response({
+        'urgency': level,
+        'deadlines': {'total': len(owed), 'items': owed[:BANNER_SHOWN]},
+        # Returned work, as before.
         'total': returned.count(),
         'items': [{
             'proposal_id': p.pk, 'manual': p.manual.title, 'by': _by(p),

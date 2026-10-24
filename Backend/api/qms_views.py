@@ -23,7 +23,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, notifications
+from . import access, deadlines, notifications
 from .concurrence_views import _full_payload, _load, can_see
 from .document_status import read_status_fields, status_payload, suggested_status
 from .generation.common import position_title
@@ -443,6 +443,7 @@ def make_effective(request, proposal_id):
             )
             proposal.status = Proposal.EFFECTIVE
             proposal.save(update_fields=['status'])
+            deadlines.on_effective(proposal)
             notifications.notify(AuditEvent.objects.create(
                 proposal=proposal, version=version, event=AuditEvent.MADE_EFFECTIVE,
                 actor=request.user, position=position, office=office,

@@ -32,10 +32,10 @@ told, when, and what they did.
 | Signed copies complete | IMR | action |
 | Package fixed after a return | Document Custodian | action |
 | IMR accepts | Initiating office | info |
-| IMR denies | Initiating and concurring offices | info |
+| IMR denies | Initiating office and every participating office (concurring and approving) | info |
 | Signed DCR uploaded | Initiating office; Document Custodian | info; action |
 | Package returned | Initiating office (and the IMR for the DCR) | action |
-| Made effective | Initiating and concurring offices | info |
+| Made effective | Initiating office and every participating office (concurring and approving) | info |
 | Withdrawn | Initiating office, and concurring offices once submitted | info |
 
 Stall and vacancy notices come from `monitoring.py`.
@@ -163,6 +163,56 @@ def create(kind, recipients, *, title, dedupe_key, body='', proposal=None,
     return rows
 
 
+def create_batch(kind, entries, *, dedupe_key, system_event, target, now=None):
+    """Many notices for one cause, each office its own words - a deadline
+    set for hundreds of offices - in one insert and one `notified` row.
+
+    `entries`: dicts of recipients, title, body and manual_id (None makes
+    the notice office-level). One notice per person, as in `create`.
+    """
+    from .models import Manual
+    now = now or timezone.now()
+    chosen = {}
+    for entry in entries:
+        for recipient in entry['recipients']:
+            chosen.setdefault(recipient.user_id, (recipient, entry))
+    if not chosen:
+        return []
+    told = set(Notification.objects.filter(
+        dedupe_key=dedupe_key, recipient_id__in=list(chosen),
+    ).values_list('recipient_id', flat=True))
+    titles = dict(Manual.objects.filter(
+        pk__in={e['manual_id'] for _, e in chosen.values() if e['manual_id']},
+    ).values_list('pk', 'title'))
+    rows = [
+        Notification(
+            recipient_id=user_id, kind=kind, severity=r.severity,
+            addressed_office=r.office,
+            addressed_office_name=r.office.name if r.office is not None else '',
+            addressed_position=r.position, addressed_position_title=r.title,
+            title=entry['title'][:120], body=entry['body'][:300],
+            target_type=target[0], target_id=target[1],
+            office_level=entry['manual_id'] is None, manual_id=entry['manual_id'],
+            manual_title=titles.get(entry['manual_id'], ''),
+            system_event=system_event, dedupe_key=dedupe_key, created_at=now,
+        )
+        for user_id, (r, entry) in chosen.items() if user_id not in told
+    ]
+    if not rows:
+        return []
+    Notification.objects.bulk_create(rows, batch_size=500, ignore_conflicts=True)
+    system_log.record(
+        SystemEvent.NOTIFIED, at=now,
+        detail={
+            'kind': kind, 'dedupe_key': dedupe_key,
+            'cause': {'system_event': system_event.pk},
+            'recipients': [{'user': n.recipient_id, 'as': n.addressed_position_title,
+                            'severity': n.severity} for n in rows],
+        },
+    )
+    return rows
+
+
 def resolve(queryset, *, by=None, label=None, proposal=None, now=None,
             reason=''):
     """Clear open action notices and write one `notification_acted` row
@@ -241,6 +291,12 @@ def _concurring_ids(proposal):
         role=ProposalParticipant.CONCURRING).values_list('office_id', flat=True))
 
 
+def _participant_ids(proposal):
+    """Every office in the request: concurring, and the approving route
+    (the owner and the levels above it) - they signed, or would have."""
+    return list(proposal.participants.values_list('office_id', flat=True).distinct())
+
+
 def _actor_label(event):
     if event.position is not None:
         return position_title(event.office_name_at_time, event.position.kind)
@@ -316,7 +372,7 @@ def _messages(event):
         return [(Notification.IMR_ACCEPTED, office_recipients(initiating, head=INFO, encoder=INFO),
                  f'The IMR accepted {number}', 'Next: the approving authority signs.')]
     if kind == AuditEvent.IMR_DENIED:
-        offices = initiating + _concurring_ids(proposal)
+        offices = initiating + _participant_ids(proposal)
         return [(Notification.IMR_DENIED, office_recipients(offices, head=INFO, encoder=INFO),
                  f'The IMR denied {number}', f'“{_excerpt(event.detail)}”')]
     if kind == AuditEvent.APPROVAL_UPLOADED:
@@ -337,7 +393,7 @@ def _messages(event):
         return [(Notification.PACKAGE_RETURNED, recipients,
                  f'The custodian returned {number}', f'“{_excerpt(event.detail)}”')]
     if kind == AuditEvent.MADE_EFFECTIVE:
-        offices = initiating + _concurring_ids(proposal)
+        offices = initiating + _participant_ids(proposal)
         return [(Notification.MADE_EFFECTIVE, office_recipients(offices, head=INFO, encoder=INFO),
                  f'{manual} is effective', event.detail)]
     if kind == AuditEvent.WITHDRAWN:

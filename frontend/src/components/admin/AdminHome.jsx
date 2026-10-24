@@ -351,12 +351,12 @@ function RecentProposals({ rows, onGo }) {
 function Upcoming({ rows, total, onGo }) {
   return (
     <section className="admin-dashboard-section">
-      <h2 className="section-title">Upcoming</h2>
+      <h2 className="section-title">Next deadlines</h2>
       {rows.length === 0 ? (
         <p className="subtle text-sm" style={{ margin: 0 }}>
-          Nothing scheduled.{" "}
+          None set.{" "}
           <button className="link-btn" onClick={() => onGo("announcements")}>
-            Post an announcement
+            Set a deadline
           </button>
           .
         </p>
@@ -372,14 +372,14 @@ function Upcoming({ rows, total, onGo }) {
               </span>
               <div style={{ minWidth: 0 }}>
                 <div className="doc-name" style={{ fontSize: "0.95rem" }}>{row.title}</div>
-                <div className="subtle text-xs">
-                  {row.office ? `${row.office} only` : "everyone"}
-                </div>
+                <div className="subtle text-xs">{row.type} · {row.unmet}</div>
               </div>
             </div>
           ))}
           {total > rows.length && (
-            <span className="subtle text-xs">{total - rows.length} more scheduled</span>
+            <button className="link-btn text-xs" onClick={() => onGo("announcements")}>
+              {total - rows.length} more
+            </button>
           )}
         </div>
       )}

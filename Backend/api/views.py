@@ -12,7 +12,7 @@ from django.db.models import Q
 from django.db import transaction
 from datetime import timedelta
 from .models import (
-    Announcement, AnnouncementDismissal, Concurrence, CustomUser,
+    Announcement, Concurrence, CustomUser,
     Manual, ManualSection, Office, OfficeLink,
     Position, Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
 )
@@ -866,165 +866,6 @@ def _relationship_for(user, manual):
     return ' · '.join(dict.fromkeys(labels)) or None
 
 
-def _visible_announcements(user):
-    """Active announcements for everyone, plus the ones aimed at an office
-    where this person holds a position - the same offices that decide which
-    documents they reach, so notices and access never disagree about where
-    someone works."""
-    offices = access.current_offices(user) if (
-        user and user.is_authenticated
-    ) else []
-    return Announcement.objects.filter(active=True).filter(
-        Q(office__isnull=True) | Q(office__in=offices)
-    ).select_related('office')
-
-
-def _announcement_payload(announcement):
-    """One announcement, plus who can actually see it.
-
-    `shows_as` is computed rather than stored: a dated item is Upcoming and
-    an undated one is the banner, and deriving it here means the admin list
-    and the staff dashboard can never disagree about which a row is.
-    """
-    audience = CustomUser.objects.filter(role='staff', is_approved=True)
-    if announcement.office_id:
-        audience = audience.filter(
-            position_assignments__position__office_id=announcement.office_id,
-            position_assignments__ends_on__isnull=True,
-        ).distinct()
-
-    return {
-        'id': announcement.id,
-        'title': announcement.title,
-        'body': announcement.body,
-        'date': announcement.date,
-        'shows_as': 'upcoming' if announcement.date else 'banner',
-        'office_id': announcement.office_id,
-        'office': str(announcement.office) if announcement.office_id else None,
-        'active': announcement.active,
-        'created_by': announcement.created_by.username if announcement.created_by else None,
-        'created_at': announcement.created_at,
-        'reach': audience.count(),
-        'dismissals': announcement.dismissals.count(),
-    }
-
-
-def _clean_announcement_fields(data, partial=False):
-    """Validate and coerce what the form sent.
-
-    Returns ``(fields, error)``. An empty date is meaningful here - it is
-    what makes something a banner - so "" and None both mean "no date"
-    rather than "leave it alone".
-    """
-    fields = {}
-
-    if 'title' in data or not partial:
-        title = (data.get('title') or '').strip()
-        if not title:
-            return None, Response(
-                {'error': 'A title is required.', 'field': 'title'}, status=400
-            )
-        fields['title'] = title
-
-    if 'body' in data or not partial:
-        fields['body'] = (data.get('body') or '').strip()
-
-    if 'date' in data or not partial:
-        raw = data.get('date')
-        if raw in (None, '', 'null'):
-            fields['date'] = None
-        else:
-            parsed = parse_date(str(raw))
-            if parsed is None:
-                return None, Response(
-                    {'error': 'Use a date like 2026-10-06.', 'field': 'date'},
-                    status=400,
-                )
-            fields['date'] = parsed
-
-    if 'office_id' in data:
-        raw = data.get('office_id')
-        if raw in (None, '', 'all'):
-            fields['office'] = None
-        else:
-            try:
-                fields['office'] = Office.objects.get(id=raw)
-            except (Office.DoesNotExist, ValueError, TypeError):
-                return None, Response(
-                    {'error': 'That office does not exist.',
-                     'field': 'office_id'},
-                    status=400,
-                )
-
-    if 'active' in data:
-        value = data.get('active')
-        fields['active'] = (value if isinstance(value, bool)
-                            else str(value).strip().lower() in ('1', 'true', 'yes', 'on'))
-
-    return fields, None
-
-
-@api_view(['GET', 'POST'])
-@permission_classes([IsAdminRole])
-def admin_announcements(request):
-    """List every announcement, or create one.
-
-    Active items first, then by date - the list is a work queue more than a
-    log, and something switched off is not what anyone came to look at.
-    """
-    if request.method == 'GET':
-        rows = Announcement.objects.select_related(
-            'office', 'created_by'
-        ).order_by('-active', 'date', '-created_at')
-        return Response([_announcement_payload(a) for a in rows])
-
-    fields, error = _clean_announcement_fields(request.data)
-    if error:
-        return error
-
-    announcement = Announcement.objects.create(
-        created_by=request.user, **fields
-    )
-    return Response(_announcement_payload(announcement), status=201)
-
-
-@api_view(['GET', 'PATCH', 'DELETE'])
-@permission_classes([IsAdminRole])
-def admin_announcement_detail(request, announcement_id):
-    """Read, edit, or delete one announcement.
-
-    Deleting is allowed because a mistyped notice should not linger forever,
-    but deactivating is the usual move: it keeps the record of what was
-    posted, and the staff side already hides inactive rows.
-    """
-    try:
-        announcement = Announcement.objects.select_related(
-            'office', 'created_by'
-        ).get(id=announcement_id)
-    except Announcement.DoesNotExist:
-        return Response({'error': 'Announcement not found'}, status=404)
-
-    if request.method == 'GET':
-        return Response(_announcement_payload(announcement))
-
-    if request.method == 'DELETE':
-        # Deactivating is the reversible move and stays a single click;
-        # deleting destroys the record of what was posted, so it asks.
-        failure = reauth_failure(request)
-        if failure:
-            return failure
-        announcement.delete()
-        return Response(status=204)
-
-    fields, error = _clean_announcement_fields(request.data, partial=True)
-    if error:
-        return error
-    for name, value in fields.items():
-        setattr(announcement, name, value)
-    announcement.save()
-    return Response(_announcement_payload(announcement))
-
-
 # How many separate days must carry activity before a line through them
 # means anything. Four points over four months is not a trend, and drawing
 # it as one invites the reader to see a slope that is really just the gaps
@@ -1146,18 +987,18 @@ def admin_dashboard(request):
     }
 
     # -- 3. upcoming ---------------------------------------------
-    # The admin sees every office's notices, not only one: this is the
-    # posting desk, and the point is to see what has been scheduled.
-    scheduled = Announcement.objects.filter(
-        active=True, date__gte=today
-    ).select_related('office').order_by('date')
+    # The next deadlines, every office's: this is the posting desk. Each
+    # carries its own counts, so this reads five rows, not their offices.
+    from .models import Deadline
+    scheduled = Deadline.objects.filter(active=True, due_on__gte=today)         .select_related('type').order_by('due_on', 'pk')
     upcoming = [{
-        'id': a.id,
-        'title': a.title,
-        'date': a.date,
-        'is_today': a.date == today,
-        'office': a.office.name if a.office_id else None,
-    } for a in scheduled[:5]]
+        'id': d.id,
+        'title': d.title,
+        'type': d.type.name,
+        'date': d.due_on,
+        'is_today': d.due_on == today,
+        'unmet': f'{d.obligations_open} of {d.obligations_total} not yet met',
+    } for d in scheduled[:5]]
 
     # -- 4. system state -----------------------------------------
     system = {
@@ -1166,8 +1007,8 @@ def admin_dashboard(request):
         'offices': Office.objects.filter(is_active=True).count(),
         'staff': CustomUser.objects.filter(role='staff', is_approved=True).count(),
         'admins': CustomUser.objects.filter(role='admin').count(),
-        'banners_live': Announcement.objects.filter(
-            active=True, date__isnull=True
+        'banners_live': Announcement.objects.filter(active=True).filter(
+            Q(expires_on__isnull=True) | Q(expires_on__gte=today)
         ).count(),
         'proposals_total': Proposal.objects.count(),
     }
@@ -1217,7 +1058,6 @@ def staff_dashboard(request):
     page the slowest screen in the portal for no benefit.
     """
     user = request.user
-    today = timezone.localdate()
 
     # -- recently opened -----------------------------------------
     recent = [{
@@ -1228,25 +1068,6 @@ def staff_dashboard(request):
         'opened_at': row.opened_at,
     } for row in RecentlyOpened.objects.filter(user=user)
         .select_related('manual', 'section')[:RECENTLY_OPENED_LIMIT]]
-
-    # -- announcements and upcoming ------------------------------
-    visible = _visible_announcements(user)
-    dismissed = set(
-        AnnouncementDismissal.objects.filter(user=user)
-        .values_list('announcement_id', flat=True)
-    )
-    banner = next(
-        (a for a in visible.filter(date__isnull=True).order_by('-created_at')
-         if a.id not in dismissed),
-        None,
-    )
-    upcoming = [{
-        'id': a.id,
-        'title': a.title,
-        'body': a.body,
-        'date': a.date,
-        'is_today': a.date == today,
-    } for a in visible.filter(date__gte=today).order_by('date')[:5]]
 
     # -- proposals: how much is waiting on this person's offices ---
     # One aggregate query; it used to loop over every proposal in
@@ -1267,35 +1088,13 @@ def staff_dashboard(request):
             initiating_office__in=my_offices
         ).count(),
         'recently_opened': recent,
-        'announcement': None if banner is None else {
-            'id': banner.id, 'title': banner.title, 'body': banner.body,
-        },
-        'upcoming': upcoming,
-        'upcoming_total': visible.filter(date__gte=today).count(),
+        # The banners and the Deadlines panel read their own endpoints
+        # (notice_views): action-banner, announcement-banner, my-deadlines.
         'stats': {
             'manuals_total': Manual.objects.count(),
             'manuals_mine': access.manuals_for(user, Manual.objects.all()).count(),
         },
     })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def staff_dismiss_announcement(request, announcement_id):
-    """Close the banner for this person only.
-
-    Recorded against the announcement's id rather than as a single flag, so
-    the next announcement still appears for someone who dismissed the last.
-    """
-    try:
-        announcement = Announcement.objects.get(id=announcement_id)
-    except Announcement.DoesNotExist:
-        return Response({'error': 'Announcement not found'}, status=404)
-
-    AnnouncementDismissal.objects.get_or_create(
-        announcement=announcement, user=request.user
-    )
-    return Response({'dismissed': True})
 
 
 @api_view(['GET'])

@@ -159,17 +159,17 @@ class ReauthenticationTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertTrue(CustomUser.objects.filter(pk=applicant.pk).exists())
 
-    def test_deleting_an_announcement_is_guarded_but_deactivating_is_not(self):
-        """Deactivating is reversible and keeps the record, so it stays a
-        single click. The prompt would train people to type the password
-        without reading it."""
+    def test_announcements_are_never_deleted_only_deactivated(self):
+        """Phase 3A retired the DELETE: deactivating keeps the record of what
+        was posted, and stays a single click."""
         announcement = Announcement.objects.create(
             title="Notice", created_by=self.admin,
         )
         self.assertEqual(
             self.delete(f"/api/admin/announcements/{announcement.id}/").status_code,
-            403,
+            405,
         )
+        self.assertTrue(Announcement.objects.filter(pk=announcement.pk).exists())
         deactivated = self.client.patch(
             f"/api/admin/announcements/{announcement.id}/",
             {"active": False}, format="json",

@@ -6,6 +6,8 @@ import QmsRequests from "./QmsRequests";
 import Topbar from "../Topbar";
 import Account from "../Account";
 import NeedsAction from "../NeedsAction";
+import ActionBanner from "../ActionBanner";
+import AnnouncementBanner from "../AnnouncementBanner";
 import NotificationBell from "../NotificationBell";
 import NotificationsPage from "../NotificationsPage";
 import logo from "../../assets/QMS.png";
@@ -150,6 +152,9 @@ export default function QmsDashboard({ onLogout }) {
             />
           }
         />
+        {/* Two rows at most: the pinned action row, then announcements. */}
+        <ActionBanner onOpenProposal={openRequestFrom} refreshKey={activePage} />
+        <AnnouncementBanner refreshKey={activePage} />
         <main className="app-content">
           <div className="tab-panel" key={`${activePage}-${manualId ?? ""}-${openRequest ?? ""}`}>
             {renderPage()}

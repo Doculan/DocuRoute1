@@ -189,34 +189,38 @@ class AdminDashboardTests(TestCase):
         self.a_submission(submitted_days_ago=ACTIVITY_WINDOW_DAYS + 5)
         self.assertEqual(self.get()["activity"]["totals"]["submitted"], 0)
 
-    # -- 3. upcoming -----------------------------------------------
+    # -- 3. upcoming: the next deadlines ----------------------------
 
-    def test_the_admin_sees_every_office_s_notices(self):
-        """This is the desk they are posted from."""
-        today = timezone.localdate()
-        Announcement.objects.create(
-            title="HR briefing", date=today + timedelta(days=3),
-            office=self.other, created_by=self.admin,
+    def a_deadline(self, title, days, active=True):
+        from api.models import Deadline, DeadlineType
+        dtype, _ = DeadlineType.objects.get_or_create(name="Internal quality audit")
+        return Deadline.objects.create(
+            title=title, type=dtype, due_on=timezone.localdate() + timedelta(days=days),
+            active=active, created_by=self.admin,
+            obligations_total=12, obligations_open=7, obligations_met=5,
         )
+
+    def test_the_next_deadlines_with_how_many_offices_owe_them(self):
+        self.a_deadline("ISO surveillance audit", 3)
         rows = self.get()["upcoming"]
-        self.assertEqual([(r["title"], r["office"]) for r in rows],
-                         [("HR briefing", "Budget Office")])
+        self.assertEqual([(r["title"], r["type"], r["unmet"]) for r in rows],
+                         [("ISO surveillance audit", "Internal quality audit",
+                           "7 of 12 not yet met")])
 
-    def test_banners_and_past_and_inactive_notices_are_not_upcoming(self):
-        today = timezone.localdate()
-        Announcement.objects.create(title="Banner", created_by=self.admin)
-        Announcement.objects.create(
-            title="Last week", date=today - timedelta(days=7),
-            created_by=self.admin,
-        )
-        Announcement.objects.create(
-            title="Withdrawn", date=today + timedelta(days=2),
-            active=False, created_by=self.admin,
-        )
+    def test_past_and_inactive_deadlines_are_not_upcoming(self):
+        self.a_deadline("Last week", -7)
+        self.a_deadline("Withdrawn", 2, active=False)
         data = self.get()
         self.assertEqual(data["upcoming"], [])
         self.assertEqual(data["upcoming_total"], 0)
-        self.assertEqual(data["system"]["banners_live"], 1)
+
+    def test_live_announcements_are_counted(self):
+        today = timezone.localdate()
+        Announcement.objects.create(title="Banner", created_by=self.admin)
+        Announcement.objects.create(title="Expired", expires_on=today - timedelta(days=1),
+                                    created_by=self.admin)
+        Announcement.objects.create(title="Off", active=False, created_by=self.admin)
+        self.assertEqual(self.get()["system"]["banners_live"], 1)
 
     # -- 4. system -------------------------------------------------
 

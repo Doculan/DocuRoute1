@@ -4,7 +4,7 @@ import UserManagement from "./UserManagement";
 import Manuals from "./Manuals";
 import Sections from "./Sections";
 import SVMEvaluation from "./SVMEvaluation";
-import Announcements from "./Announcements";
+import Notices from "./Notices";
 import AdminHome from "./AdminHome";
 import Offices from "./Offices";
 import Series from "./Series";
@@ -14,6 +14,8 @@ import Topbar from "../Topbar";
 import Account from "../Account";
 import NotificationBell from "../NotificationBell";
 import NotificationsPage from "../NotificationsPage";
+import ActionBanner from "../ActionBanner";
+import AnnouncementBanner from "../AnnouncementBanner";
 import logo from '../../assets/QMS.png';
 import usersIcon from '../../assets/nav/users.svg';
 import officesIcon from '../../assets/nav/offices.svg';
@@ -57,7 +59,7 @@ const NAV_GROUPS = [
     // Notices posted to the portal, not messages between users.
     label: "Portal content",
     items: [
-      { key: "announcements", icon: reviewIcon, label: "Announcements" },
+      { key: "announcements", icon: reviewIcon, label: "Deadlines & announcements" },
     ],
   },
   {
@@ -90,7 +92,7 @@ const CRUMBS = {
   manuals: "Manuals",
   sections: "Sections",
   proposals: "Proposals",
-  announcements: "Announcements",
+  announcements: "Deadlines & announcements",
   evaluation: "Model health",
   account: "My account",
   notifications: "Notifications",
@@ -149,7 +151,7 @@ export default function AdminDashboard({ onLogout }) {
         return <Manuals onOpenSections={openSections} />;
       case "sections":
         return <Sections openManualId={drillManual} />;
-      case "announcements": return <Announcements />;
+      case "announcements": return <Notices />;
       case "offices": return <Offices />;
       case "series": return <Series />;
       case "people": return <People />;
@@ -285,6 +287,11 @@ export default function AdminDashboard({ onLogout }) {
             />
           }
         />
+
+        {/* Two rows at most: the pinned action row (only where this person
+            holds an office post), then announcements. */}
+        <ActionBanner onOpenProposal={openProposal} refreshKey={activePage} />
+        <AnnouncementBanner refreshKey={activePage} />
 
         <main className="app-content">
           {/* key forces a remount so each tab animates in */}

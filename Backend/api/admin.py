@@ -25,28 +25,17 @@ class ManualSectionAdmin(admin.ModelAdmin):
 
 @admin.register(Announcement)
 class AnnouncementAdmin(admin.ModelAdmin):
-    """The admin-side form for announcements and upcoming items.
+    """Announcements are information, always a banner. Deadlines are a
+    separate kind with their own screen; deleting is not offered here
+    either - deactivate instead."""
 
-    One model covers both widgets: give it a date and it appears under
-    Upcoming, leave the date empty and it is the dashboard banner. The list
-    says which, so nobody has to remember the rule.
-    """
-
-    list_display = ('title', 'shows_as', 'date', 'office', 'active', 'created_at')
-    list_filter = ('active', 'office')
+    list_display = ('title', 'audience', 'expires_on', 'active', 'created_at')
+    list_filter = ('active', 'audience')
     search_fields = ('title', 'body')
-    fieldsets = (
-        (None, {
-            'fields': ('title', 'body', 'active'),
-            'description': 'Leave the date empty for a banner; set one to '
-                           'put it under Upcoming.',
-        }),
-        ('Where and when', {'fields': ('date', 'office')}),
-    )
+    fields = ('title', 'body', 'audience', 'expires_on', 'active')
 
-    @admin.display(description='Shows as')
-    def shows_as(self, obj):
-        return 'Upcoming' if obj.date else 'Banner'
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     def save_model(self, request, obj, form, change):
         if not obj.created_by:

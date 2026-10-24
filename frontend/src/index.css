@@ -696,6 +696,10 @@ a:hover { color: var(--brand-500); }
 /* The action banner: persistent, never dismissible, one row at the top of
    the page. Visually apart from announcements (which are dismissible). */
 .action-banner {
+  /* Pinned: the page scrolls beneath it, never this row. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
   border-bottom: 1px solid var(--rule);
   border-left: 4px solid var(--danger);
   background: var(--danger-soft);
@@ -703,6 +707,31 @@ a:hover { color: var(--brand-500); }
   padding: 0.55rem 1.75rem;
   font-size: 0.85rem;
 }
+/* The most urgent item sets the colour; the words say it too. */
+.action-banner.is-soon { border-left-color: var(--warning); background: var(--warning-soft); color: var(--n-800, #3a2f12); }
+.action-banner.is-calm { border-left-color: var(--n-300, #b9b6c8); background: var(--surface); color: var(--text); }
+
+/* The announcement row: beneath the action row, neutral blue, dismissible. */
+.announcement-banner {
+  border-bottom: 1px solid var(--rule);
+  border-left: 4px solid var(--brand-600);
+  background: var(--brand-50, #eef0fb);
+  color: var(--text);
+  padding: 0.45rem 1.75rem;
+  font-size: 0.85rem;
+}
+.announcement-item { display: flex; align-items: baseline; gap: 1rem; justify-content: space-between; }
+.announcement-item + .announcement-item { margin-top: 0.3rem; }
+.announcement-body { color: var(--text-muted); }
+.announcement-dismiss, .announcement-more {
+  border: 0; background: none; padding: 0; font: inherit; font-size: 0.75rem;
+  color: var(--brand-600); cursor: pointer; flex-shrink: 0;
+}
+
+/* Deadline rows on Home and the Deadlines page. */
+.deadline-row { padding: 0.55rem 0.75rem; border-left: 3px solid var(--n-300, #b9b6c8); background: var(--surface); }
+.deadline-row.is-overdue { border-left-color: var(--danger); }
+.deadline-row.is-today, .deadline-row.is-soon { border-left-color: var(--warning); }
 .action-banner.is-collapsed { padding-top: 0.3rem; padding-bottom: 0.3rem; }
 .action-banner-line { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .action-banner-link {

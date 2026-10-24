@@ -1457,8 +1457,16 @@ class SystemEvent(models.Model):
     STALLED = 'stalled'
     POSITION_VACANT = 'position_vacant'
     EMAIL_SENT = 'email_sent'
+    DEADLINE_SET = 'deadline_set'
+    DEADLINE_CHANGED = 'deadline_changed'
+    OBLIGATION_MET = 'obligation_met'
+    OBLIGATION_REOPENED = 'obligation_reopened'
 
     KIND_CHOICES = [
+        (DEADLINE_SET, 'Deadline set'),
+        (DEADLINE_CHANGED, 'Deadline changed'),
+        (OBLIGATION_MET, 'Deadline obligation met'),
+        (OBLIGATION_REOPENED, 'Deadline obligation reopened'),
         (LOG_STARTED, 'Log started'),
         (NOTIFIED, 'Notified'),
         (NOTIFICATION_READ, 'Notification read'),
@@ -1623,8 +1631,10 @@ class Notification(models.Model):
     SENT_TO_HEAD = 'sent_to_head'
     RETURNED_TO_ENCODER = 'returned_to_encoder'
     RECALLED = 'recalled'
+    DEADLINE_SET = 'deadline_set'
 
     KIND_CHOICES = [
+        (DEADLINE_SET, 'Deadline set for your office'),
         (SENT_TO_HEAD, 'Sent to the Head'),
         (RETURNED_TO_ENCODER, 'Returned to the Encoder'),
         (RECALLED, 'Recalled by the Encoder'),
@@ -1646,7 +1656,7 @@ class Notification(models.Model):
 
     TARGET_CHOICES = [
         ('proposal', 'Proposal'), ('manual', 'Manual'), ('office', 'Office'),
-        ('people', 'People'),
+        ('people', 'People'), ('deadline', 'Deadline'),
     ]
 
     recipient = models.ForeignKey(
@@ -2014,49 +2024,61 @@ class Attachment(models.Model):
 
 
 class Announcement(models.Model):
-    """Something the admin wants staff to see.
+    """Information for staff: always a banner, dismissible per person.
 
-    One model for two widgets, because they are the same thing at different
-    distances: an item with a date is upcoming, an item without one is an
-    announcement. Splitting them would mean two models, two endpoints and a
-    decision at the point of writing about which kind a message is - when
-    the only real difference is whether it happens on a day.
+    Deadlines are their own kind (`Deadline`); the old rule "a dated item
+    is Upcoming, an undated one the banner" is retired - it decided what a
+    notice was by whether a date field happened to be filled.
 
-    A null office means everyone; otherwise only people holding a position
-    in that office see it.
+    Who sees it is said explicitly by `audience`: an empty office list must
+    never come to mean "everyone", which is how a cleared field would
+    silently broadcast a targeted notice to the whole university. Never
+    deleted: deactivated, so the record of what was posted stays.
     """
+
+    ALL = 'all'
+    OFFICES = 'offices'
+    AUDIENCE_CHOICES = [(ALL, 'Everyone'), (OFFICES, 'Selected offices')]
 
     title = models.CharField(max_length=200)
     body = models.TextField(blank=True)
-    # Dated items appear under Upcoming and drop off after their day.
-    # Undated items are the banner.
-    date = models.DateField(null=True, blank=True)
-    # PROTECT rather than SET_NULL, which would be actively wrong here:
-    # null does not mean "no office", it means **show this to everyone**.
-    # Clearing the field on a targeted notice would silently broadcast it
-    # to the whole university, which is worse than either keeping it or
-    # losing it.
-    office = models.ForeignKey(
-        'Office', on_delete=models.PROTECT, null=True, blank=True,
-        related_name='announcements',
-        help_text="Leave empty to show this to every office.",
-    )
+    audience = models.CharField(max_length=8, choices=AUDIENCE_CHOICES, default=ALL)
+    # Null: it does not expire.
+    expires_on = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='announcements',
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    active = models.BooleanField(
-        default=True,
-        help_text="Uncheck to hide without deleting.",
+    active = models.BooleanField(default=True)
+    deactivated_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
+    deactivated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ['date', '-created_at']
+        ordering = ['-created_at']
 
     def __str__(self):
-        when = self.date.isoformat() if self.date else 'announcement'
-        return f"{self.title} ({when})"
+        return self.title
+
+
+class AnnouncementOffice(models.Model):
+    """One office an announcement is addressed to - and, with
+    `include_descendants`, every office beneath it that concurs on a
+    document."""
+
+    announcement = models.ForeignKey(
+        Announcement, on_delete=models.CASCADE, related_name='targets',
+    )
+    office = models.ForeignKey(Office, on_delete=models.PROTECT, related_name='+')
+    include_descendants = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['announcement', 'office'],
+                                    name='one_target_per_announcement_and_office'),
+        ]
 
 
 class AnnouncementDismissal(models.Model):
@@ -2076,6 +2098,155 @@ class AnnouncementDismissal(models.Model):
 
     class Meta:
         unique_together = ('announcement', 'user')
+
+
+class DeadlineType(models.Model):
+    """What a deadline is for: a preset from the spec (§6.2), or one an
+    admin added, which is then offered next time."""
+
+    name = models.CharField(max_length=120, unique=True)
+    basis = models.CharField(max_length=255, blank=True)
+    is_preset = models.BooleanField(default=False)
+    confirm_with_qms = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_preset', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+DEFAULT_REMINDER_DAYS = [30, 14, 7, 3, 1]
+
+
+def default_reminder_days():
+    return list(DEFAULT_REMINDER_DAYS)
+
+
+class Deadline(models.Model):
+    """An obligation the admin sets, tracked office by office.
+
+    What the admin chose is in `targets`; who owes what is materialised in
+    `obligations` when it is saved, so banners, tags and monitoring read
+    rows rather than resolving targets on every request. The three counts
+    are kept in the same transaction as any obligation change - dashboards
+    read them instead of counting thousands of rows (spec §9).
+    """
+
+    title = models.CharField(max_length=200)
+    type = models.ForeignKey(DeadlineType, on_delete=models.PROTECT, related_name='deadlines')
+    due_on = models.DateField()
+    note = models.TextField(blank=True)
+    reminder_days = models.JSONField(default=default_reminder_days)
+    active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.PROTECT, related_name='deadlines_created',
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    obligations_total = models.PositiveIntegerField(default=0)
+    obligations_open = models.PositiveIntegerField(default=0)
+    obligations_met = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['due_on', 'pk']
+        indexes = [models.Index(fields=['active', 'due_on'], name='deadline_active_due_idx')]
+
+    def __str__(self):
+        return f'{self.title} ({self.due_on})'
+
+
+class DeadlineTarget(models.Model):
+    """One thing the admin targeted: everyone, an office (and optionally
+    everything beneath it), a manual series, or a manual."""
+
+    ALL = 'all'
+    OFFICE = 'office'
+    SERIES = 'series'
+    MANUAL = 'manual'
+    KIND_CHOICES = [(ALL, 'All offices'), (OFFICE, 'Office'),
+                    (SERIES, 'Manual series'), (MANUAL, 'Manual')]
+
+    deadline = models.ForeignKey(Deadline, on_delete=models.CASCADE, related_name='targets')
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES)
+    office = models.ForeignKey(Office, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='+')
+    include_descendants = models.BooleanField(default=False)
+    series = models.ForeignKey(ManualSeries, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='+')
+    manual = models.ForeignKey(Manual, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='+')
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(kind='all', office__isnull=True, series__isnull=True, manual__isnull=True)
+                    | Q(kind='office', office__isnull=False, series__isnull=True, manual__isnull=True)
+                    | Q(kind='series', office__isnull=True, series__isnull=False, manual__isnull=True)
+                    | Q(kind='manual', office__isnull=True, series__isnull=True, manual__isnull=False)
+                ),
+                name='deadline_target_matches_its_kind',
+            ),
+        ]
+
+
+class DeadlineObligation(models.Model):
+    """What one office owes on one deadline - for one manual, or (with
+    `manual` null) for the office as a whole, met by any proposal it
+    submits after the deadline was set.
+
+    `state` is the office milestone (submitted, or reviewed with no change)
+    and then the document milestone (effective). `met_by_proposal` records
+    which proposal met it; withdrawing that proposal reopens it, a denial
+    does not.
+    """
+
+    OPEN = 'open'
+    SUBMITTED = 'submitted'
+    REVIEWED = 'reviewed'
+    EFFECTIVE = 'effective'
+    STATE_CHOICES = [(OPEN, 'Not yet met'), (SUBMITTED, 'Submitted'),
+                     (REVIEWED, 'Reviewed, no change'), (EFFECTIVE, 'Made effective')]
+    MET_STATES = (SUBMITTED, REVIEWED, EFFECTIVE)
+
+    deadline = models.ForeignKey(Deadline, on_delete=models.PROTECT, related_name='obligations')
+    office = models.ForeignKey(Office, on_delete=models.PROTECT, related_name='obligations')
+    manual = models.ForeignKey(Manual, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='obligations')
+    priority = models.BooleanField(default=False)
+    state = models.CharField(max_length=10, choices=STATE_CHOICES, default=OPEN)
+    office_met_at = models.DateTimeField(null=True, blank=True)
+    met_by_proposal = models.ForeignKey(Proposal, on_delete=models.PROTECT, null=True,
+                                        blank=True, related_name='obligations_met')
+    effective_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['deadline', 'office', 'manual']
+        constraints = [
+            # Two partial indexes, because SQLite treats every null as
+            # distinct: one (deadline, office, manual=null) row per office.
+            models.UniqueConstraint(fields=['deadline', 'office'],
+                                    condition=Q(manual__isnull=True),
+                                    name='one_office_obligation_per_deadline'),
+            models.UniqueConstraint(fields=['deadline', 'office', 'manual'],
+                                    condition=Q(manual__isnull=False),
+                                    name='one_manual_obligation_per_deadline'),
+        ]
+        indexes = [
+            models.Index(fields=['office', 'state'], name='obligation_office_state_idx'),
+            models.Index(fields=['manual', 'state'], name='obligation_manual_state_idx'),
+            models.Index(fields=['deadline', 'state'], name='obligation_deadline_state_idx'),
+        ]
+
+    @property
+    def is_met(self):
+        return self.state in self.MET_STATES
 
 
 class RecentlyOpened(models.Model):

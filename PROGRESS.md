@@ -3,6 +3,90 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 24 October 2026 — v4.2 Phase 3A: deadlines and announcements (Checkpoint 3A)
+
+Design in `MONITORING_PHASE3_DESIGN.md`, approved with changes (§8 there).
+
+- **Deadlines** (migration `0046`): a type (11 presets; the admin may add),
+  a due date, reminder days (default 30, 14, 7, 3, 1), and targets:
+  - every concurring office, an office (optionally "and everything
+    beneath it"), a series, or named manuals
+  - an office with no manuals named owes "any proposal it submits"; the
+    create form warns of this
+  - targets become one **obligation** per office (and manual), with
+    precomputed counts on the deadline, so lists never count rows
+- **Meeting one:** submitting a proposal meets the obligation and records
+  which proposal met it; one already in flight when the deadline is set
+  meets it at creation. Withdrawing it reopens the obligation (or passes it
+  to another in-flight proposal); a denial does not. Effective is
+  recorded.
+- **Creating one:** preview first ("This will notify N offices (M
+  people)"), then save, which notifies each office's Head and Encoders
+  (one log event, one notice each). No password (Q-2).
+- **Announcements reshaped:** to everyone or to offices (with "and
+  everything beneath it"), an expiry date, deactivated rather than deleted
+  (DELETE now answers 405). The three live rows migrated: two to everyone
+  and already expired, one to everyone without expiry.
+- **Two banner rows, in this order:**
+  - **the action row** on top, pinned while the page scrolls, with no
+    dismiss control: the most urgent deadline first (overdue, due today,
+    due soon), and returned work in the same row; only its list folds. It
+    goes when the office meets the deadline.
+  - **the announcement row** beneath, the newest plus "n more", each
+    dismissible per person.
+  - `MONITORING_UPDATE_SPEC.md` §5.2 and §6.1 edited to match.
+- **Screens:** admin Notices (announcements and deadlines, with summary
+  counts, paging, per-branch progress and the obligations list showing
+  what met each); a Deadlines panel on the staff home and a Deadlines
+  page; "Next deadlines" on the admin home.
+- **Q-B:** the approving offices' Heads are told (info) when a request is
+  denied or made effective.
+- `seed_scale` adds 5 deadlines of every target kind.
+
+**What was run, and why:**
+- **During 3A:** the new `tests_notices` and the modules touching the
+  changed code (announcements, staff and admin dashboards, safeguards,
+  concurrence, QMS, notifications, needs-action, head step, scale seed,
+  monitoring): 143 tests, then 31 seed and monitoring tests.
+- **Code-removal proof:** 37 cases, each failing without its code,
+  including the action row rendering above the announcement row and
+  having no dismiss route.
+- **Migration `0046`** on a copy of `db.sqlite3.bak-20261024-pre-3A`,
+  compared before and after: the three announcements as designed, 0
+  dismissals, 11 presets, 0 deadlines.
+- **Full suite** (before the live migration, which rebuilds
+  `api_announcement`, and for the shared notifications code): 781 tests,
+  **9 errors, all `tests_scale_seed`, one cause.** The race test in
+  `tests_proposals` commits, so the database is flushed after it, taking
+  0046's preset types with it; `seed_scale` then could not find "ISO 9001
+  surveillance audit". The seeder now makes that type when it is missing
+  and records it, so `--clear` removes only what it made. A new test
+  seeds with the presets gone and fails without the fix (the same
+  `DoesNotExist`). Re-run in suite order, `tests_proposals` then
+  `tests_scale_seed`: 63 tests passed. Only `seed_scale.py` changed after
+  the full run, and only that test module imports it, so the full suite
+  was not repeated.
+- **Live:** backup `db.sqlite3.bak-20261024-pre-0046` (unchanged since
+  the 3A copy), `0046` applied; the three announcements exactly as on the
+  copy, 0 dismissals, 11 presets, 0 deadlines, all other counts the same.
+  The log chain verifies (3 events). `check_setup.py`: Ready, fingerprint
+  `6a6a5c667a3c4d11`.
+- **At full scale** (with the suite running alongside):
+  - admin deadlines 7 ms, detail 10 ms, obligations page 17 ms
+  - action banner 31 ms, my deadlines 16 ms, announcement banner 5 ms
+  - staff home 31 ms, admin home 194 ms
+  - preview of every office 77 ms (7 queries; 196 offices, 387 people)
+  - saving it 483 ms (30 queries); a series of 600 obligations 171 ms
+- **Headless Chrome on the scale copy:**
+  - the admin previews and saves a deadline, and posts an announcement
+  - a Head sees the action row on top and the announcement beneath
+  - the list opens; the Deadlines page; the announcement is dismissed
+
+  No console errors.
+- **Not run:** `evaluate_folds.py`, because no pipeline code was touched.
+  The demo paths were not re-driven; submit, withdraw and deny are
+  covered through the real endpoints in `tests_notices`.
+
 ## 24 October 2026 — v4.2 Phase 2B: Encoder to Head, action banner (Checkpoint 2B)
 
 - **New status "With the Head"** (`with_head`, migration `0045`).

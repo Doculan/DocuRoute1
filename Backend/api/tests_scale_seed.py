@@ -95,7 +95,8 @@ class ScaleSeedTests(TestCase):
         from api.models import SystemEvent
         self.seed()
 
-        notices = Notification.objects.all()
+        # Proposal notices; deadline notices are caused by the system log.
+        notices = Notification.objects.exclude(kind='deadline_set')
         self.assertEqual(set(notices.values_list('severity', flat=True)), {'action', 'info'})
         self.assertFalse(notices.filter(manual__isnull=True).exists())
         self.assertFalse(notices.filter(audit_event__isnull=True).exists())
@@ -107,7 +108,8 @@ class ScaleSeedTests(TestCase):
         self.assertTrue(notices.filter(severity='action', acted_at__isnull=False,
                                        acted_by__isnull=False).exists())
         self.assertTrue(notices.filter(severity='action', acted_at__isnull=True).exists())
-        self.assertEqual(SystemEvent.objects.filter(kind='notified').count(),
+        self.assertEqual(SystemEvent.objects.filter(kind='notified',
+                                                    detail__cause__has_key='audit_event').count(),
                          notices.values('audit_event').distinct().count())
         checked, problem = system_log.verify()
         self.assertIsNone(problem)
@@ -140,6 +142,29 @@ class ScaleSeedTests(TestCase):
         self.assertIn('entries about real data after the synthetic ones', output)
         self.assertTrue(Proposal.objects.exists())
         self.assertIsNone(system_log.verify()[1])
+
+    def test_deadlines_of_every_kind_with_their_obligations(self):
+        from api.models import Deadline, DeadlineObligation
+        self.seed()
+        kinds = set(Deadline.objects.values_list('targets__kind', flat=True))
+        self.assertEqual(kinds, {'all', 'office', 'series', 'manual'})
+        for deadline in Deadline.objects.all():
+            self.assertEqual(deadline.obligations_total, deadline.obligations.count())
+        self.assertTrue(DeadlineObligation.objects.filter(state='submitted').exists())
+        self.assertTrue(Notification.objects.filter(kind='deadline_set').exists())
+
+    def test_it_seeds_where_the_preset_types_were_flushed(self):
+        """Found in the full suite: a test that commits flushes the database
+        afterwards, taking migration 0046's presets with it."""
+        from api.models import Deadline, DeadlineType
+        DeadlineType.objects.all().delete()
+        kept = DeadlineType.objects.create(name='Admin-added type')
+
+        self.seed()
+        self.assertEqual(Deadline.objects.count(), 5)
+
+        self.seed('--clear')
+        self.assertEqual(list(DeadlineType.objects.all()), [kept])
 
     def test_activity_is_spread_out_not_piled_on_now(self):
         """Stage aging is measured against this data: a long story must

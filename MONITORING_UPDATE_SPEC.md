@@ -86,7 +86,7 @@ Replace "not sure" in the sign-up office picker with **"Office not listed"**.
 
 - **Bell with an unread count** in every portal, and a notification page with filters (Action required, Info, All).
 - **"Needs your action"** on every dashboard, derived from the current state of proposals and deadlines, so it can never be lost even if a notification was missed.
-- **Deadline and action banner**: the consolidated deadline banner of §6.1 also carries anything **returned** to the office. A persistent coloured banner at the top of every page names it and links to it. It cannot be dismissed, only resolved. It sits visually apart from announcements, which are dismissible.
+- **Deadline and action banner**: the consolidated deadline banner of §6.1 also carries anything **returned** to the office, and the freeze notice (§6.6). It is the **top banner row, pinned**: it stays visible while the page scrolls. It has **no dismiss control**: its one-line summary always stays, and only its expanded list can fold. Inside it the most urgent comes first: overdue, due today, due soon, then returned work and the freeze notice. It disappears for an office only when that office has met its deadlines and sent its returned work on. The announcement row sits **beneath** it and stays dismissible per person.
 - **Email** as an optional second channel behind a setting.
 
 ### 5.3 What notifies whom
@@ -174,12 +174,13 @@ The admin chooses a **Kind** when creating a notice. The old rule "no date = ban
 | | Announcement banner | Deadline banner |
 | --- | --- | --- |
 | Colour | Neutral blue | Calm while far off, **amber** when due soon (inside the reminder window), **red** when overdue |
-| Dismiss | Yes, per person | **No.** It can be collapsed to one slim line, and goes away only when the deadline is met |
+| Dismiss | Yes, per person | **No dismiss control.** The one-line summary always stays; only the expanded list folds. It goes away for an office only when that office meets the deadline |
+| Position | The **second** row, beneath the deadline row | The **top** row, **pinned** while the page scrolls |
 | Content | Title and short text | Deadline title and type, **due date and days left**, and the manuals still owed. Links to the manual or proposal |
 | Who sees it | Targeted offices, or everyone | Head and Encoder of each targeted office that has **not yet met** it |
 
-- **One consolidated deadline banner, not a stack.** An office with several open deadlines sees a single banner, "3 deadlines · next: ISO surveillance audit, 12 Nov (5 days)", that expands to the list. The most urgent sets its colour.
-- At most **two banner rows** at the top of any page: announcements, then deadlines and action items (§5.2). Never a pile.
+- **One consolidated deadline banner, not a stack.** An office with several open deadlines sees a single banner, "3 deadlines · next: ISO surveillance audit, 12 Nov (5 days)", that expands to the list. The most urgent sets its colour, and the list runs most urgent first: overdue, due today, due soon; returned work and the freeze notice share the row.
+- At most **two banner rows** at the top of any page: **the deadline and action row on top, pinned**, then the announcement row (§5.2). Never a pile.
 - When a deadline is met, its banner clears for that office immediately; other offices' banners are unaffected.
 - Nothing about a banner blocks reading a manual.
 

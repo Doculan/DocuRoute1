@@ -12,6 +12,7 @@ from . import trail_views as trail
 from . import structure_views as structure
 from . import admin_proposal_views
 from . import action_views
+from . import notice_views as notices
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register,
@@ -25,9 +26,6 @@ from .views import (
     staff_list_manuals,
     staff_sections,
     staff_dashboard,
-    staff_dismiss_announcement,
-    admin_announcements,
-    admin_announcement_detail,
     admin_dashboard,
     list_manuals,
     upload_manual,
@@ -154,18 +152,28 @@ urlpatterns = [
     # One request for the whole landing page - six widgets reading the
     # same few tables do not need six round trips.
     path('staff/dashboard/', staff_dashboard),
-    path('staff/announcements/<int:announcement_id>/dismiss/', staff_dismiss_announcement),
+    path('staff/announcements/<int:announcement_id>/dismiss/', notices.dismiss_announcement),
     # Sections across every manual the staff member can reach - the
     # route for someone who knows the content, not the document.
     path('staff/sections/', staff_sections),
 
-    # Admin dashboard and announcements. The staff banner and Upcoming
-    # list read these rows; this is the half that puts something in them.
+    # Admin dashboard, announcements and deadlines. The banners and the
+    # Deadlines panel read these rows; this is the half that sets them.
     path('admin/dashboard/', admin_dashboard),
     # Every proposal, paged and filtered - not the dashboard's recent six.
     path('admin/proposals/', admin_proposal_views.admin_proposals),
-    path('admin/announcements/', admin_announcements),
-    path('admin/announcements/<int:announcement_id>/', admin_announcement_detail),
+    path('admin/announcements/', notices.admin_announcements),
+    path('admin/announcements/<int:announcement_id>/', notices.admin_announcement_detail),
+    # Deadlines: tracked obligations, office by office.
+    path('admin/deadlines/', notices.admin_deadlines),
+    path('admin/deadlines/<int:deadline_id>/', notices.admin_deadline_detail),
+    path('admin/deadlines/<int:deadline_id>/obligations/', notices.admin_deadline_obligations),
+    path('admin/manual-search/', notices.manual_search),
+    path('deadline-types/', notices.deadline_types),
+    path('my-deadlines/', notices.my_deadlines),
+    # The banner rows: the pinned action row (no dismiss route, by design),
+    # then announcements, dismissible per person.
+    path('announcement-banner/', notices.announcement_banner),
 
     # SVM Evaluation
     path('evaluate/svm/', evaluate_svm_model),

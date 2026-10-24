@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import Icon from "../Icon";
 import NeedsAction from "../NeedsAction";
+import DeadlinesPage from "../DeadlinesPage";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -10,13 +11,6 @@ const BASE_URL = "";
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
 });
-
-function formatDay(value) {
-  if (!value) return "";
-  return new Date(value).toLocaleDateString("en-PH", {
-    month: "short", day: "numeric",
-  });
-}
 
 /**
  * The landing page: what needs doing, and a way back to what you were reading.
@@ -45,17 +39,6 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenPro
 
   useEffect(() => { load(); }, [load]);
 
-  const dismiss = async (id) => {
-    setData((d) => ({ ...d, announcement: null }));
-    try {
-      await axios.post(
-        `${BASE_URL}/api/staff/announcements/${id}/dismiss/`, {}, getAuth()
-      );
-    } catch {
-      // Closing a banner is not worth an error if the note does not stick.
-    }
-  };
-
   if (loading) {
     return <div className="loading-row"><span className="spinner" /> Loading your dashboard…</div>;
   }
@@ -70,9 +53,7 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenPro
     );
   }
 
-  const { proposals_mine: proposalsMine,
-          recently_opened: recent, announcement,
-          upcoming, upcoming_total: upcomingTotal, stats } = data;
+  const { proposals_mine: proposalsMine, recently_opened: recent, stats } = data;
 
   return (
     <div>
@@ -86,26 +67,6 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenPro
         <button className="btn btn-ghost btn-sm" onClick={load}><Icon name="refresh" />Refresh</button>
       </header>
 
-      {announcement && (
-        <div className="alert alert-warning" style={{ marginBottom: "1.5rem" }}>
-          <div className="row" style={{ justifyContent: "space-between", gap: "1rem", alignItems: "flex-start" }}>
-            <div style={{ minWidth: 0 }}>
-              <div className="doc-name" style={{ fontSize: "1rem" }}>{announcement.title}</div>
-              {announcement.body && (
-                <p className="doc-excerpt" style={{ marginTop: "0.25rem" }}>{announcement.body}</p>
-              )}
-            </div>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => dismiss(announcement.id)}
-              aria-label="Dismiss this announcement"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
       <NeedsAction onOpenProposal={onOpenProposal} onGo={onGo} />
 
       <div className="dash-grid">
@@ -118,47 +79,12 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenPro
         </div>
 
         <div className="col" style={{ gap: "1.5rem", minWidth: 0 }}>
-          <Upcoming rows={upcoming} total={upcomingTotal} />
+          <DeadlinesPage limit={5} onShowAll={() => onGo("deadlines")}
+                         onOpenManual={onOpenManual} />
           <AtAGlance stats={stats} proposalsMine={proposalsMine} />
         </div>
       </div>
     </div>
-  );
-}
-
-/** A list, not a month grid: most weeks hold nothing, and a grid would be
- *  mostly empty boxes. A list works with zero items and becomes a calendar
- *  later without changing the data. */
-function Upcoming({ rows, total }) {
-  return (
-    <section>
-      <h2 className="section-title">Upcoming</h2>
-      {rows.length === 0 ? (
-        <p className="subtle text-sm" style={{ margin: 0 }}>
-          Nothing scheduled. Announcements from the admin will appear here.
-        </p>
-      ) : (
-        <div className="col" style={{ gap: "0.55rem" }}>
-          {rows.map((row) => (
-            <div key={row.id} className="row" style={{ gap: "0.7rem", alignItems: "baseline" }}>
-              <span
-                className={`badge ${row.is_today ? "badge-warning" : "badge-neutral"}`}
-                style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
-              >
-                {row.is_today ? "today" : formatDay(row.date)}
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <div className="doc-name" style={{ fontSize: "0.95rem" }}>{row.title}</div>
-                {row.body && <div className="doc-excerpt">{row.body}</div>}
-              </div>
-            </div>
-          ))}
-          {total > rows.length && (
-            <span className="subtle text-xs">{total - rows.length} more scheduled</span>
-          )}
-        </div>
-      )}
-    </section>
   );
 }
 

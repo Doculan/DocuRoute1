@@ -10,6 +10,8 @@ import Topbar from "../Topbar";
 import NotificationBell from "../NotificationBell";
 import NotificationsPage from "../NotificationsPage";
 import ActionBanner from "../ActionBanner";
+import AnnouncementBanner from "../AnnouncementBanner";
+import DeadlinesPage from "../DeadlinesPage";
 import Account from "../Account";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
@@ -56,6 +58,7 @@ const CRUMBS = {
   help: "Help",
   account: "My account",
   notifications: "Notifications",
+  deadlines: "Deadlines",
 };
 
 export default function StaffDashboard({ onLogout }) {
@@ -184,6 +187,8 @@ export default function StaffDashboard({ onLogout }) {
         return <Account onNameChange={renamed} />;
       case "notifications":
         return <NotificationsPage onOpen={openNotice} />;
+      case "deadlines":
+        return <DeadlinesPage onOpenManual={openManual} />;
       default:
         return <StaffManuals onSelectManual={openManual} />;
     }
@@ -250,7 +255,13 @@ export default function StaffDashboard({ onLogout }) {
           }
         />
 
-        <ActionBanner onOpenProposal={openProposal} refreshKey={`${bellKey}-${activePage}`} />
+        {/* Two rows at most: the pinned action row, then announcements. */}
+        <ActionBanner
+          onOpenProposal={openProposal}
+          onOpenDeadlines={() => handleNav("deadlines")}
+          refreshKey={`${bellKey}-${activePage}`}
+        />
+        <AnnouncementBanner refreshKey={activePage} />
 
         <main className="app-content">
           <div
