@@ -368,3 +368,73 @@ class PeriodicReview(LadderFixture):
         self.assertEqual({ob.office_id for ob in deadline.obligations.all()},
                          {self.acc.pk, self.cash.pk, self.bud.pk})
         self.assertEqual(reviews.gather_due_reviews(), 0)        # once this month
+
+
+class MissedRunsAndTheDryRun(LadderFixture):
+    """The dashboard's own batch covers the ladder (a stopped scheduler
+    never leaves a deadline silently overdue), and the dry run with a
+    date override writes nothing."""
+
+    def notices(self):
+        return Notification.objects.filter(kind__in=deadline_ladder.LADDER_NOTICES)
+
+    def test_a_dashboard_load_sends_its_offices_due_steps(self):
+        self.owed(days=0, reminders=[])                          # Accounting, due today
+        self.owed(office=self.bud, days=0, reminders=[])         # Budget, due today
+        self.as_(self.acc_head).get('/api/staff/dashboard/')
+        self.assertEqual(set(self.notices().values_list('addressed_office__name', flat=True)),
+                         {'Accounting Office'})
+
+    def test_capped_at_one_batch(self):
+        from unittest import mock
+        self.owed(days=0, reminders=[])
+        self.owed(days=0, reminders=[])
+        with mock.patch.object(deadline_ladder, 'BATCH', 1):
+            self.as_(self.acc_head).get('/api/staff/dashboard/')
+        self.assertEqual(self.notices().values('dedupe_key').distinct().count(), 1)
+
+    def test_not_while_the_scheduler_is_running(self):
+        from api.models import JobRun
+        JobRun.objects.create(started_at=timezone.now(), finished_at=timezone.now())
+        self.owed(days=0, reminders=[])
+        self.as_(self.acc_head).get('/api/staff/dashboard/')
+        self.assertFalse(self.notices().exists())
+
+    def command(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        call_command('run_monitoring', *args, stdout=out)
+        return out.getvalue()
+
+    def test_the_dry_run_lists_and_writes_nothing(self):
+        from api.models import JobRun
+        deadline = self.owed(days=1, reminders=[])
+        before = (Notification.objects.count(), SystemEvent.objects.count(), JobRun.objects.count())
+        as_of = (deadline.due_on + datetime.timedelta(days=8)).isoformat()
+        out = self.command('--dry-run', '--as-of', as_of)
+        self.assertIn(f'Dry run, as of {as_of}. Nothing is written.', out)
+        self.assertIn('overdue      Audit | Accounting Office |', out)
+        self.assertIn('escalated    Audit | Accounting Office |', out)
+        self.assertIn('VP Office — Head (info)', out)
+        self.assertEqual((Notification.objects.count(), SystemEvent.objects.count(),
+                          JobRun.objects.count()), before)
+
+    def test_as_of_without_the_dry_run_is_refused_on_live_data(self):
+        from django.core.management.base import CommandError
+        deadline = self.owed(days=1, reminders=[])
+        as_of = (deadline.due_on + datetime.timedelta(days=8)).isoformat()
+        with self.assertRaisesMessage(CommandError, 'Refused: --as-of without --dry-run'):
+            self.command('--as-of', as_of)
+        self.assertFalse(self.notices().exists())
+        with self.assertRaisesMessage(CommandError, '--as-of takes a date as YYYY-MM-DD.'):
+            self.command('--dry-run', '--as-of', '8 Dec 2026')
+
+    def test_as_of_sends_on_a_demo_database(self):
+        from django.test import override_settings
+        deadline = self.owed(days=1, reminders=[])
+        as_of = (deadline.due_on + datetime.timedelta(days=8)).isoformat()
+        with override_settings(MONITORING_ALLOW_AS_OF=True):
+            out = self.command('--as-of', as_of, '--only', 'deadlines')
+        self.assertIn('deadline notices sent 2', out)
+        self.assertTrue(self.told(Notification.DEADLINE_ESCALATED, self.vp_head).exists())

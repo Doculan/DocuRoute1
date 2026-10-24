@@ -324,9 +324,10 @@ def clear_filled_vacancies(now=None):
 STEPS = ('stalls', 'vacancies', 'deadlines', 'periodic_review')
 
 
-def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None):
+def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None, now=None):
     """One pass of every step. Returns the counts, or None if another run
-    holds the lock."""
+    holds the lock. `now` is the moment the steps act as of: the real time,
+    except for `run_monitoring --as-of` on a demo database."""
     holder = _holder()
     if not acquire(holder):
         return None
@@ -336,19 +337,19 @@ def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None):
     try:
         steps = only or STEPS
         if 'stalls' in steps:
-            counts['stalls_cleared'] = clear_ended_stalls()
-            counts['stalls_flagged'] = flag_stalls(holder, offices, max_batches)
+            counts['stalls_cleared'] = clear_ended_stalls(now)
+            counts['stalls_flagged'] = flag_stalls(holder, offices, max_batches, now)
         if 'vacancies' in steps:
-            counts['vacancies_cleared'] = clear_filled_vacancies()
-            counts['vacancies_flagged'] = flag_vacancies(holder, offices, max_batches)
+            counts['vacancies_cleared'] = clear_filled_vacancies(now)
+            counts['vacancies_flagged'] = flag_vacancies(holder, offices, max_batches, now)
         if 'deadlines' in steps:
             from . import deadline_ladder
-            counts['deadline_notices_cleared'] = deadline_ladder.clear_met()
+            counts['deadline_notices_cleared'] = deadline_ladder.clear_met(now)
             counts['deadline_notices_sent'] = deadline_ladder.send(
-                lambda: extend(holder), offices, max_batches)
+                lambda: extend(holder), offices, max_batches, now)
         if 'periodic_review' in steps and offices is None:
             from . import reviews
-            counts['periodic_review_set'] = reviews.gather_due_reviews()
+            counts['periodic_review_set'] = reviews.gather_due_reviews(now)
     except Exception as error:     # recorded, then raised: a run must not fail silently
         JobRun.objects.filter(pk=job.pk).update(
             finished_at=timezone.now(), counts=counts, error=repr(error))
@@ -357,6 +358,32 @@ def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None):
         release(holder)
     JobRun.objects.filter(pk=job.pk).update(finished_at=timezone.now(), counts=counts)
     return counts
+
+
+def dry_run(now=None, offices=None):
+    """What a run as of `now` would send, writing nothing: one line per
+    deadline notice (step, deadline, office, who), and the stalls and
+    vacancies it would flag, counted."""
+    from . import deadline_ladder
+    now = now or timezone.now()
+    lines = []
+    for planned in deadline_ladder.plan(offices, now=now):
+        for item in planned:
+            who = sorted({f'{r.title} ({r.severity})' for r in item.recipients})
+            lines.append(f'{item.step:<12} {item.deadline.title} | {item.office.name} | '
+                         f'{"; ".join(who)}')
+    stalls = find_stalls(offices, now)
+    done = set(Notification.objects.filter(
+        dedupe_key__in=[stall_key(pk, stage, entered) for pk, _, stage, entered in stalls],
+    ).values_list('dedupe_key', flat=True))
+    vacant = {vacancy_key(p, _since(p)) for p in find_vacancies(offices)}
+    told = set(Notification.objects.filter(dedupe_key__in=list(vacant))
+               .values_list('dedupe_key', flat=True))
+    return {
+        'deadlines': lines,
+        'stalls': len({stall_key(pk, stage, entered) for pk, _, stage, entered in stalls} - done),
+        'vacancies': len(vacant - told),
+    }
 
 
 def last_finished():

@@ -286,3 +286,7 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   gathers documents past review into a deadline. Migration `0048`.
 - **Fixed:** the admin's list of a deadline's obligations put met ones
   first.
+- `run_monitoring --dry-run [--as-of YYYY-MM-DD]` lists what a run would
+  send and writes nothing; `--as-of` on its own is refused unless
+  `QMS_ALLOW_AS_OF` is set on a demo database. A dashboard's own catch-up
+  run is now tested to include the deadline ladder.

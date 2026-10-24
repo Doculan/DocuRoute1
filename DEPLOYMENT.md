@@ -78,8 +78,9 @@ is in use. Give it the **same environment** as the web server
 a different database.
 
 Dashboards also run one batch themselves when the last finished run is
-older than 15 minutes, so a stopped scheduler delays nothing anyone is
-looking at — but that is a safety net, not a substitute.
+older than 15 minutes - every step, the deadline ladder included, for the
+viewer's offices - so a stopped scheduler never leaves a deadline silently
+overdue for anyone who looks. It is a safety net, not a substitute.
 
 **Windows — Task Scheduler.** Replace `<project folder>` with the folder
 holding `Backend/` and `venv/`:
@@ -104,7 +105,13 @@ process manager is the fallback:
 `while true; do python manage.py run_monitoring; sleep 300; done`.
 
 **Checking it.** `manage.py run_monitoring` prints what it flagged and
-cleared; each run is a `JobRun` row. `manage.py verify_log system` checks
+cleared; each run is a `JobRun` row. `run_monitoring --dry-run` lists what
+a run would send now (each deadline notice's step, deadline, office and
+recipients; stalls and vacancies counted) and writes nothing;
+`--dry-run --as-of YYYY-MM-DD` does the same as of another day. `--as-of`
+without `--dry-run` is refused unless `QMS_ALLOW_AS_OF` is set, which is
+for demo databases only (DEMO_CHECKLIST.md) - **never set it in the
+scheduled task or on the live server.** `manage.py verify_log system` checks
 the system activity log's hash chain and names the first row that does not
 follow from the one before it.
 

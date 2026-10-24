@@ -315,6 +315,12 @@ MEDIA_URL = "/media/"
 # Tests get a temporary MEDIA_ROOT: locking a proposal writes documents,
 # and those must never land among the real ones. See api/test_runner.py.
 TEST_RUNNER = "api.test_runner.TemporaryMediaRunner"
+
+# `run_monitoring --as-of` sends notices as if it were another day - for a
+# demo database only. Refused unless this is set, so overdue escalations
+# can never be sent by accident on live data. `--dry-run --as-of` always
+# works: it writes nothing. See DEMO_CHECKLIST.md.
+MONITORING_ALLOW_AS_OF = _env_bool('QMS_ALLOW_AS_OF', False)
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 
 CORS_ALLOWED_ORIGINS = [

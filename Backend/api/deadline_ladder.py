@@ -157,8 +157,14 @@ def _words(rung, deadline, office_name, days):
     return f'{office_name}: {deadline.title} is {-days} days overdue (due {due})'
 
 
-def send(holder_extend, offices=None, max_batches=None, now=None, batch=200):
-    """Send every rung due today that has not been sent. Returns the count."""
+BATCH = 200
+
+
+def plan(offices=None, max_batches=None, now=None):
+    """What a run would send, a batch at a time, writing nothing: lists of
+    `Planned` (the unit, the rung, the deadline, the office, the
+    obligations and the recipients). `send` writes exactly these; the
+    dry run (`run_monitoring --dry-run`) prints them."""
     now = now or timezone.now()
     today = timezone.localdate(now)
     due = due_now(offices, today)
@@ -166,16 +172,15 @@ def send(holder_extend, offices=None, max_batches=None, now=None, batch=200):
                .values_list('dedupe_key', flat=True).distinct())
     todo = [k for k in due if k not in sent]
     if not todo:
-        return 0
+        return
     tree = _Offices()
     qms = (notifications.qms_recipients(Position.IMR, INFO)
            + notifications.qms_recipients(Position.DOCUMENT_CUSTODIAN, INFO))
     admins = _admins()
-    count = 0
-    for number, start in enumerate(range(0, len(todo), batch)):
+    for number, start in enumerate(range(0, len(todo), BATCH)):
         if max_batches is not None and number >= max_batches:
             break
-        keys = todo[start:start + batch]
+        keys = todo[start:start + BATCH]
         # The posts of every office this batch reaches, in one query.
         reach = set()
         for key in keys:
@@ -204,32 +209,55 @@ def send(holder_extend, offices=None, max_batches=None, now=None, batch=200):
                 found += (heads(above, INFO) if above else []) or admins
             return found + qms
 
+        planned = []
+        for key in keys:
+            (deadline_id, office_id), obligations, rung, days = due[key]
+            if rung in ('reminder', 'due', 'overdue'):
+                recipients = owing(office_id)
+                if rung == 'overdue' and tree.parent(office_id):
+                    recipients += heads(tree.parent(office_id), INFO)
+            else:
+                recipients = escalated_to(office_id)
+            if recipients:      # a vacant post: the vacancy step reports it
+                planned.append(Planned(key, rung, days, obligations[0].deadline,
+                                       office_rows[office_id], obligations, recipients))
+        yield planned
+
+
+class Planned:
+    def __init__(self, key, rung, days, deadline, office, obligations, recipients):
+        self.key, self.rung, self.days, self.deadline = key, rung, days, deadline
+        self.office, self.obligations, self.recipients = office, obligations, recipients
+        self.manuals = [ob.manual for ob in obligations if ob.manual_id]
+
+    @property
+    def step(self):
+        return self.key[len(unit_key(self.deadline.pk, self.office.pk)):]
+
+    @property
+    def title(self):
+        return _words(self.rung, self.deadline, self.office.name, self.days)
+
+
+def send(holder_extend, offices=None, max_batches=None, now=None):
+    """Send every rung due today that has not been sent. Returns the count."""
+    now = now or timezone.now()
+    count = 0
+    for planned in plan(offices, max_batches, now):
         with transaction.atomic():
-            for key in keys:
-                (deadline_id, office_id), obligations, rung, days = due[key]
-                deadline = obligations[0].deadline
-                office = office_rows[office_id]
-                if rung in ('reminder', 'due', 'overdue'):
-                    recipients = owing(office_id)
-                    if rung == 'overdue' and tree.parent(office_id):
-                        recipients += heads(tree.parent(office_id), INFO)
-                else:
-                    recipients = escalated_to(office_id)
-                if not recipients:
-                    continue        # a vacant post: the vacancy step reports it
-                manuals = [ob.manual for ob in obligations if ob.manual_id]
-                notice_kind, event_kind = KINDS[rung]
+            for item in planned:
+                manual = item.manuals[0] if len(item.manuals) == 1 else None
+                notice_kind, event_kind = KINDS[item.rung]
                 event = system_log.record(
-                    event_kind, office=office,
-                    manual=manuals[0] if len(manuals) == 1 else None, at=now,
-                    detail={'deadline': deadline_id, 'rung': key[len(unit_key(deadline_id, office_id)):],
-                            'days_left': days, 'obligations': [ob.pk for ob in obligations]},
+                    event_kind, office=item.office, manual=manual, at=now,
+                    detail={'deadline': item.deadline.pk, 'rung': item.step,
+                            'days_left': item.days,
+                            'obligations': [ob.pk for ob in item.obligations]},
                 )
                 notifications.create(
-                    notice_kind, recipients,
-                    title=_words(rung, deadline, office.name, days), body=_owed(obligations),
-                    dedupe_key=key, manual=manuals[0] if len(manuals) == 1 else None,
-                    office_level=len(manuals) != 1, target=('deadline', deadline_id),
+                    notice_kind, item.recipients, title=item.title,
+                    body=_owed(item.obligations), dedupe_key=item.key, manual=manual,
+                    office_level=len(item.manuals) != 1, target=('deadline', item.deadline.pk),
                     system_event=event, now=now,
                 )
                 count += 1

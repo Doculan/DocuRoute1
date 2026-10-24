@@ -57,8 +57,9 @@ py manage.py runserver 0.0.0.0:8000
 
 ### 2a. Monitoring
 
-Stall and vacancy notices come from `run_monitoring`. For a demo, run it
-once by hand from `Backend/` so the bells are current:
+Stall and vacancy notices, and deadline reminders, due-day, overdue and
+escalation notices, come from `run_monitoring`. For a demo, run it once
+by hand from `Backend/` so the bells are current:
 
 ```bash
 py manage.py run_monitoring
@@ -75,6 +76,28 @@ schtasks /create /tn "QMS CDMS monitoring" /sc minute /mo 5 ^
 ```
 
 - [ ] Remove it afterwards: `schtasks /delete /tn "QMS CDMS monitoring" /f`
+
+**Showing the deadline ladder without waiting weeks.** First see what a
+run on a later day would send - this writes nothing, and is safe anywhere:
+
+```bash
+py manage.py run_monitoring --dry-run --as-of 2026-12-01
+```
+
+It prints one line per notice: the step (`remind7`, `due`, `overdue`,
+`escalated`, `weekly:…`), the deadline, the office and who would be told.
+
+To actually send them dated that day - **on the demo copy of the database
+only, never on live data** - set `QMS_ALLOW_AS_OF=1` for that one command:
+
+```bash
+QMS_ALLOW_AS_OF=1 py manage.py run_monitoring --as-of 2026-12-01
+```
+
+- [ ] Without the variable it is refused, by design: an overdue escalation
+      must never go to a VP's office by accident.
+- [ ] Notices sent this way are real rows, dated that day; use a copy of the
+      database you can throw away afterwards.
 
 ---
 

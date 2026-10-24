@@ -3,6 +3,31 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 25 October 2026 — Before 3C-2: missed runs, and a dry run for demos
+
+- **Confirmed at Checkpoint 3C-1:** only the office that owes a deadline
+  gets action notices; everyone above is told for information (their
+  lasting view is Monitoring, Phase 4, and the weekly repeat).
+- **Does the dashboard's own run cover the ladder? Yes - it already did,**
+  because it calls `run()` with every step, scoped to the viewer's
+  offices and one batch (the periodic review is left to the scheduler).
+  It was untested; now tested: a staff home load sends its offices' due
+  steps and no other office's, stops after one batch, and does nothing
+  while the scheduler is current.
+- **`run_monitoring --dry-run [--as-of YYYY-MM-DD]`** lists what a run
+  would send - each deadline notice's step, deadline, office and
+  recipients, and the stalls and vacancies it would flag - and writes
+  nothing. `--as-of` without `--dry-run` sends real notices dated that
+  day, so it is refused unless `QMS_ALLOW_AS_OF` is set (demo databases
+  only; `.env.example` says never on live). The ladder is now `plan`
+  (who would be told) and `send` (writes exactly that). Documented in
+  `DEMO_CHECKLIST.md` and `DEPLOYMENT.md`.
+- **Run:** 6 new tests, each failing without its code (6 removal cases);
+  the modules touching monitoring (ladder, monitoring, scale seed,
+  dashboards, needs-action): 82 passed. At full scale the dry run as of
+  30 November lists 384 deadline notices and 3,400 stalls, writing
+  nothing.
+
 ## 24 October 2026 — v4.2 Phase 3C-1: the ladder, priority, reviews (Checkpoint 3C-1)
 
 **First, the adjustment to 3B-2 (approved with it):** admin Manuals sorts
