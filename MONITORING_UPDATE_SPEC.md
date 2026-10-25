@@ -422,6 +422,8 @@ Today the block under a proposal lists who, action and time. Make it the documen
 
 - **Filters:** action type, office, version, date range.
 - **Tamper evidence:** each event stores a hash of the previous event, and a "verify trail" action confirms the chain is intact.
+  - **Not built yet (recorded 25 Oct 2026, Checkpoint 3C-2):** `AuditEvent` has no hash today; only the system log (`SystemEvent`) is chained. This phase must add a hash chain to `AuditEvent`, one chain per proposal, as its own migration: backup, a copy first, an honest start marker per proposal (like the system log's `log_started`), **no back-filled hashes** for earlier events, and the full suite before live.
+  - Until that is built, no document may call the proposal audit trail tamper-evident.
 - **Export** the full trail as PDF and CSV.
 - Append-only, as in rule 7.
 
@@ -483,6 +485,6 @@ These rules apply to every screen from now on, not only in this phase.
 - The admin dashboard shows a bar chart of offices by pending proposals, highest first, with offices that have none collapsed at the bottom, and a toggle to approved proposals; plus a critical-times timeline of deadlines and freeze periods, switchable between all offices, a branch and one office.
 - The admin and staff Proposals screens filter by office, series, manual, status and deadline, and lead with what has a deadline: overdue first, then nearest due, then priority manuals. A manual owed but not started still appears.
 - A Head or Encoder opens Proposals and sees their office's manuals due for submission at the top, each with the one action they may take.
-- The audit block is detailed, filterable, exportable and tamper-evident.
+- The audit block is detailed, filterable, exportable and tamper-evident (the last only once Phase 6 has chained `AuditEvent`; see §10).
 - Performance budgets in §9 are met on `seed_scale` on SQLite, or a smaller design limit has been proposed and recorded in `DEPLOYMENT.md`.
 - Pipeline untouched: `check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11`, `evaluate_folds.py` at 0.978 / 0.854.

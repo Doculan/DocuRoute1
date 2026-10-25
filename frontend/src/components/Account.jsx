@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import DelegationPanel from "./DelegationPanel";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -23,12 +24,18 @@ function when(value) {
  */
 export default function Account({ onNameChange }) {
   const [profile, setProfile] = useState(null);
+  const [heads, setHeads] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     axios.get("/api/auth/profile/", getAuth())
       .then((res) => setProfile(res.data))
       .catch(() => setError("Could not load your account."));
+    // The offices this person heads in their own post: where they may
+    // name someone to act while they are away.
+    axios.get("/api/auth/me/", getAuth())
+      .then((res) => setHeads(res.data.heads || []))
+      .catch(() => setHeads([]));
   }, []);
 
   if (error && !profile) return <div className="alert alert-danger">{error}</div>;
@@ -57,6 +64,12 @@ export default function Account({ onNameChange }) {
       />
       <Password />
       <Positions positions={profile.positions} />
+      {heads.map((h) => (
+        <section key={h.office_id} style={{ marginTop: "1.5rem" }}>
+          <h2 className="section-title">While you are away · {h.office}</h2>
+          <DelegationPanel officeId={h.office_id} officeName={h.office} />
+        </section>
+      ))}
     </div>
   );
 }

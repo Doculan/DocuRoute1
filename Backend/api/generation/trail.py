@@ -259,7 +259,9 @@ def _event_title(event):
     if event is None:
         return None
     if event.position_id:
-        return position_title(event.office_name_at_time, event.position.kind)
+        title = position_title(event.office_name_at_time, event.position.kind)
+        # A delegate's step (3C-2): the post, marked - never their name.
+        return f'{title} (delegated)' if event.acting_for_id else title
     return event.office_name_at_time
 
 

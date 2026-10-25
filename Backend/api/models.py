@@ -1433,9 +1433,23 @@ class AuditEvent(models.Model):
         Office, on_delete=models.PROTECT, related_name='proposal_events',
     )
     office_name_at_time = models.CharField(max_length=255, blank=True)
+    # The Head this step was taken for, when the actor holds the post only
+    # by delegation (3C-2). Empty for every step taken in one's own post,
+    # which is every step before delegation existed.
+    acting_for = models.ForeignKey(
+        'CustomUser', on_delete=models.PROTECT, null=True, blank=True, related_name='+',
+    )
 
     detail = models.TextField(blank=True)
     at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # Worked out here, not at each call site, so no step a delegate
+        # takes can go on record as the Head's own.
+        if self._state.adding and self.acting_for_id is None and self.position_id:
+            from .delegation import acting_for
+            self.acting_for_id = acting_for(self.actor_id, self.position_id)
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['proposal', 'at']
@@ -1481,6 +1495,8 @@ class SystemEvent(models.Model):
     DEADLINE_ESCALATED = 'deadline_escalated'
     PRIORITY_SET = 'priority_set'
     REVIEWED_NO_CHANGE = 'reviewed_no_change'
+    DELEGATION_STARTED = 'delegation_started'
+    DELEGATION_ENDED = 'delegation_ended'
 
     KIND_CHOICES = [
         (DEADLINE_SET, 'Deadline set'),
@@ -1490,6 +1506,8 @@ class SystemEvent(models.Model):
         (DEADLINE_ESCALATED, 'Deadline escalated'),
         (PRIORITY_SET, 'Priority manuals set'),
         (REVIEWED_NO_CHANGE, 'Reviewed, no change'),
+        (DELEGATION_STARTED, 'Head delegated for a period'),
+        (DELEGATION_ENDED, 'Head delegation ended early'),
         (DEADLINE_CHANGED, 'Deadline changed'),
         (OBLIGATION_MET, 'Deadline obligation met'),
         (OBLIGATION_REOPENED, 'Deadline obligation reopened'),
@@ -1676,9 +1694,11 @@ class Notification(models.Model):
     DEADLINE_DUE = 'deadline_due'
     DEADLINE_OVERDUE = 'deadline_overdue'
     DEADLINE_ESCALATED = 'deadline_escalated'
+    DELEGATED = 'delegated'
 
     KIND_CHOICES = [
         (DEADLINE_SET, 'Deadline set for your office'),
+        (DELEGATED, "You act for an office's Head"),
         (DEADLINE_REMINDER, 'Deadline reminder'),
         (DEADLINE_DUE, 'Deadline due today'),
         (DEADLINE_OVERDUE, 'Deadline overdue'),
@@ -2295,6 +2315,44 @@ class DeadlineObligation(models.Model):
     @property
     def is_met(self):
         return self.state in self.MET_STATES
+
+
+class HeadDelegation(models.Model):
+    """A Head on leave names someone to act for the office's Head between
+    two dates (spec §5.5, 3C-2). See `api.delegation`.
+
+    Never deleted: a delegation ended early keeps who ended it and when.
+    No two current delegations of one office overlap - checked when one
+    is made (`api.delegation.overlapping`), inside the transaction.
+    """
+
+    office = models.ForeignKey(Office, on_delete=models.PROTECT, related_name='delegations')
+    head_assignment = models.ForeignKey(PositionAssignment, on_delete=models.PROTECT,
+                                        related_name='delegations')
+    delegate = models.ForeignKey(CustomUser, on_delete=models.PROTECT,
+                                 related_name='delegations_held')
+    starts_on = models.DateField()
+    ends_on = models.DateField()
+    reason = models.CharField(max_length=300)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='+')
+    created_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(CustomUser, on_delete=models.PROTECT, null=True, blank=True,
+                                 related_name='+')
+
+    class Meta:
+        ordering = ['office', '-starts_on']
+        constraints = [
+            models.CheckConstraint(condition=Q(ends_on__gte=models.F('starts_on')),
+                                   name='delegation_ends_after_it_starts'),
+        ]
+        indexes = [
+            models.Index(fields=['delegate', 'ends_on'], name='delegation_delegate_idx'),
+            models.Index(fields=['office', 'ends_on'], name='delegation_office_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.office} Head delegated to {self.delegate} ({self.starts_on}–{self.ends_on})'
 
 
 class ManualReview(models.Model):

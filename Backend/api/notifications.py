@@ -73,7 +73,10 @@ class Recipient:
 
 def current_posts(office_ids=None, kinds=None):
     """Current assignments - at these offices, or anywhere for `kinds` -
-    Head first, so a person's notice is addressed to their senior post."""
+    Head first, so a person's notice is addressed to their senior post.
+
+    A Head on leave (3C-2): while their delegation is current, the Head
+    post's notices go to the delegate instead."""
     today = timezone.localdate()
     query = PositionAssignment.objects.filter(
         starts_on__lte=today, user__is_active=True,
@@ -85,13 +88,22 @@ def current_posts(office_ids=None, kinds=None):
         query = query.filter(position__office_id__in=list(office_ids))
     if kinds:
         query = query.filter(position__kind__in=kinds)
-    return sorted(query, key=lambda a: (_POST_ORDER.get(a.position.kind, 9), a.pk))
+    posts = list(query)
+    heads = [a.pk for a in posts if a.position.kind == Position.HEAD]
+    if heads:
+        from .delegation import Delegated, current
+        cover = {d.head_assignment_id: d for d in current(today).filter(
+            head_assignment_id__in=heads).select_related('head_assignment')}
+        posts = [Delegated(cover[a.pk], a.position) if a.pk in cover else a for a in posts]
+    return sorted(posts, key=lambda a: (_POST_ORDER.get(a.position.kind, 9), a.pk or 0))
 
 
 def _recipient(assignment, severity):
     position = assignment.position
-    return Recipient(assignment.user_id, position.office, position,
-                     position_title(position.office.name, position.kind), severity)
+    title = position_title(position.office.name, position.kind)
+    if getattr(assignment, 'delegation', None) is not None:
+        title += ' (delegated)'
+    return Recipient(assignment.user_id, position.office, position, title, severity)
 
 
 def office_recipients(office_ids, *, head=ACTION, encoder=ACTION):

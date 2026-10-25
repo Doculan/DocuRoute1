@@ -10,6 +10,7 @@ from . import notification_views as inbox
 from . import account_views as account
 from . import trail_views as trail
 from . import reviews
+from . import delegation_views
 from . import structure_views as structure
 from . import admin_proposal_views
 from . import action_views
@@ -52,6 +53,8 @@ urlpatterns = [
     path('org/offices/<int:office_id>/deactivate/', org.deactivate_office),
     path('org/offices/<int:office_id>/reactivate/', org.reactivate_office),
     path('org/offices/<int:office_id>/merge/', org.merge_office),
+    path('offices/<int:office_id>/delegations/', delegation_views.office_delegations),
+    path('delegations/<int:delegation_id>/end/', delegation_views.end_delegation),
 
     # Office links are set as a whole set, with PUT: the relationship
     # being edited *is* a set, and an add/remove pair would let a screen

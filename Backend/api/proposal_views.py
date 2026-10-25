@@ -53,6 +53,10 @@ def _current_assignments(user, kinds=None):
     `kinds` narrows it - a Head submits, anyone drafts. The assignment
     rather than the office, because the audit trail records which
     position somebody was acting under, not only where.
+
+    A Head post held by delegation for today (3C-2) is included, so every
+    Head check admits the delegate; `AuditEvent` records them as acting
+    for the Head.
     """
     today = timezone.localdate()
     query = PositionAssignment.objects.filter(
@@ -63,7 +67,12 @@ def _current_assignments(user, kinds=None):
     ).select_related('position', 'position__office')
     if kinds:
         query = query.filter(position__kind__in=kinds)
-    return list(query)
+    held = list(query)
+    if user is not None and getattr(user, 'pk', None) and (not kinds or Position.HEAD in kinds):
+        from .delegation import delegated_posts
+        own = {a.position_id for a in held}
+        held += [d for d in delegated_posts(user) if d.position_id not in own]
+    return held
 
 
 def _held_position(user, office, kinds=None):

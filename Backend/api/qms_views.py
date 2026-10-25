@@ -81,7 +81,15 @@ def me(request):
         'is_custodian': custodian is not None,
         'positions': [
             position_title(a.position.office.name, a.position.kind)
+            + (' (delegated)' if getattr(a, 'delegation', None) else '')
             for a in _current_assignments(user)
+        ],
+        # Offices this person heads in their own post: where they may
+        # delegate while away (3C-2). A delegate cannot delegate further.
+        'heads': [
+            {'office_id': a.position.office_id, 'office': a.position.office.name}
+            for a in _current_assignments(user, [Position.HEAD])
+            if getattr(a, 'delegation', None) is None
         ],
     })
 

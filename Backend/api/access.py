@@ -88,9 +88,11 @@ def current_offices(user):
         Q(ends_on__isnull=True) | Q(ends_on__gte=today)
     ).select_related('position__office')
     # De-duplicated by id: one person can hold Encoder and Head in the
-    # same office, which is one office, not two.
+    # same office, which is one office, not two. A Head post held by
+    # delegation today counts (3C-2): the delegate works for that office.
+    from .delegation import delegated_posts
     seen, offices = set(), []
-    for assignment in assignments:
+    for assignment in list(assignments) + delegated_posts(user):
         office = assignment.position.office
         if office.pk not in seen:
             seen.add(office.pk)

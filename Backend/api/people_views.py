@@ -458,6 +458,16 @@ def positions_by_office(request):
     offices = Office.objects.filter(is_active=True).prefetch_related(
         'positions__assignments__user'
     )
+    # A Head away (3C-2): current and coming delegations, one query.
+    from django.utils import timezone
+    from .models import HeadDelegation
+    today = timezone.localdate()
+    away = {}
+    for d in HeadDelegation.objects.filter(ended_at__isnull=True, ends_on__gte=today)             .select_related('delegate').order_by('starts_on'):
+        away.setdefault(d.office_id, []).append({
+            'id': d.pk, 'delegate': d.delegate.full_name or d.delegate.username,
+            'starts_on': d.starts_on, 'ends_on': d.ends_on,
+            'current': d.starts_on <= today})
     for office in offices:
         positions = []
         for position in office.positions.all():
@@ -495,6 +505,7 @@ def positions_by_office(request):
             'has_current_head': any(
                 p['kind'] == Position.HEAD and p['held_by'] for p in positions
             ),
+            'delegations': away.get(office.id, []),
         })
 
     return Response({

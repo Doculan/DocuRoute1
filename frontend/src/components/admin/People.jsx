@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import DelegationPanel from "../DelegationPanel";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
 const BASE_URL = "";
@@ -361,6 +362,24 @@ function PersonCard({ person, onAssign, onEnd, onDeactivate }) {
   );
 }
 
+/** The admin may set up a delegation too (Q-6), folded until asked. */
+function DelegationToggle({ office }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button type="button" className="link-btn text-xs" style={{ marginBottom: "0.4rem" }}
+              onClick={() => setOpen(true)}>
+        Delegations…
+      </button>
+    );
+  }
+  return (
+    <div style={{ marginBottom: "0.6rem" }}>
+      <DelegationPanel officeId={office.office_id} officeName={office.office} />
+    </div>
+  );
+}
+
 function ByOffice({ positions }) {
   return (
     <div>
@@ -390,6 +409,13 @@ function ByOffice({ positions }) {
                 </span>
               )}
             </h2>
+            {office.delegations.map((d) => (
+              <p key={d.id} className="text-sm" style={{ margin: "0 0 0.4rem" }}>
+                <span className="badge badge-warning">{d.current ? "Head away" : "Head away soon"}</span>{" "}
+                {d.delegate} acts as Head, {formatDate(d.starts_on)}–{formatDate(d.ends_on)}
+              </p>
+            ))}
+            {office.has_current_head && <DelegationToggle office={office} />}
             {office.positions.length === 0 ? (
               <p className="subtle text-sm" style={{ margin: 0 }}>
                 No positions here yet.

@@ -290,3 +290,11 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   send and writes nothing; `--as-of` on its own is refused unless
   `QMS_ALLOW_AS_OF` is set on a demo database. A dashboard's own catch-up
   run is now tested to include the deadline ladder.
+- Phase 3C-2: **delegation.** A Head on leave - or the system admin -
+  names a post holder in the office, or the Head above, to act as Head
+  for a dated period, with the password. The delegate submits, concurs
+  or returns and receives the Head's notices; each step is recorded as
+  theirs, acting for the Head, and shown "(delegated)"; forms still print
+  titles only. A delegate may not act as the Head on a proposal they
+  drafted or sent to the Head. Periods never overlap and are never
+  deleted. Migration `0049`.

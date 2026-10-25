@@ -3,6 +3,91 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 25 October 2026 — v4.2 Phase 3C-2: delegation (Checkpoint 3C-2)
+
+- **`HeadDelegation`** (`api/delegation.py`, `api/delegation_views.py`):
+  the office's Head in their own post, or the system admin, names someone
+  to act for the Head between two dates, with a reason and the password.
+  Who may be named (Q-6): a current post holder in the office, or the
+  Head of the office above - not the Head, and a delegate cannot
+  delegate further. No two periods of one office overlap
+  (`delegation_overlaps`, checked inside the transaction). Ending early
+  (password) keeps who and when; nothing is deleted.
+- **While current** (started, not past its end, not ended, the Head still
+  in post) the delegate:
+  - holds the Head post for every Head check - `_current_assignments`
+    returns it, so submit, concur or return, return to the Encoder,
+    withdraw and Reviewed no change admit them, with no change at the
+    call sites;
+  - works for the office (`access.current_offices`), so a parent Head
+    acting for a unit sees its proposals;
+  - receives the Head's notices instead (`notifications.current_posts`),
+    addressed "Budget Office — Head (delegated)"; the Head is not told;
+  - is told when named (a `delegated` notice).
+- **The record:** `AuditEvent.acting_for` is set by the model itself when
+  the actor holds the post only by delegation, so no step can go on record
+  as the Head's own; the screens and the trail report show
+  "… — Head (delegated)". Generated forms print position titles only:
+  tested, no delegate's name in any generated document.
+  `delegation_started` and `delegation_ended` are logged; a delegate's
+  "Reviewed, no change" carries `acting_for` in the system log, **only
+  when set**.
+- **Maker-checker:** a delegate may not submit, concur on or return a
+  proposal they drafted or sent to the Head (`maker_checker`); the Head
+  is not bound by it.
+- **Screens:** "While you are away" on the Head's account page (one line
+  per current or coming delegation, a folded form, End); the admin's
+  People screen shows "Head away" under the office and the same panel.
+- **Migration `0049`:** `AuditEvent.acting_for`, `HeadDelegation`, and
+  choices (no database operation). **Not a rebuild:** Django 6.1 adds the
+  nullable column with `ALTER TABLE ADD COLUMN`; the design expected
+  SQLite to rebuild `api_auditevent`. The full sequence was followed
+  anyway.
+- **"Verify trail", examined:** `AuditEvent` is not hash-chained, and the
+  design's "acting_for in the hash only when set" assumed a hash that
+  does not exist. What is verified: the system log's chain
+  (`verify_log system`, which hashes named fields, so a new column cannot
+  change it), and printed trail reports by serial (live has none). Both
+  are shown unchanged; `acting_for` enters the system log only when set.
+
+**What was run, and why:**
+- **New `tests_delegation`** (21).
+- **Code-removal proof:** 19 cases, each failing on its assertion; the
+  backend restored byte for byte.
+- **Migration on a copy** of the live database (backup
+  `db.sqlite3.bak-20261025-pre-0049`), done twice (0049 was regenerated
+  to add the `delegated` notice kind): every table identical row for row
+  apart from the new empty `api_headdelegation`; the 30 audit events, all
+  from before 24 October, identical, `acting_for` empty on all; SQLite
+  integrity and foreign-key checks clean; the system log verifies, 7
+  events.
+- **Full suite** (models, `access.py`, notifications changed): **886
+  tests passed**.
+- **Live:** backup `db.sqlite3.bak-20261025-pre-0049-live`; `0049`
+  applied; the same result as on the copies; `verify_log system`: chain
+  intact, 7 rows; `check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11`.
+- **Headless Chrome on the scale copy:** a Head delegates to a post
+  holder from their account page with the password; the line reads
+  "Synthetic Person 00771 acts as Head, Oct 25, 2026 – Nov 1, 2026 · Now".
+  The admin's `org/positions/` answer carries it (0.11 s at 500 offices).
+  No console errors.
+- **Noticed, not changed:** the admin's People screen takes several
+  seconds to show at full scale (953 people, 500 offices); its
+  `org/positions/` answer is fast, so the cost is the people list and
+  the rendering. Paged next, as its own commit (decided at Checkpoint
+  3C-2).
+
+**Recorded at Checkpoint 3C-2 (approved 25 Oct 2026):**
+- **`AuditEvent` has no hash; only `SystemEvent` is chained.** Phase 6's
+  "tamper-evident, verify trail" therefore needs a hash chain on
+  `AuditEvent`, one per proposal, as its own migration: backup, copy
+  first, an honest start marker per proposal like the system log's
+  `log_started`, no back-filled hashes, the full suite before live. **No
+  document may call the proposal audit trail tamper-evident until then**
+  (the spec's §10 and definition of done now say so).
+- **The admin People screen is slow at full scale** (953 people).
+- **Not run:** `evaluate_folds.py` (no pipeline code).
+
 ## 25 October 2026 — Before 3C-2: missed runs, and a dry run for demos
 
 - **Confirmed at Checkpoint 3C-1:** only the office that owes a deadline

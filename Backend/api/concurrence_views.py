@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, deadlines, documents, lists, notifications
+from . import access, deadlines, delegation, documents, lists, notifications
 from .ai_notes import compose_version_note
 from .deadline_tags import tag_rows
 from .generation.common import position_title
@@ -58,7 +58,7 @@ def _record(proposal, version, event, user, office, detail='', position=None):
     return record
 
 
-def _who(user, office_name, position=None, kind=None):
+def _who(user, office_name, position=None, kind=None, delegated=False):
     """A person as the screens show them: position first, then full name.
 
     Never the username - it is a login, not a name, and it says nothing
@@ -68,6 +68,8 @@ def _who(user, office_name, position=None, kind=None):
     """
     kind = kind or (position.kind if position is not None else None)
     title = position_title(office_name, kind) if kind else office_name
+    if delegated:
+        title += ' (delegated)'
     name = user.get_full_name().strip() if user is not None else ''
     return {'position': title, 'name': name or None}
 
@@ -137,7 +139,8 @@ def _full_payload(proposal):
     data['events'] = [
         {'event': e.event, 'label': e.get_event_display(),
          'office': e.office_name_at_time,
-         'by': _who(e.actor, e.office_name_at_time, e.position),
+         'by': _who(e.actor, e.office_name_at_time, e.position,
+                    delegated=e.acting_for_id is not None),
          'at': e.at, 'detail': e.detail}
         for e in proposal.events.select_related('actor', 'position').order_by('at')
     ]
@@ -279,6 +282,9 @@ def submit(request, proposal_id):
             ),
             'reason': 'not_head',
         }, status=403)
+    refusal = delegation.maker_checker_refusal(request.user, proposal, office)
+    if refusal:
+        return refusal
 
     if proposal.status not in (Proposal.DRAFT, Proposal.WITH_HEAD):
         return Response({
@@ -419,6 +425,9 @@ def return_to_encoder(request, proposal_id):
             'error': f'Only the Head of {office} returns a draft to the Encoder.',
             'reason': 'not_head',
         }, status=403)
+    refusal = delegation.maker_checker_refusal(request.user, proposal, office)
+    if refusal:
+        return refusal
     if proposal.status != Proposal.WITH_HEAD:
         return Response({
             'error': 'It is not with you, so there is nothing to return.',
@@ -564,6 +573,9 @@ def decide(request, proposal_id):
             ),
             'reason': 'not_head' if in_list else 'not_participating',
         }, status=403)
+    refusal = delegation.maker_checker_refusal(request.user, proposal, office)
+    if refusal:
+        return refusal
 
     decision = request.data.get('decision')
     if decision not in (Concurrence.CONCUR, Concurrence.RETURN):

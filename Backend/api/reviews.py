@@ -49,6 +49,8 @@ def record(manual, office, user, position, note='', now=None):
     """Write the review and its effects. Returns (review, obligation ids met)."""
     now = now or timezone.now()
     today = timezone.localdate(now)
+    from .delegation import acting_for
+    acting = acting_for(user.pk, position.pk)
     with transaction.atomic():
         met = list(DeadlineObligation.objects.filter(
             state=DeadlineObligation.OPEN, deadline__active=True, office=office,
@@ -69,7 +71,10 @@ def record(manual, office, user, position, note='', now=None):
             SystemEvent.REVIEWED_NO_CHANGE, user=user, position=position, office=office,
             manual=manual, at=now,
             detail={'review': review.pk, 'obligations': [pk for pk, _ in met],
-                    'next_review_due': add_months(today, interval).isoformat()},
+                    'next_review_due': add_months(today, interval).isoformat(),
+                    # Only when a delegate recorded it (3C-2): rows without
+                    # it hash exactly as before.
+                    **({'acting_for': acting} if acting else {})},
         )
         if met:
             deadlines._clear_set_notices({(d, office.pk) for _, d in met}, user, now)
