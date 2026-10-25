@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import DelegationPanel from "../DelegationPanel";
+import Pager from "../Pager";
 import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
 const BASE_URL = "";
@@ -47,28 +48,49 @@ export default function People() {
   const [offices, setOffices] = useState([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // Filtered and paged on the server: 50 a page (spec §11.1).
+  const [filters, setFilters] = useState({ status: "active", office: "", position: "" });
+  const [query, setQuery] = useState("");
+  const [needle, setNeedle] = useState("");
+  const [page, setPage] = useState(1);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [assigning, setAssigning] = useState(null);   // person
   const [pending, setPending] = useState(null);       // a guarded action
   const [pendingApprove, setPendingApprove] = useState(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [people, posts, tree] = await Promise.all([
-        axios.get(`${BASE_URL}/api/org/people/`, getAuth()),
-        axios.get(`${BASE_URL}/api/org/positions/`, getAuth()),
-        axios.get(`${BASE_URL}/api/org/offices/`, getAuth()),
-      ]);
-      setData(people.data);
-      setPositions(posts.data);
-      setOffices(tree.data.offices);
-      setError("");
-    } catch (err) {
-      setError(err.response?.data?.error || "Could not load people.");
-    }
+  // Asked of the server a moment after typing stops.
+  useEffect(() => {
+    const timer = setTimeout(() => { setNeedle(query.trim()); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    axios.get(`${BASE_URL}/api/org/offices/`, getAuth())
+      .then((res) => setOffices(res.data.offices))
+      .catch(() => setOffices([]));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const params = { status: filters.status, page };
+    if (needle) params.q = needle;
+    if (filters.office) params[filters.office.startsWith("b") ? "branch" : "office"] = filters.office.slice(1);
+    if (filters.position) params.position = filters.position;
+    axios.get(`${BASE_URL}/api/org/people/`, { ...getAuth(), params })
+      .then((res) => { setData(res.data); setError(""); })
+      .catch((err) => setError(err.response?.data?.error || "Could not load people."));
+  }, [filters, needle, page, reloadKey]);
+
+  // The by-office view is the expensive one; it loads when opened.
+  useEffect(() => {
+    if (tab !== "positions") return;
+    axios.get(`${BASE_URL}/api/org/positions/`, getAuth())
+      .then((res) => setPositions(res.data))
+      .catch((err) => setError(err.response?.data?.error || "Could not load positions."));
+  }, [tab, reloadKey]);
+
+  const load = () => setReloadKey((k) => k + 1);
+  const filter = (change) => { setFilters({ ...filters, ...change }); setPage(1); };
 
   const say = (text) => {
     setMessage(text);
@@ -79,13 +101,13 @@ export default function People() {
     const person = pendingApprove;
     setPendingApprove(null);
     try {
-      const { data } = await axios.post(
+      const { data: done } = await axios.post(
         `${BASE_URL}/api/org/people/${person.id}/approve/`, {}, confirmedAuth(token)
       );
       // The office chosen at sign-up stands: approval makes them an
       // Encoder or Head there, unless placement needs manual resolution.
-      say(`${data.message}${data.note ? ` ${data.note}` : ""}`);
-      await load();
+      say(`${done.message}${done.note ? ` ${done.note}` : ""}`);
+      load();
     } catch (err) {
       setError(err.response?.data?.error || "Could not approve.");
     }
@@ -99,7 +121,7 @@ export default function People() {
     try {
       await axios.post(`${BASE_URL}${url}`, body || {}, confirmedAuth(token));
       say(success);
-      await load();
+      load();
     } catch (err) {
       setError(err.response?.data?.error || "That did not work.");
     }
@@ -118,20 +140,32 @@ export default function People() {
         confirmedAuth(token)
       );
       say(`${kindLabel(created.kind)} at ${created.office}${created.is_acting ? " (acting)" : ""}.`);
-      await load();
+      load();
     } catch (err) {
       setError(err.response?.data?.error || "Could not assign the post.");
     }
   };
 
-  if (!data || !positions) {
-    return <div className="loading-row"><span className="spinner" /> Loading…</div>;
+  if (!data) {
+    return error
+      ? <div className="alert alert-danger">{error}</div>
+      : <div className="loading-row"><span className="spinner" /> Loading…</div>;
   }
 
-  const pendingSignups = data.people.filter((p) => !p.is_approved);
-  const active = data.people.filter((p) => p.is_approved && p.is_active);
-  const inactive = data.people.filter((p) => p.is_approved && !p.is_active);
-  const awaiting = active.filter((p) => p.current_positions.length === 0);
+  const counts = data.counts;
+  const signups = filters.status === "pending" ? data.people : (data.pending_signups || []);
+  const listed = filters.status === "pending" ? [] : data.people;
+  const branches = offices.filter((o) => !o.parent_id && o.is_active);
+
+  const endFor = (p) => (a) => setPending({
+    url: `/api/org/assignments/${a.id}/end/`,
+    success: `${kindLabel(a.kind)} at ${a.office} ended.`,
+    title: `End ${p.username} as ${kindLabel(a.kind)}?`,
+    body: `The appointment is closed with today's date. `
+        + `${a.office} will have no current ${kindLabel(a.kind)} `
+        + `until somebody else is assigned. The record stays.`,
+    confirmLabel: "End appointment",
+  });
 
   return (
     <div>
@@ -148,11 +182,7 @@ export default function People() {
       {message && <div className="toast">{message}</div>}
 
       <div className="tabs">
-        {[
-          ["people", `People (${active.length})`],
-          ["positions", "By office"],
-          pendingSignups.length > 0 && ["pending", `Awaiting approval (${pendingSignups.length})`],
-        ].filter(Boolean).map(([key, label]) => (
+        {[["people", "People"], ["positions", "By office"]].map(([key, label]) => (
           <button key={key} className={`tab${tab === key ? " is-active" : ""}`}
                   onClick={() => setTab(key)}>
             {label}
@@ -160,93 +190,80 @@ export default function People() {
         ))}
       </div>
 
-      {tab === "pending" && (
-        <div className="col" style={{ gap: "0.5rem" }}>
-          {pendingSignups.map((p) => (
-            <div key={p.id} className="card card-pad row"
-                 style={{ justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
-              <div>
-                <div className="strong">{p.full_name || p.username}</div>
-                <div className="subtle text-xs">
-                  {p.username}{p.email ? ` · ${p.email}` : ""}
-                </div>
-                <div className="text-xs" style={{ marginTop: "0.2rem" }}>
-                  {p.requested_office
-                    ? <>Requested <strong>{p.requested_position_label}</strong> at <strong>{p.requested_office.name}</strong></>
-                    : <span className="subtle">
-                        <strong>Office not listed</strong>
-                        {p.requested_office_name && <> — typed “{p.requested_office_name}”</>}
-                        . Assign an office after approving.
-                      </span>}
-                </div>
-                {p.approval_warning && <div className="text-xs" role="status">{p.approval_warning}</div>}
-                {p.date_joined && (
-                  <div className="subtle text-xs">
-                    Signed up {new Date(p.date_joined).toLocaleString()}
-                  </div>
-                )}
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={() => setPendingApprove(p)}>
-                Approve
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {tab === "people" && (
         <>
-          {awaiting.length > 0 && (
-            <div className="alert alert-warning" style={{ marginBottom: "1.25rem" }}>
-              <strong>{awaiting.length}</strong>{" "}
-              approved {awaiting.length === 1 ? "person holds" : "people hold"} no
-              post, so {awaiting.length === 1 ? "they can" : "they can"} sign in and do
-              nothing: {awaiting.map((p) => p.username).join(", ")}.
-            </div>
+          {/* Counts first; each opens its list. */}
+          <p className="queue-counts">
+            {[["active", counts.active, "active"],
+              ["pending", counts.pending, "awaiting approval"],
+              ["awaiting_position", counts.awaiting_position, "holding no post"],
+              ["inactive", counts.inactive, "no longer active"]]
+              .filter(([, n]) => n > 0)
+              .map(([key, n, label]) => (
+                <button key={key} type="button" className="queue-count link-btn"
+                        aria-pressed={filters.status === key}
+                        onClick={() => filter({ status: key })}>
+                  <strong>{n.toLocaleString()}</strong> {label}
+                </button>
+              ))}
+          </p>
+
+          {signups.length > 0 && (
+            <section style={{ marginBottom: "1.5rem" }}>
+              <h2 className="section-title">Awaiting approval · {counts.pending.toLocaleString()}</h2>
+              <div className="col" style={{ gap: "0.5rem" }}>
+                {signups.map((p) => (
+                  <SignupCard key={p.id} person={p} onApprove={() => setPendingApprove(p)} />
+                ))}
+              </div>
+            </section>
           )}
 
-          <div className="col" style={{ gap: "0.5rem" }}>
-            {active.map((p) => (
-              <PersonCard
-                key={p.id}
-                person={p}
-                onAssign={() => setAssigning(p)}
-                onEnd={(a) => setPending({
-                  url: `/api/org/assignments/${a.id}/end/`,
-                  success: `${kindLabel(a.kind)} at ${a.office} ended.`,
-                  title: `End ${p.username} as ${kindLabel(a.kind)}?`,
-                  body: `The appointment is closed with today's date. `
-                      + `${a.office} will have no current ${kindLabel(a.kind)} `
-                      + `until somebody else is assigned. The record stays.`,
-                  confirmLabel: "End appointment",
-                })}
-                onDeactivate={() => setPending({
-                  url: `/api/org/people/${p.id}/deactivate/`,
-                  success: `${p.username} deactivated.`,
-                  title: `Deactivate ${p.full_name || p.username}?`,
-                  body: "Every post they currently hold is ended with today's "
-                      + "date, and they can no longer sign in. Nothing is "
-                      + "deleted — what they did stays on the record.",
-                  confirmLabel: "Deactivate",
-                })}
-              />
-            ))}
-          </div>
+          {filters.status !== "pending" && (
+            <>
+              <div className="filter-row" style={{ marginBottom: "1rem" }}>
+                <input className="input" type="search" style={{ width: "240px" }}
+                       placeholder="Search by name or username" aria-label="Search people"
+                       value={query} onChange={(e) => setQuery(e.target.value)} />
+                <select className="select" style={{ width: "auto" }} aria-label="Status"
+                        value={filters.status} onChange={(e) => filter({ status: e.target.value })}>
+                  <option value="active">Active</option>
+                  <option value="awaiting_position">Holding no post</option>
+                  <option value="inactive">No longer active</option>
+                  <option value="all">Everyone</option>
+                </select>
+                <select className="select" style={{ width: "auto", maxWidth: "18rem" }}
+                        aria-label="Office or branch" value={filters.office}
+                        onChange={(e) => filter({ office: e.target.value })}>
+                  <option value="">Any office</option>
+                  <optgroup label="A branch and everything beneath it">
+                    {branches.map((o) => <option key={`b${o.id}`} value={`b${o.id}`}>{o.name}</option>)}
+                  </optgroup>
+                  <optgroup label="One office">
+                    {offices.filter((o) => o.is_active).map((o) => (
+                      <option key={`o${o.id}`} value={`o${o.id}`}>{o.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+                <select className="select" style={{ width: "auto" }} aria-label="Position"
+                        value={filters.position} onChange={(e) => filter({ position: e.target.value })}>
+                  <option value="">Any position</option>
+                  {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                  <option value="none">No post</option>
+                </select>
+              </div>
 
-          {inactive.length > 0 && (
-            <section style={{ marginTop: "1.75rem" }}>
-              <h2 className="section-title">No longer active</h2>
-              <div className="col" style={{ gap: "0.35rem" }}>
-                {inactive.map((p) => (
-                  <div key={p.id} className="row" style={{ gap: "0.75rem", alignItems: "baseline" }}>
-                    <span className="subtle">{p.full_name || p.username}</span>
-                    <span className="subtle text-xs">
-                      {p.past_positions.length} past post
-                      {p.past_positions.length === 1 ? "" : "s"}
-                    </span>
-                    <button
-                      className="btn btn-subtle btn-sm"
-                      onClick={() => setPending({
+              {listed.length === 0 ? (
+                <p className="subtle text-sm">Nobody matches.</p>
+              ) : (
+                <div className="col" style={{ gap: "0.5rem" }}>
+                  {listed.map((p) => (!p.is_active ? (
+                    <div key={p.id} className="row" style={{ gap: "0.75rem", alignItems: "baseline" }}>
+                      <span className="subtle">{p.full_name || p.username}</span>
+                      <span className="subtle text-xs">
+                        {p.past_positions.length} past post{p.past_positions.length === 1 ? "" : "s"}
+                      </span>
+                      <button className="btn btn-subtle btn-sm" onClick={() => setPending({
                         url: `/api/org/people/${p.id}/reactivate/`,
                         success: `${p.username} reactivated. Assign their posts again.`,
                         title: `Reactivate ${p.full_name || p.username}?`,
@@ -255,19 +272,40 @@ export default function People() {
                             + "re-opening them would rewrite the record. "
                             + "Assign them again.",
                         confirmLabel: "Reactivate",
+                      })}>
+                        Reactivate
+                      </button>
+                    </div>
+                  ) : !p.is_approved ? (
+                    <SignupCard key={p.id} person={p} onApprove={() => setPendingApprove(p)} />
+                  ) : (
+                    <PersonCard
+                      key={p.id}
+                      person={p}
+                      onAssign={() => setAssigning(p)}
+                      onEnd={endFor(p)}
+                      onDeactivate={() => setPending({
+                        url: `/api/org/people/${p.id}/deactivate/`,
+                        success: `${p.username} deactivated.`,
+                        title: `Deactivate ${p.full_name || p.username}?`,
+                        body: "Every post they currently hold is ended with today's "
+                            + "date, and they can no longer sign in. Nothing is "
+                            + "deleted — what they did stays on the record.",
+                        confirmLabel: "Deactivate",
                       })}
-                    >
-                      Reactivate
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
+                    />
+                  )))}
+                </div>
+              )}
+              <Pager paging={data} onPage={setPage} />
+            </>
           )}
         </>
       )}
 
-      {tab === "positions" && <ByOffice positions={positions} />}
+      {tab === "positions" && (positions
+        ? <ByOffice positions={positions} />
+        : <div className="loading-row"><span className="spinner" /> Loading…</div>)}
 
       {assigning && (
         <AssignForm
@@ -300,6 +338,39 @@ export default function People() {
           onCancel={() => setPending(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** One sign-up waiting on the admin: what they asked for, and Approve. */
+function SignupCard({ person: p, onApprove }) {
+  return (
+    <div className="card card-pad row"
+         style={{ justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+      <div>
+        <div className="strong">{p.full_name || p.username}</div>
+        <div className="subtle text-xs">
+          {p.username}{p.email ? ` · ${p.email}` : ""}
+        </div>
+        <div className="text-xs" style={{ marginTop: "0.2rem" }}>
+          {p.requested_office
+            ? <>Requested <strong>{p.requested_position_label}</strong> at <strong>{p.requested_office.name}</strong></>
+            : <span className="subtle">
+                <strong>Office not listed</strong>
+                {p.requested_office_name && <> — typed “{p.requested_office_name}”</>}
+                . Assign an office after approving.
+              </span>}
+        </div>
+        {p.approval_warning && <div className="text-xs" role="status">{p.approval_warning}</div>}
+        {p.date_joined && (
+          <div className="subtle text-xs">
+            Signed up {new Date(p.date_joined).toLocaleString()}
+          </div>
+        )}
+      </div>
+      <button className="btn btn-primary btn-sm" onClick={onApprove}>
+        Approve
+      </button>
     </div>
   );
 }

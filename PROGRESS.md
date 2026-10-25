@@ -3,6 +3,35 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 25 October 2026 — The admin's People screen, paged
+
+- **`org/people/`** answers with counts first (active, awaiting approval,
+  holding no post, no longer active), the pending sign-ups (up to 50) on
+  top of any list, and one page of 50: `status`, `q` (name or username),
+  `office`, `branch` (the office and everything beneath it), `position`
+  (a kind, or `none`). `filter=` still works for the older callers.
+  Built in 7-8 queries whatever the page holds: the posts prefetched for
+  the page, the Head-conflict warning for a page of applicants in one
+  query (tested to read exactly as the per-applicant check).
+- **The screen:** counts first, each opening its list; "Awaiting approval"
+  with Approve on top; search, status, office or branch, and position;
+  50 a page. The "Awaiting approval" tab is gone (the sign-ups are on
+  top); "By office" loads only when opened.
+- **At full scale** (953 people, 500 offices; 3 sign-ups and 2 deactivated
+  people added to the copy):
+
+  | Request | Before | After |
+  |---|---|---|
+  | `org/people/` as the screen loaded it | 1,027 ms, 1,912 queries, 512 KB | 12 ms, 8 queries, 27 KB |
+  | a page of active people (page 1 or 19) | (the whole list) | 12-13 ms, 7 queries |
+  | a search, a branch, the Heads | (in the browser) | 10-19 ms, 7-8 queries |
+
+  The browser then rendered 953 cards; now 50.
+- **Run:** new `tests_people_list` (10), each failing without its code (8
+  removal cases); `tests_people` and `tests_signup_office`, which read
+  the list: 71 passed. Headless Chrome: counts, sign-ups on top, search,
+  By office; no console errors.
+
 ## 25 October 2026 — v4.2 Phase 3C-2: delegation (Checkpoint 3C-2)
 
 - **`HeadDelegation`** (`api/delegation.py`, `api/delegation_views.py`):

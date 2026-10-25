@@ -298,3 +298,7 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   titles only. A delegate may not act as the Head on a proposal they
   drafted or sent to the Head. Periods never overlap and are never
   deleted. Migration `0049`.
+- The admin's People screen is paged on the server: counts first, the
+  sign-ups awaiting approval on top, then 50 people a page with search
+  and office, branch, status and position filters. At full scale it went
+  from 1.0 s and 1,912 queries to 12 ms and 8.

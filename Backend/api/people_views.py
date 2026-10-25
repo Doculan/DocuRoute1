@@ -27,7 +27,7 @@ and nothing in this module would have to change to add it.
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
@@ -56,12 +56,32 @@ def _head_is_held(office, person):
     ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=timezone.localdate())).exclude(user=person).exists()
 
 
-def application_details(person):
+def _heads_held(people):
+    """{office id: user ids holding its Head post} for the offices these
+    applicants asked to head - one query for a page, where
+    `_head_is_held` would ask once per applicant."""
+    offices = {p.requested_office_id for p in people
+               if p.requested_office_id and p.requested_position_kind == Position.HEAD}
+    held = {}
+    for office_id, user_id in PositionAssignment.objects.filter(
+            position__office_id__in=offices, position__kind=Position.HEAD,
+    ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=timezone.localdate())).values_list(
+            'position__office_id', 'user_id'):
+        held.setdefault(office_id, set()).add(user_id)
+    return held
+
+
+def application_details(person, heads_held=None):
     office = person.requested_office
     warning = ''
+    asks_head = office is not None and person.requested_position_kind == Position.HEAD
+    if asks_head and heads_held is not None:
+        head_taken = bool(heads_held.get(office.pk, set()) - {person.pk})
+    else:
+        head_taken = asks_head and _head_is_held(office, person)
     if office and not office.is_active:
         warning = f'{office.name} is no longer active; an office must be assigned manually.'
-    elif office and person.requested_position_kind == Position.HEAD and _head_is_held(office, person):
+    elif asks_head and head_taken:
         warning = f'Unable to add as Head: {office.name} already has a Head. The applicant stays pending.'
     return {
         'requested_position_kind': person.requested_position_kind,
@@ -85,14 +105,14 @@ def _assignment_payload(assignment):
     }
 
 
-def _person_payload(person, assignments=None):
+def _person_payload(person, assignments=None, heads_held=None):
     if assignments is None:
         assignments = person.position_assignments.select_related(
             'position', 'position__office'
         ).all()
     current = [a for a in assignments if a.is_current]
     return {
-        **application_details(person),
+        **application_details(person, heads_held),
         'id': person.id,
         'username': person.username,
         'full_name': person.full_name,
@@ -116,41 +136,107 @@ def _person_payload(person, assignments=None):
     }
 
 
+PEOPLE_STATUSES = ('all', 'active', 'pending', 'awaiting_position', 'inactive')
+POSITION_KINDS = {kind for kind, _ in Position.KIND_CHOICES} | {'none'}
+
+
+def _rows(people):
+    """Payloads for a page of people, from the page's prefetched posts and
+    one query for the Head posts their applications ask for."""
+    people = list(people)
+    held = _heads_held(people)
+    return [_person_payload(p, list(p.position_assignments.all()), held) for p in people]
+
+
+def _with_posts(queryset):
+    return queryset.select_related('requested_office').prefetch_related(Prefetch(
+        'position_assignments',
+        queryset=PositionAssignment.objects.select_related('position', 'position__office')))
+
+
 @api_view(['GET'])
 @permission_classes([IsSystemAdmin])
 def people(request):
-    """Everyone, with what they currently hold.
+    """People, a page of 50 at a time, counts first and sign-ups on top.
+
+    `?status=all|active|pending|awaiting_position|inactive` (`filter=` is
+    kept for the older callers), `q=` name or username, `office=<id>`,
+    `branch=<id>` (that office and everything beneath it), `position=`
+    a kind or `none`, `page=`. Built in a fixed number of queries,
+    whatever the page holds.
 
     The full list is system-admin only. Names are personal data under RA
     10173, and the process itself only ever needs a position.
     """
-    queryset = CustomUser.objects.select_related('requested_office').prefetch_related(
-        'position_assignments__position__office'
-    ).order_by('username')
-
-    filter_by = request.query_params.get('filter')
-    if filter_by == 'pending':
-        queryset = queryset.filter(is_approved=False)
-    elif filter_by == 'awaiting_position':
-        queryset = queryset.filter(is_approved=True, is_active=True)
-
-    rows = [_person_payload(p) for p in queryset]
-
-    if filter_by == 'awaiting_position':
+    from . import lists
+    params = request.query_params
+    today = timezone.localdate()
+    current = PositionAssignment.objects.filter(user=OuterRef('pk'), starts_on__lte=today).filter(
+        Q(ends_on__isnull=True) | Q(ends_on__gte=today))
+    everyone = CustomUser.objects.annotate(holds=Exists(current))
+    counts = everyone.aggregate(
+        all=Count('pk'),
+        active=Count('pk', filter=Q(is_approved=True, is_active=True)),
+        pending=Count('pk', filter=Q(is_approved=False)),
         # Approved, active, and holding nothing - so they can sign in and
         # do nothing at all, which is the state worth surfacing.
-        rows = [r for r in rows if not r['current_positions']]
+        awaiting_position=Count('pk', filter=Q(is_approved=True, is_active=True, holds=False)),
+        inactive=Count('pk', filter=Q(is_approved=True, is_active=False)),
+    )
 
-    return Response({
-        'people': rows,
-        'pending_total': CustomUser.objects.filter(is_approved=False).count(),
-        'awaiting_position_total': sum(
-            1 for p in CustomUser.objects.filter(is_approved=True, is_active=True)
-            if not PositionAssignment.objects.filter(
-                user=p, ends_on__isnull=True
-            ).exists()
-        ),
-    })
+    status = params.get('status') or params.get('filter') or 'all'
+    if status not in PEOPLE_STATUSES:
+        return lists.refuse('Unknown status.', 'invalid_status')
+    queryset = everyone
+    if status == 'active':
+        queryset = queryset.filter(is_approved=True, is_active=True)
+    elif status == 'pending':
+        queryset = queryset.filter(is_approved=False)
+    elif status == 'awaiting_position':
+        queryset = queryset.filter(is_approved=True, is_active=True, holds=False)
+    elif status == 'inactive':
+        queryset = queryset.filter(is_approved=True, is_active=False)
+
+    q = (params.get('q') or '').strip()
+    if q:
+        queryset = queryset.filter(Q(username__icontains=q) | Q(full_name__icontains=q))
+    offices = None
+    for name in ('office', 'branch'):
+        if params.get(name):
+            try:
+                office_id = int(params[name])
+            except ValueError:
+                return lists.refuse(f'Choose a {name} from the list.', f'invalid_{name}')
+            if name == 'office':
+                offices = [office_id]
+            else:
+                from .org_tree import Tree
+                offices = [office_id] + Tree().descendants(office_id)
+    if offices is not None:
+        queryset = queryset.filter(Exists(current.filter(position__office_id__in=offices)))
+    kind = params.get('position')
+    if kind:
+        if kind not in POSITION_KINDS:
+            return lists.refuse('Choose a position from the list.', 'invalid_position')
+        queryset = (queryset.filter(holds=False) if kind == 'none' else
+                    queryset.filter(Exists(current.filter(position__kind=kind))))
+    page = lists.page_number(params)
+    if page is None:
+        return lists.refuse('Pages are numbered from 1.', 'invalid_page')
+
+    rows, paging = lists.page_of(_with_posts(queryset).order_by('username', 'pk'), page)
+    data = {
+        'counts': counts,
+        'pending_total': counts['pending'],
+        'awaiting_position_total': counts['awaiting_position'],
+        **paging,
+        'people': _rows(rows),
+    }
+    if status != 'pending':
+        # The sign-ups waiting on the admin, on top of whatever is listed.
+        data['pending_signups'] = _rows(_with_posts(everyone.filter(is_approved=False))
+                                        .order_by('date_joined', 'pk')[:lists.PAGE_SIZE])
+    return Response(data)
 
 
 def place_in_requested_office(person, approved_by):
