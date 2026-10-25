@@ -11,7 +11,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, monitoring
+from . import access, freeze, monitoring
 from .models import (
     AuditEvent, Concurrence, CustomUser, Position, PositionAssignment, Proposal,
     ProposalParticipant, ProposalVersion,
@@ -198,9 +198,12 @@ def action_banner(request):
     meets its deadlines and sends its returned work on. Derived from the
     data on every request, so it is never stale and never missing.
     """
+    # A change freeze in force over this person's work (3D): one line in
+    # the action row, shown to the admin and QMS staff too.
+    frozen = freeze.payload(freeze.for_viewer(request.user))
     if not access.current_offices(request.user):
         return Response({'urgency': None, 'deadlines': {'total': 0, 'items': []},
-                         'total': 0, 'items': []})
+                         'total': 0, 'items': [], 'freeze': frozen})
     from .notice_views import deadline_groups
     owed = deadline_groups(request.user)
     returned = returned_drafts(request.user)
@@ -217,6 +220,7 @@ def action_banner(request):
         # Returned work, as before.
         'total': returned.count(),
         'items': rows,
+        'freeze': frozen,
     })
 
 

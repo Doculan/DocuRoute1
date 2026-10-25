@@ -13,6 +13,7 @@ import AiNote from "../AiNote";
 import SectionContentEditor from "../SectionContentEditor";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import { freezeText } from "../deadlineText";
 import Pager from "../Pager";
 
 const BASE_URL = "";
@@ -405,11 +406,17 @@ function Proposal({ proposalId, onBack, onSay }) {
         </div>
       </section>
 
+      {data.freeze && (data.can_send_to_head || data.can_submit) && (
+        <p className="subtle text-sm" style={{ margin: "1.75rem 0 -1rem" }}>
+          {freezeText(data.freeze)}: {data.freeze.reason}. Keep editing; sending waits.
+        </p>
+      )}
       <div className="row-wrap" style={{ gap: "0.5rem", marginTop: "1.75rem" }}>
         {data.can_send_to_head && (
           <button
             className="btn btn-primary"
-            disabled={!data.ready_to_submit}
+            disabled={!data.ready_to_submit || !!data.freeze}
+            title={data.freeze ? freezeText(data.freeze) : undefined}
             onClick={() => move(`/api/proposals/${proposalId}/send-to-head/`, null,
                                 "Sent to your Head.")}
           >
@@ -434,7 +441,8 @@ function Proposal({ proposalId, onBack, onSay }) {
         {data.can_submit && (
           <button
             className="btn btn-primary"
-            disabled={!data.ready_to_submit}
+            disabled={!data.ready_to_submit || !!data.freeze}
+            title={data.freeze ? freezeText(data.freeze) : undefined}
             onClick={() => setPending({
               url: `/api/proposals/${proposalId}/submit/`,
               success: "Submitted.",

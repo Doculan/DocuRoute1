@@ -24,7 +24,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, deadlines, lists, notifications
+from . import access, deadlines, freeze, lists, notifications
 from .deadline_tags import tag_rows
 from .concurrence_views import _full_payload, _load, can_see
 from .document_status import read_status_fields, status_payload, suggested_status
@@ -437,6 +437,11 @@ def make_effective(request, proposal_id):
             'suggested': suggested_status(proposal.manual),
         })
 
+    # A change freeze (3D): controlled documents do not change mid-audit.
+    # Reading the form above is never blocked.
+    blocked = freeze.refusal(freeze.MAKE_EFFECTIVE, proposal=proposal)
+    if blocked:
+        return blocked
     fields, refusal = read_status_fields(request.data, proposal.manual, with_ids_date=True)
     if refusal:
         return refusal

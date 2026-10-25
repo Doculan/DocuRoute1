@@ -214,13 +214,28 @@ class TheQueryCount(TagFixture):
     def test_one_query_when_nothing_is_owed(self):
         self.assertEqual(self.queries(self.acc_head, [self.m1, self.m2]), 1)
 
-    def test_two_for_the_owing_office(self):
+    # Each count includes one query for the change freezes in force (3D),
+    # made only when the page carries tags.
+    def test_three_for_the_owing_office(self):
         self.on(self.m1, self.acc)
-        self.assertEqual(self.queries(self.acc_head, [self.m1]), 2)
+        self.assertEqual(self.queries(self.acc_head, [self.m1]), 3)
 
-    def test_three_where_the_viewer_only_concurs(self):
+    def test_four_where_the_viewer_only_concurs(self):
         self.on(self.m1, self.acc)
-        self.assertEqual(self.queries(self.bud_head, [self.m1]), 3)
+        self.assertEqual(self.queries(self.bud_head, [self.m1]), 4)
+
+    def test_nor_with_a_freeze_in_force(self):
+        from api.models import Freeze, FreezeTarget
+        made = Freeze.objects.create(reason='Audit', expected_end_on=self.today,
+                                     scope=Freeze.SERIES, started_by=self.admin)
+        FreezeTarget.objects.create(freeze=made, series=self.fam)
+        few = [self.m1, self.m2]
+        many = few + [Manual.objects.create(title=f'FAM {n}', series=self.fam)
+                      for n in range(10, 40)]
+        for manual in many:
+            self.on(manual, self.acc)
+        self.assertEqual(self.queries(self.acc_head, few), self.queries(self.acc_head, many))
+        self.assertIsNotNone(deadline_tags_for(self.acc_head, [self.m1.pk])[self.m1.pk]['frozen'])
 
 
 class TheTagCostsAFixedNumberOfQueries(TagFixture):

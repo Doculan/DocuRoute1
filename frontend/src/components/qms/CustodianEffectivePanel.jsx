@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { freezeText } from "../deadlineText";
 import { reauthHeader } from "../admin/ConfirmDestructive";
 
 const getAuth = () => ({
@@ -24,7 +25,7 @@ const FIELDS = [
  * document. Starts from the current entry with the revision one higher;
  * the custodian types over it. The password again.
  */
-export default function CustodianEffectivePanel({ proposalId, onDone }) {
+export default function CustodianEffectivePanel({ proposalId, freeze, onDone }) {
   const [entry, setEntry] = useState(null);
   const [current, setCurrent] = useState(null);
   const [password, setPassword] = useState("");
@@ -105,9 +106,14 @@ export default function CustodianEffectivePanel({ proposalId, onDone }) {
         </div>
         {error && <div className="alert alert-danger">{error}</div>}
         <div>
-          <button className="btn btn-primary" disabled={busy} onClick={send}>
+          <button className="btn btn-primary" disabled={busy || !!freeze} onClick={send}>
             {busy ? "Working…" : "Make effective"}
           </button>
+          {freeze && (
+            <span className="subtle text-sm" style={{ marginLeft: "0.75rem" }}>
+              {freezeText(freeze)}: {freeze.reason}. Making it effective waits.
+            </span>
+          )}
         </div>
       </div>
     </section>

@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import access, deadlines, delegation, documents, lists, notifications
+from . import access, deadlines, delegation, documents, freeze, lists, notifications
 from .ai_notes import compose_version_note
 from .deadline_tags import tag_rows
 from .generation.common import position_title
@@ -297,6 +297,9 @@ def submit(request, proposal_id):
                       'send it to you.'),
             'reason': 'send_to_head_first',
         }, status=409)
+    refusal = freeze.refusal(freeze.SUBMIT, proposal=proposal)
+    if refusal:
+        return refusal
 
     failure = reauth_failure(request)
     if failure:
@@ -379,6 +382,9 @@ def send_to_head(request, proposal_id):
             'reason': 'not_draft',
         }, status=409)
     refusal = _readiness_refusal(proposal, proposal.current_version())
+    if refusal:
+        return refusal
+    refusal = freeze.refusal(freeze.SEND_TO_HEAD, proposal=proposal)
     if refusal:
         return refusal
 
@@ -813,6 +819,10 @@ def proposal_full(request, proposal_id):
         proposal.is_open
         and _head_of(request.user, proposal.initiating_office) is not None
     )
+    # A change freeze over this request (3D): the screen keeps its buttons
+    # but disables Send to Head, Submit and Make effective, saying why.
+    data['freeze'] = freeze.payload(freeze.blocking(proposal=proposal)) \
+        if proposal.status in (*Proposal.OPEN_STATUSES, Proposal.WITH_CUSTODIAN) else None
     from .qms_views import can_custodian_return, can_imr_decide, can_make_effective
     data['can_imr_decide'] = can_imr_decide(request.user, proposal)
     data['can_custodian_return'] = can_custodian_return(request.user, proposal)

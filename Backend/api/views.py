@@ -17,7 +17,7 @@ from .models import (
     Position, Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
 )
 from ml.ocr_engine import extract_text
-from api import access, document_status, lists
+from api import access, document_status, freeze, lists
 from api.deadline_tags import deadline_tags_for, tag_rows
 from ml.svm_model import predict_section
 import difflib
@@ -1134,6 +1134,21 @@ def _heads_a_concurring_office(user, manual):
                for office in access.current_offices(user) if office.pk in concurring)
 
 
+def _proposing_frozen(user, manual):
+    """The freeze that would refuse this person starting a proposal on
+    this document: one over its series (or everything), or one over every
+    office they could propose from. None when they could."""
+    in_force = freeze.InForce()
+    if not in_force:
+        return None
+    held = freeze.blocking(manual=manual, in_force=in_force)
+    if held is not None:
+        return held
+    offices = access.current_offices(user)
+    blocked = [freeze.blocking(manual=manual, office=o, in_force=in_force) for o in offices]
+    return blocked[0] if blocked and all(blocked) else None
+
+
 def _recently_opened(user):
     """What this person opened last, newest first, tagged: Home and My
     Manuals both lead with it."""
@@ -1602,6 +1617,8 @@ def list_sections(request, manual_id):
         'display_status': f"v{manual.version} rev{manual.revision}",
         'status': document_status.status_payload(manual.current_status),
         'deadline': deadline_tags_for(request.user, [manual.pk]).get(manual.pk),
+        # A change freeze over proposing a change to this document (3D).
+        'freeze': freeze.payload(_proposing_frozen(request.user, manual)),
         # Periodic review (3C): the dates, and whether this person may record
         # "Reviewed, no change" - a Head of an office that concurs on it.
         'review': {

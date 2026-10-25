@@ -67,6 +67,7 @@ export default function QmsRequests({ onCount, openId, onOpen }) {
             {data.can_make_effective && (
               <CustodianEffectivePanel
                 proposalId={openId}
+                freeze={data.freeze}
                 onDone={(entry) => {
                   setMessage(`Effective. Readers now see revision ${entry.revision}.`);
                   reload();

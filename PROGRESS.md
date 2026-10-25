@@ -3,6 +3,84 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — v4.2 Phase 3D: the change freeze (Checkpoint 3D)
+
+- **`Freeze`, `FreezeTarget`, `FreezeException`** (`api/freeze.py` decides
+  what is blocked, once; `api/freeze_views.py` the admin's endpoints). The
+  system admin starts one with a reason, an expected end and a scope -
+  everything, selected offices, or selected manual series - and lifts,
+  extends or grants an exception (one proposal or one manual), each with
+  the password. Several may be in force; any one covering an action blocks
+  it. Nothing is deleted: a lifted freeze keeps who and when.
+- **What waits** (409, reason `frozen`, "Frozen for audit until 20 Nov
+  2026: … Submitting waits until the freeze is lifted."): starting a
+  proposal (scope: the office proposing, or the document's series),
+  Send to Head, Submit, and Make effective. **What carries on:** editing
+  and checking drafts, concurring and returning (a proposal already out
+  still locks when the last office concurs), signing, scans, the IMR's
+  decision, and every GET.
+- **Deadlines:** overdue, escalation and the weekly repeat are paused for
+  the units a freeze covers (the owing office, or the series of a manual
+  owed, unless every manual owed has an exception), counted as
+  `deadline_notices_paused_by_freeze`, and caught up by the first run
+  after lifting - unsent, never lost. Reminders and the due day are not
+  paused. The dry run prints the paused count.
+- **Notices:** the covered offices (Heads and Encoders, info) at start and
+  at lift; a series freeze reaches the offices that concur on its
+  documents. The admin, from `run_monitoring` (new `freezes` step): once
+  when a freeze passes its expected end (action, cleared by lifting or
+  extending), and once per deadline that falls inside a freeze.
+- **Screens:** a "Change freeze" tab on Deadlines & announcements (start
+  form with scope pickers; Lift, Extend, Add an exception; all through the
+  password dialog). The action row adds one clause - "❄ Frozen for audit
+  until …" - on its existing line, never a row of its own; the admin and
+  QMS staff see it too. Send to Head, Submit and Make effective stay
+  visible but disabled, saying why and until when; "Propose changes" is
+  disabled with the same words on hover. Deadline tags carry a "Frozen
+  for audit" chip.
+- **Migration `0050`:** three new tables and choice lists. Only the new
+  tables are created (SQLite rebuilds two of them while adding their
+  check constraints); no existing table is touched.
+
+**Deviations and gaps, said plainly:**
+- **The admin's direct edits to manual content are not blocked by a
+  freeze.** The design blocks "making effective"; a direct edit (password,
+  outside a proposal) changes a controlled document too. Raised for a
+  decision at this checkpoint, not built.
+- **Exceptions on screen are per manual.** The endpoint takes a proposal
+  too, but the screen offers only a manual picker; a manual exception
+  covers its proposals.
+- **Not built:** the optional "freeze from N days before an audit"
+  shortcut on a deadline.
+
+**What was run, and why:**
+- **New `tests_freeze`** (32), each failing without its code: **30
+  code-removal cases** (one for the tag-count test below), every one failing on its assertion (six first
+  failed as errors - the action went through and the test then read a
+  missing field - and were tightened to assert); the backend restored
+  byte for byte.
+- **Migration on a copy** of the live database (backup
+  `db.sqlite3.bak-20261025-pre-0050`): every existing table identical row
+  for row; the three new tables empty; integrity and foreign-key checks
+  clean; the system log verifies, 7 events.
+- **Full suite** (models changed): 928 tests, **926 passed, 2 failed** -
+  both `TheQueryCount` expectations in `tests_deadline_tags`: a page that
+  carries tags now makes one more query, for the freezes in force. A
+  fixed cost; the counts were raised (2→3, 3→4) and a new test checks the
+  count still does not grow with the page while a freeze is in force
+  (failing without its code). `tests_deadline_tags` re-run: 29 passed.
+- **Live:** backup `db.sqlite3.bak-20261026-pre-0050-live`; `0050`
+  applied; the same result as on the copy; `verify_log system`: chain
+  intact, 7 rows; `run_monitoring --dry-run` runs with the new step.
+- `check_setup.py` Ready, fingerprint `6a6a5c667a3c4d11`. Not run:
+  `evaluate_folds.py` (no pipeline code).
+- **Headless Chrome on the scale copy** (500 offices): the admin starts a
+  freeze with the password; the Head's action row reads "Action needed ·
+  4 deadlines … ❄ Frozen for audit until Nov 20, 2026" on one line; tags
+  show "Frozen for audit"; a draft's Submit is disabled with "Keep
+  editing; sending waits"; "Propose changes" is disabled. No console
+  errors.
+
 ## 25 October 2026 — The admin's People screen, paged
 
 - **`org/people/`** answers with counts first (active, awaiting approval,

@@ -6,6 +6,7 @@ import BaselineForm from "../qms/BaselineForm";
 import { formatDate, formatRevision, revisionLine } from "../documentStatus";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import { freezeText } from "../deadlineText";
 import ReviewForm from "../ReviewForm";
 
 // Must stay in sync with normalize_for_diff() in Backend/api/views.py - the
@@ -146,6 +147,7 @@ export default function StaffSections({
           review: res.data.review,
           canRecordBaseline: res.data.can_record_baseline,
           canCorrectBaseline: res.data.can_correct_baseline,
+          freeze: res.data.freeze,
         });
         if (res.data.sections?.length > 0) {
           setIsFullDoc(true);
@@ -404,7 +406,10 @@ export default function StaffSections({
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => onPropose?.(manualId)}
-                    title="Changes are proposed for the whole document"
+                    disabled={!!manual?.freeze}
+                    title={manual?.freeze
+                      ? `${freezeText(manual.freeze)}: ${manual.freeze.reason}`
+                      : "Changes are proposed for the whole document"}
                   >
                     Propose changes
                   </button>

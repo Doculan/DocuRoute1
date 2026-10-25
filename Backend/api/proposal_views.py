@@ -295,6 +295,11 @@ def proposals(request):
     existing = _open_proposal(manual, office)
     if existing:
         return _already_open(manual, office, existing)
+    # A change freeze (3D) stops new proposals; an open draft still opens.
+    from .freeze import START, refusal as frozen
+    blocked = frozen(START, manual=manual, office=office)
+    if blocked:
+        return blocked
 
     # Starting a proposal commits the office to a change, so it asks for
     # the password (user's decision, 5 Oct 2026). Only here: reopening an

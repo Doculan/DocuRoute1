@@ -61,6 +61,8 @@ class Command(BaseCommand):
                 self.stdout.write(f'  {line}')
             self.stdout.write(f'{len(plan["deadlines"])} deadline notices, '
                               f'{plan["stalls"]} stalls, {plan["vacancies"]} vacancies would be flagged')
+            if plan['paused_by_freeze']:
+                self.stdout.write(f'{plan["paused_by_freeze"]} overdue notices paused by a change freeze')
             return
 
         counts = monitoring.run(only=options['only'], now=now)

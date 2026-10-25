@@ -302,3 +302,13 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   sign-ups awaiting approval on top, then 50 people a page with search
   and office, branch, status and position filters. At full scale it went
   from 1.0 s and 1,912 queries to 12 ms and 8.
+- Phase 3D: **the change freeze.** Before an audit the system admin can
+  freeze revisions - everywhere, for selected offices, or for selected
+  manual series - with a reason and an expected end, and the password.
+  While it is in force, starting a proposal, sending to the Head,
+  submitting and making effective wait, saying until when; drafts stay
+  editable, concurrence carries on and nothing is hidden. Exceptions let
+  one manual or proposal through. Overdue and escalation notices pause
+  for what it covers and catch up once it is lifted. Offices are told at
+  start and lift; the admin is reminded when a freeze outlasts its
+  expected end. Migration `0050`.

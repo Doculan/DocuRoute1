@@ -321,7 +321,7 @@ def clear_filled_vacancies(now=None):
 
 # ─── A run ───────────────────────────────────────────────────
 
-STEPS = ('stalls', 'vacancies', 'deadlines', 'periodic_review')
+STEPS = ('stalls', 'vacancies', 'deadlines', 'periodic_review', 'freezes')
 
 
 def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None, now=None):
@@ -345,11 +345,17 @@ def run(trigger=JobRun.SCHEDULED, only=None, offices=None, max_batches=None, now
         if 'deadlines' in steps:
             from . import deadline_ladder
             counts['deadline_notices_cleared'] = deadline_ladder.clear_met(now)
+            paused = []
             counts['deadline_notices_sent'] = deadline_ladder.send(
-                lambda: extend(holder), offices, max_batches, now)
+                lambda: extend(holder), offices, max_batches, now, paused)
+            counts['deadline_notices_paused_by_freeze'] = len(paused)
         if 'periodic_review' in steps and offices is None:
             from . import reviews
             counts['periodic_review_set'] = reviews.gather_due_reviews(now)
+        if 'freezes' in steps and offices is None:
+            from . import freeze_views
+            for name, n in freeze_views.monitor(now).items():
+                counts[f'freeze_{name}'] = n
     except Exception as error:     # recorded, then raised: a run must not fail silently
         JobRun.objects.filter(pk=job.pk).update(
             finished_at=timezone.now(), counts=counts, error=repr(error))
@@ -366,8 +372,8 @@ def dry_run(now=None, offices=None):
     vacancies it would flag, counted."""
     from . import deadline_ladder
     now = now or timezone.now()
-    lines = []
-    for planned in deadline_ladder.plan(offices, now=now):
+    lines, paused = [], []
+    for planned in deadline_ladder.plan(offices, now=now, paused=paused):
         for item in planned:
             who = sorted({f'{r.title} ({r.severity})' for r in item.recipients})
             lines.append(f'{item.step:<12} {item.deadline.title} | {item.office.name} | '
@@ -381,6 +387,7 @@ def dry_run(now=None, offices=None):
                .values_list('dedupe_key', flat=True))
     return {
         'deadlines': lines,
+        'paused_by_freeze': len(paused),
         'stalls': len({stall_key(pk, stage, entered) for pk, _, stage, entered in stalls} - done),
         'vacancies': len(vacant - told),
     }

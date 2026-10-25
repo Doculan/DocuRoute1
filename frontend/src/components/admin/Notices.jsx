@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Icon from "../Icon";
-import { dueText } from "../deadlineText";
+import { dueText, freezeText } from "../deadlineText";
 import DeadlineTag from "../DeadlineTag";
+import ConfirmDestructive, { reauthHeader } from "./ConfirmDestructive";
 
 const getAuth = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -34,8 +35,287 @@ export default function Notices() {
         <button className={`tab${tab === "announcements" ? " is-active" : ""}`} onClick={() => setTab("announcements")}>
           Announcements
         </button>
+        <button className={`tab${tab === "freeze" ? " is-active" : ""}`} onClick={() => setTab("freeze")}>
+          Change freeze
+        </button>
       </div>
-      {tab === "deadlines" ? <Deadlines /> : <Announcements />}
+      {tab === "deadlines" ? <Deadlines /> : tab === "freeze" ? <Freezes /> : <Announcements />}
+    </div>
+  );
+}
+
+// ─── Change freeze (3D) ─────────────────────────────────────────
+
+const SCOPES = [["all", "Everything"], ["offices", "Selected offices"], ["series", "Selected series"]];
+
+function reauthHeaders(token) {
+  return { headers: { ...getAuth().headers, ...reauthHeader(token) } };
+}
+
+/**
+ * "Do not revise now" - a separate control from a deadline. While a
+ * freeze is in force, new proposals, sending to the Head, submitting and
+ * making effective wait within its scope; drafts stay editable and nothing
+ * is hidden. Every change here asks for the password.
+ */
+function Freezes() {
+  const [data, setData] = useState(null);
+  const [starting, setStarting] = useState(false);
+  const [pending, setPending] = useState(null);   // {title, body, label, run}
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const res = await axios.get("/api/admin/freezes/", getAuth());
+      setData(res.data);
+      setError("");
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not load freezes.");
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const confirm = (spec) => setPending(spec);
+  const run = async (token) => {
+    await pending.run(token);
+    setMessage(pending.done);
+    setPending(null);
+    load();
+  };
+
+  if (starting) {
+    return <FreezeForm onCancel={() => setStarting(false)} confirm={confirm}
+                       onDone={() => { setStarting(false); setMessage("Freeze started. The offices were told."); load(); }}
+                       pending={pending} run={run} cancel={() => setPending(null)} />;
+  }
+
+  return (
+    <div>
+      {error && <div className="alert alert-danger">{error}</div>}
+      {message && <div className="alert alert-success">{message}</div>}
+      <div className="row-wrap" style={{ gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <button className="btn btn-primary btn-sm" onClick={() => { setMessage(""); setStarting(true); }}>
+          Start a freeze
+        </button>
+      </div>
+      {!data ? (
+        <div className="loading-row"><span className="spinner" /> Loading…</div>
+      ) : data.in_force.length === 0 ? (
+        <div className="empty-state">
+          <p className="empty-title">No freeze in force</p>
+          <p className="empty-text">Start one before an audit to hold revisions.</p>
+        </div>
+      ) : (
+        <div className="col" style={{ gap: "0.75rem" }}>
+          {data.in_force.map((f) => (
+            <FreezeCard key={f.id} freeze={f} confirm={confirm} />
+          ))}
+        </div>
+      )}
+      {data?.lifted.length > 0 && (
+        <details style={{ marginTop: "1.25rem" }}>
+          <summary className="subtle text-sm">Lifted ({data.lifted.length})</summary>
+          <div className="col" style={{ gap: "0.2rem", marginTop: "0.5rem" }}>
+            {data.lifted.map((f) => (
+              <div key={f.id} className="text-sm">
+                {f.reason} <span className="subtle">· {scopeText(f)} · lifted {new Date(f.lifted_at).toLocaleDateString("en-PH")}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {pending && (
+        <ConfirmDestructive title={pending.title} body={pending.body} confirmLabel={pending.label}
+                            passwordHint="Asked because this changes what offices can do."
+                            onConfirm={run} onCancel={() => setPending(null)} />
+      )}
+    </div>
+  );
+}
+
+function scopeText(f) {
+  if (f.scope === "all") return "Everything";
+  const names = f.scope === "offices" ? f.offices : f.series.map((s) => `Series ${s}`);
+  return names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ");
+}
+
+function FreezeCard({ freeze, confirm }) {
+  const [extending, setExtending] = useState(false);
+  const [until, setUntil] = useState(freeze.expected_end_on);
+  const [excepting, setExcepting] = useState(false);
+  const [manual, setManual] = useState(null);
+  const [reason, setReason] = useState("");
+
+  return (
+    <div className="card card-pad col" style={{ gap: "0.6rem" }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: "1rem" }}>
+        <div>
+          <div className="strong">{freezeText(freeze)}</div>
+          <div className="text-sm">{freeze.reason}</div>
+          <div className="subtle text-xs">{scopeText(freeze)}</div>
+        </div>
+        {freeze.past_expected_end && <span className="status-mark is-returned">Past its expected end</span>}
+      </div>
+      {freeze.exceptions.length > 0 && (
+        <ul className="text-sm" style={{ margin: 0, paddingLeft: "1.1rem" }}>
+          {freeze.exceptions.map((e, i) => (
+            <li key={i}>Exception: {e.manual || e.proposal} <span className="subtle">— {e.reason}</span></li>
+          ))}
+        </ul>
+      )}
+      <div className="row-wrap" style={{ gap: "0.5rem" }}>
+        <button className="btn btn-primary btn-sm" onClick={() => confirm({
+          title: "Lift this freeze?",
+          body: `${scopeText(freeze)}: proposals can be started, sent and submitted again, and changes made effective. Paused overdue notices resume on the next run. The offices are told.`,
+          label: "Lift freeze", done: "Lifted. The offices were told.",
+          run: (token) => axios.post(`/api/admin/freezes/${freeze.id}/lift/`, {}, reauthHeaders(token)),
+        })}>Lift</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setExtending(!extending)}>Extend</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setExcepting(!excepting)}>Add an exception</button>
+      </div>
+      {extending && (
+        <div className="row-wrap" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
+          <div className="field">
+            <label className="label" htmlFor={`fz-ext-${freeze.id}`}>Expected end</label>
+            <input id={`fz-ext-${freeze.id}`} className="input" type="date" value={until}
+                   onChange={(e) => setUntil(e.target.value)} />
+          </div>
+          <button className="btn btn-ghost btn-sm" disabled={!until} onClick={() => confirm({
+            title: "Extend this freeze?", body: `It stays in force, now expected to end on ${until}.`,
+            label: "Extend", done: "Extended.",
+            run: (token) => axios.post(`/api/admin/freezes/${freeze.id}/extend/`,
+                                       { expected_end_on: until }, reauthHeaders(token)),
+          })}>Save</button>
+        </div>
+      )}
+      {excepting && (
+        <div className="col" style={{ gap: "0.5rem", maxWidth: "32rem" }}>
+          {manual ? (
+            <div className="text-sm">{manual.title}{" "}
+              <button type="button" className="link-btn text-xs" onClick={() => setManual(null)}>change</button>
+            </div>
+          ) : <ManualPicker onPick={setManual} />}
+          <div className="field">
+            <label className="label" htmlFor={`fz-exc-${freeze.id}`}>Reason</label>
+            <input id={`fz-exc-${freeze.id}`} className="input" maxLength={300} value={reason}
+                   onChange={(e) => setReason(e.target.value)} />
+          </div>
+          <div>
+            <button className="btn btn-ghost btn-sm" disabled={!manual || !reason.trim()} onClick={() => confirm({
+              title: `Let ${manual.title} through?`,
+              body: "Its proposals can be started, sent, submitted and made effective while the freeze stays in force for everything else.",
+              label: "Grant exception", done: "Exception granted.",
+              run: (token) => axios.post(`/api/admin/freezes/${freeze.id}/exceptions/`,
+                                         { manual_id: manual.id, reason }, reauthHeaders(token)),
+            })}>Grant</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FreezeForm({ onCancel, onDone, confirm, pending, run, cancel }) {
+  const offices = useOffices();
+  const [series, setSeries] = useState([]);
+  const [form, setForm] = useState({ reason: "", expected_end_on: "", scope: "all" });
+  const [picked, setPicked] = useState([]);   // offices or series: {id, name}
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    axios.get("/api/org/series/", getAuth()).then((res) => setSeries(res.data.series || [])).catch(() => {});
+  }, []);
+
+  const change = (patch) => {
+    if (patch.scope) setPicked([]);
+    setForm({ ...form, ...patch });
+    setError("");
+  };
+  const pick = (row) => setPicked((list) => list.some((p) => p.id === row.id) ? list : [...list, row]);
+
+  const start = () => confirm({
+    title: "Start this freeze?",
+    body: `${form.scope === "all" ? "Every office" : `${picked.length} ${form.scope === "offices" ? "office" : "series"}${picked.length === 1 ? "" : form.scope === "offices" ? "s" : ""}`}: new proposals, sending to the Head, submitting and making effective wait until it is lifted. Drafts stay editable. The offices are told.`,
+    label: "Start freeze", done: "Freeze started. The offices were told.",
+    run: async (token) => {
+      try {
+        await axios.post("/api/admin/freezes/", {
+          ...form,
+          ...(form.scope === "offices" ? { office_ids: picked.map((p) => p.id) } : {}),
+          ...(form.scope === "series" ? { series_ids: picked.map((p) => p.id) } : {}),
+        }, reauthHeaders(token));
+        onDone();
+      } catch (err) {
+        cancel();
+        setError(err.response?.data?.error || "That did not work.");
+        throw err;
+      }
+    },
+  });
+
+  const ready = form.reason.trim() && form.expected_end_on && (form.scope === "all" || picked.length > 0);
+
+  return (
+    <div className="card card-pad col" style={{ gap: "1rem", maxWidth: "46rem" }}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 className="section-title" style={{ margin: 0 }}>Start a freeze</h2>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel}><Icon name="back" />Back</button>
+      </div>
+      <div className="field">
+        <label className="label" htmlFor="fz-reason">Reason</label>
+        <input id="fz-reason" className="input" maxLength={300} placeholder="e.g. External audit, ISO 9001 surveillance"
+               value={form.reason} onChange={(e) => change({ reason: e.target.value })} />
+      </div>
+      <div className="row-wrap" style={{ gap: "0.75rem" }}>
+        <div className="field" style={{ flex: "0 1 12rem" }}>
+          <label className="label" htmlFor="fz-end">Expected end</label>
+          <input id="fz-end" className="input" type="date" value={form.expected_end_on}
+                 onChange={(e) => change({ expected_end_on: e.target.value })} />
+        </div>
+        <div className="field" style={{ flex: "0 1 14rem" }}>
+          <label className="label" htmlFor="fz-scope">Covers</label>
+          <select id="fz-scope" className="select" value={form.scope} onChange={(e) => change({ scope: e.target.value })}>
+            {SCOPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+      </div>
+      {form.scope !== "all" && (
+        <div className="field">
+          {picked.length > 0 && (
+            <ul style={{ margin: "0 0 0.5rem", paddingLeft: "1.1rem" }}>
+              {picked.map((p) => (
+                <li key={p.id} className="text-sm">{p.name}{" "}
+                  <button type="button" className="link-btn text-xs"
+                          onClick={() => setPicked(picked.filter((x) => x.id !== p.id))}>remove</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {form.scope === "offices" ? (
+            <OfficePicker offices={offices} below={false} onPick={(o) => pick({ id: o.id, name: o.name })} />
+          ) : (
+            <div className="col" style={{ gap: "0.1rem" }}>
+              {series.map((s) => (
+                <button key={s.id} type="button" className="link-btn text-sm" style={{ textAlign: "left" }}
+                        onClick={() => pick({ id: s.id, name: `${s.code} — ${s.title}` })}>
+                  {s.code} — {s.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {error && <div className="alert alert-danger">{error}</div>}
+      <div>
+        <button className="btn btn-primary" disabled={!ready} onClick={start}>Start freeze</button>
+      </div>
+      {pending && (
+        <ConfirmDestructive title={pending.title} body={pending.body} confirmLabel={pending.label}
+                            passwordHint="Asked because this changes what offices can do."
+                            onConfirm={run} onCancel={cancel} />
+      )}
     </div>
   );
 }
@@ -137,7 +417,7 @@ function useOffices() {
   return offices;
 }
 
-function OfficePicker({ offices, onPick }) {
+function OfficePicker({ offices, onPick, below: allowBelow = true }) {
   const [query, setQuery] = useState("");
   const [below, setBelow] = useState(false);
   const shown = useMemo(() => {
@@ -148,10 +428,12 @@ function OfficePicker({ offices, onPick }) {
     <div className="col" style={{ gap: "0.4rem" }}>
       <input className="input" type="search" placeholder="Search offices" value={query}
              onChange={(e) => setQuery(e.target.value)} aria-label="Search offices" />
-      <label className="row text-sm" style={{ gap: "0.4rem", alignItems: "center" }}>
-        <input type="checkbox" checked={below} onChange={(e) => setBelow(e.target.checked)} />
-        and everything beneath it
-      </label>
+      {allowBelow && (
+        <label className="row text-sm" style={{ gap: "0.4rem", alignItems: "center" }}>
+          <input type="checkbox" checked={below} onChange={(e) => setBelow(e.target.checked)} />
+          and everything beneath it
+        </label>
+      )}
       <div className="col" style={{ gap: "0.1rem", maxHeight: "12rem", overflowY: "auto" }}>
         {shown.map((o) => (
           <button key={o.id} type="button" className="link-btn text-sm" style={{ textAlign: "left" }}

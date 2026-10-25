@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { dueText } from "./deadlineText";
+import { dueText, freezeText } from "./deadlineText";
 import DeadlineTag from "./DeadlineTag";
 
 const getAuth = () => ({
@@ -44,7 +44,8 @@ export default function ActionBanner({ onOpenProposal, onOpenDeadlines, refreshK
   const owed = data.deadlines?.items || [];
   const owedTotal = data.deadlines?.total || 0;
   const returned = data.items || [];
-  if (owedTotal === 0 && data.total === 0) return null;
+  const freeze = data.freeze;
+  if (owedTotal === 0 && data.total === 0 && !freeze) return null;
 
   const toggle = () => {
     writeExpanded(!expanded);
@@ -63,18 +64,28 @@ export default function ActionBanner({ onOpenProposal, onOpenDeadlines, refreshK
     parts.push(`${data.total} returned to your office`);
   }
   const listed = owedTotal + data.total > 1;
+  // A change freeze is one more clause on the same line, never a row of
+  // its own: the banner stays at most two rows.
+  const frozen = freeze && (
+    <span className="action-banner-freeze" title={freeze.reason}>
+      {freezeText(freeze)}{parts.length === 0 ? ` · ${freeze.reason}` : ""}
+    </span>
+  );
   const openFirst = () => (owedTotal > 0
     ? onOpenDeadlines?.()
     : onOpenProposal?.(returned[0].proposal_id));
 
   return (
-    <div className={`action-banner ${TONE[data.urgency] || "is-calm"}${expanded ? "" : " is-collapsed"}`}
+    <div className={`action-banner ${TONE[data.urgency] || "is-calm"}${expanded ? "" : " is-collapsed"}${freeze ? " is-frozen" : ""}`}
          role="status">
       <div className="action-banner-line">
-        <strong>Action needed</strong>
-        <button type="button" className="action-banner-link" onClick={openFirst}>
-          {parts.join(" · ")}
-        </button>
+        <strong>{parts.length ? "Action needed" : "Change freeze"}</strong>
+        {parts.length > 0 && (
+          <button type="button" className="action-banner-link" onClick={openFirst}>
+            {parts.join(" · ")}
+          </button>
+        )}
+        {frozen}
         {listed && (
           <button type="button" className="action-banner-toggle" onClick={toggle}
                   aria-expanded={expanded}>

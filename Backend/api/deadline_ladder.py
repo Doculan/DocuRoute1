@@ -160,17 +160,32 @@ def _words(rung, deadline, office_name, days):
 BATCH = 200
 
 
-def plan(offices=None, max_batches=None, now=None):
+PAUSED_BY_FREEZE = ('overdue', 'escalated', 'weekly')
+
+
+def plan(offices=None, max_batches=None, now=None, paused=None):
     """What a run would send, a batch at a time, writing nothing: lists of
     `Planned` (the unit, the rung, the deadline, the office, the
     obligations and the recipients). `send` writes exactly these; the
-    dry run (`run_monitoring --dry-run`) prints them."""
+    dry run (`run_monitoring --dry-run`) prints them.
+
+    A change freeze (3D) pauses overdue, escalation and the weekly repeat
+    for the units it covers: their keys go to `paused`, unsent, so they
+    are sent - caught up - by the first run after it is lifted."""
+    from . import freeze
     now = now or timezone.now()
     today = timezone.localdate(now)
     due = due_now(offices, today)
     sent = set(Notification.objects.filter(dedupe_key__in=list(due))
                .values_list('dedupe_key', flat=True).distinct())
     todo = [k for k in due if k not in sent]
+    in_force = freeze.InForce() if todo else None
+    if in_force:
+        held = [k for k in todo if due[k][2] in PAUSED_BY_FREEZE and in_force.pausing(
+            due[k][0][1], [ob.manual for ob in due[k][1] if ob.manual_id])]
+        if paused is not None:
+            paused.extend(held)
+        todo = [k for k in todo if k not in set(held)]
     if not todo:
         return
     tree = _Offices()
@@ -239,11 +254,11 @@ class Planned:
         return _words(self.rung, self.deadline, self.office.name, self.days)
 
 
-def send(holder_extend, offices=None, max_batches=None, now=None):
+def send(holder_extend, offices=None, max_batches=None, now=None, paused=None):
     """Send every rung due today that has not been sent. Returns the count."""
     now = now or timezone.now()
     count = 0
-    for planned in plan(offices, max_batches, now):
+    for planned in plan(offices, max_batches, now, paused):
         with transaction.atomic():
             for item in planned:
                 manual = item.manuals[0] if len(item.manuals) == 1 else None

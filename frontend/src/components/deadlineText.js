@@ -16,4 +16,11 @@ export function dueText(item) {
   return `Due ${day(item.due_on)}`;
 }
 
+/** A change freeze (3D): why an action waits, and until when. */
+export function freezeText(freeze) {
+  const until = new Date(`${freeze.expected_end_on}T00:00:00`)
+    .toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+  return `Frozen for audit until ${until}`;
+}
+
 export { day };

@@ -1497,6 +1497,11 @@ class SystemEvent(models.Model):
     REVIEWED_NO_CHANGE = 'reviewed_no_change'
     DELEGATION_STARTED = 'delegation_started'
     DELEGATION_ENDED = 'delegation_ended'
+    FREEZE_STARTED = 'freeze_started'
+    FREEZE_EXCEPTION_GRANTED = 'freeze_exception_granted'
+    FREEZE_LIFTED = 'freeze_lifted'
+    FREEZE_EXTENDED = 'freeze_extended'
+    FREEZE_REMINDER = 'freeze_reminder'
 
     KIND_CHOICES = [
         (DEADLINE_SET, 'Deadline set'),
@@ -1508,6 +1513,11 @@ class SystemEvent(models.Model):
         (REVIEWED_NO_CHANGE, 'Reviewed, no change'),
         (DELEGATION_STARTED, 'Head delegated for a period'),
         (DELEGATION_ENDED, 'Head delegation ended early'),
+        (FREEZE_STARTED, 'Change freeze started'),
+        (FREEZE_EXCEPTION_GRANTED, 'Freeze exception granted'),
+        (FREEZE_LIFTED, 'Change freeze lifted'),
+        (FREEZE_EXTENDED, 'Change freeze extended'),
+        (FREEZE_REMINDER, 'Change freeze: the admin reminded'),
         (DEADLINE_CHANGED, 'Deadline changed'),
         (OBLIGATION_MET, 'Deadline obligation met'),
         (OBLIGATION_REOPENED, 'Deadline obligation reopened'),
@@ -1695,10 +1705,12 @@ class Notification(models.Model):
     DEADLINE_OVERDUE = 'deadline_overdue'
     DEADLINE_ESCALATED = 'deadline_escalated'
     DELEGATED = 'delegated'
+    FREEZE = 'freeze'
 
     KIND_CHOICES = [
         (DEADLINE_SET, 'Deadline set for your office'),
         (DELEGATED, "You act for an office's Head"),
+        (FREEZE, 'Change freeze'),
         (DEADLINE_REMINDER, 'Deadline reminder'),
         (DEADLINE_DUE, 'Deadline due today'),
         (DEADLINE_OVERDUE, 'Deadline overdue'),
@@ -1724,7 +1736,7 @@ class Notification(models.Model):
 
     TARGET_CHOICES = [
         ('proposal', 'Proposal'), ('manual', 'Manual'), ('office', 'Office'),
-        ('people', 'People'), ('deadline', 'Deadline'),
+        ('people', 'People'), ('deadline', 'Deadline'), ('freeze', 'Change freeze'),
     ]
 
     recipient = models.ForeignKey(
@@ -2315,6 +2327,80 @@ class DeadlineObligation(models.Model):
     @property
     def is_met(self):
         return self.state in self.MET_STATES
+
+
+class Freeze(models.Model):
+    """A change freeze for an audit (spec §6.6, 3D): "do not revise now".
+
+    A separate control from a deadline, started and lifted only by the
+    system admin, with the password. It stays in force until lifted; the
+    expected end is what users are told, and the admin is reminded once it
+    passes. While in force it blocks starting a proposal, sending to the
+    Head, submitting and making effective within its scope - never reading.
+    See `api.freeze`.
+    """
+
+    ALL = 'all'
+    OFFICES = 'offices'
+    SERIES = 'series'
+    SCOPE_CHOICES = [(ALL, 'Everything'), (OFFICES, 'Selected offices'),
+                     (SERIES, 'Selected manual series')]
+
+    reason = models.CharField(max_length=300)
+    expected_end_on = models.DateField()
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES)
+    started_by = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='+')
+    started_at = models.DateTimeField(default=timezone.now)
+    lifted_by = models.ForeignKey(CustomUser, on_delete=models.PROTECT, null=True, blank=True,
+                                  related_name='+')
+    lifted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [models.Index(fields=['lifted_at'], name='freeze_in_force_idx')]
+
+    def __str__(self):
+        return f'Freeze: {self.reason} (until {self.expected_end_on})'
+
+
+class FreezeTarget(models.Model):
+    """One office or one series a freeze covers; none for scope `all`."""
+
+    freeze = models.ForeignKey(Freeze, on_delete=models.PROTECT, related_name='targets')
+    office = models.ForeignKey(Office, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='+')
+    series = models.ForeignKey(ManualSeries, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='+')
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(office__isnull=False, series__isnull=True)
+                           | Q(office__isnull=True, series__isnull=False)),
+                name='freeze_target_is_one_thing'),
+        ]
+
+
+class FreezeException(models.Model):
+    """One proposal or one manual let through a freeze - corrective
+    actions raised by the audit itself. Audited; never removed."""
+
+    freeze = models.ForeignKey(Freeze, on_delete=models.PROTECT, related_name='exceptions')
+    proposal = models.ForeignKey(Proposal, on_delete=models.PROTECT, null=True, blank=True,
+                                 related_name='+')
+    manual = models.ForeignKey(Manual, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='+')
+    reason = models.CharField(max_length=300)
+    granted_by = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='+')
+    granted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(proposal__isnull=False, manual__isnull=True)
+                           | Q(proposal__isnull=True, manual__isnull=False)),
+                name='freeze_exception_is_one_thing'),
+        ]
 
 
 class HeadDelegation(models.Model):

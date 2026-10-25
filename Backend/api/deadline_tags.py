@@ -166,6 +166,13 @@ def deadline_tags_for(user, manual_ids, today=None):
         related = set(Manual.objects.filter(pk__in=unplaced).filter(
             access.reachable_q(list(viewer.mine))).values_list('pk', flat=True))
 
+    # A change freeze (3D) pauses an open deadline's overdue notices; the
+    # tag says so. Loaded only when a page carries tags.
+    from . import freeze
+    in_force = freeze.InForce()
+    series = dict(Manual.objects.filter(pk__in=ids).values_list('pk', 'series_id')) \
+        if in_force else {}
+
     found = {}
     for (manual_id, _), by_view in groups.items():
         # The nearest view wins: an office that owes it sees its own tag
@@ -176,6 +183,12 @@ def deadline_tags_for(user, manual_ids, today=None):
         rows_here = by_view[view]
         tag = _tag(view, rows_here[0].deadline, rows_here, today)
         if tag:
+            held = None
+            if in_force and tag['state'] not in MET:
+                owed = [freeze.Owed(manual_id, series.get(manual_id))]
+                held = next((f for f in (in_force.pausing(r.office_id, owed) for r in rows_here
+                                         if r.state == DeadlineObligation.OPEN) if f), None)
+            tag['frozen'] = freeze.payload(held)
             found.setdefault(manual_id, []).append(tag)
 
     tags = {}
