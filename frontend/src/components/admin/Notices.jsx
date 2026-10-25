@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import useServerData from "../useServerData";
 import Icon from "../Icon";
 import { dueText, freezeText } from "../deadlineText";
 import DeadlineTag from "../DeadlineTag";
@@ -59,23 +60,11 @@ function reauthHeaders(token) {
  * is hidden. Every change here asks for the password.
  */
 function Freezes() {
-  const [data, setData] = useState(null);
+  const { data, error, reload: load } = useServerData("/api/admin/freezes/", null,
+                                                      "Could not load freezes.");
   const [starting, setStarting] = useState(false);
   const [pending, setPending] = useState(null);   // {title, body, label, run}
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      const res = await axios.get("/api/admin/freezes/", getAuth());
-      setData(res.data);
-      setError("");
-    } catch (err) {
-      setError(err.response?.data?.error || "Could not load freezes.");
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   const confirm = (spec) => setPending(spec);
   const run = async (token) => {
@@ -325,22 +314,10 @@ function FreezeForm({ onCancel, onDone, confirm, pending, run, cancel }) {
 function Deadlines() {
   const [status, setStatus] = useState("open");
   const [page, setPage] = useState(1);
-  const [data, setData] = useState(null);
+  const { data, error, reload: load } = useServerData("/api/admin/deadlines/", { status, page },
+                                                      "Could not load deadlines.");
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState(null);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      const res = await axios.get("/api/admin/deadlines/", { ...getAuth(), params: { status, page } });
-      setData(res.data);
-      setError("");
-    } catch (err) {
-      setError(err.response?.data?.error || "Could not load deadlines.");
-    }
-  }, [status, page]);
-
-  useEffect(() => { load(); }, [load]);
 
   if (openId) return <DeadlineDetail id={openId} onBack={() => { setOpenId(null); load(); }} />;
   if (creating) return <DeadlineForm onDone={() => { setCreating(false); load(); }} />;
@@ -636,15 +613,10 @@ function DeadlineForm({ onDone }) {
 }
 
 function DeadlineDetail({ id, onBack }) {
-  const [data, setData] = useState(null);
+  const { data, reload: load } = useServerData(`/api/admin/deadlines/${id}/`);
   const [branch, setBranch] = useState(null);
   const [rows, setRows] = useState(null);
   const [page, setPage] = useState(1);
-
-  const load = useCallback(() => {
-    axios.get(`/api/admin/deadlines/${id}/`, getAuth()).then((res) => setData(res.data)).catch(() => {});
-  }, [id]);
-  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (branch == null) return;
@@ -790,19 +762,11 @@ function Announcements() {
   const offices = useOffices();
   const [status, setStatus] = useState("live");
   const [page, setPage] = useState(1);
-  const [data, setData] = useState(null);
+  const { data, error: loadError, reload: load } = useServerData(
+    "/api/admin/announcements/", { status, page }, "Could not load announcements.");
   const [form, setForm] = useState(null);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      const res = await axios.get("/api/admin/announcements/", { ...getAuth(), params: { status, page } });
-      setData(res.data);
-    } catch (err) {
-      setError(err.response?.data?.error || "Could not load announcements.");
-    }
-  }, [status, page]);
-  useEffect(() => { load(); }, [load]);
+  const [saveError, setError] = useState("");
+  const error = saveError || loadError;
 
   const save = async () => {
     try {
