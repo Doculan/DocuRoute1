@@ -3,6 +3,21 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — Phase 3 closed: `v4.2.0-p3`
+
+- **Full suite: 938 tests, all passed**, on `0c4192e`. Tagged
+  `v4.2.0-p3` there and pushed with `main`.
+- **`WORKFLOW_AS_BUILT.md`**: the process as built, stage by stage,
+  written from the code. Two differences from the design are recorded
+  there and raised for decision:
+  - **A defect:** the requesting office can edit a section while the
+    proposal is out for concurrence. The edit is accepted, makes no new
+    version, and leaves concurrences given on the earlier text standing.
+    Probed on 26 Oct; not fixed without a decision.
+  - **Locking tells only the requesting office**, not the signatory
+    offices that `CLAUDE.md` names.
+- **Phase 4 design** in `MONITORING_PHASE4_DESIGN.md`, awaiting approval.
+
 ## 26 October 2026 — The freeze also blocks direct writes (decided at Checkpoint 3D)
 
 - **Decision (Checkpoint 3D, approved 26 Oct 2026):** a freeze blocks the
