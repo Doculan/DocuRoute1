@@ -19,7 +19,13 @@ Tests that expect an error assert the reason.
 """
 
 import datetime
+import tempfile
+from io import StringIO
+from pathlib import Path
+from unittest import mock
 
+from django.core.management import call_command
+from django.test import override_settings
 from django.utils import timezone
 
 from api import deadline_ladder, freeze_views, monitoring
@@ -417,3 +423,139 @@ class DeadlinesPause(FreezeAdmin, LadderFixture):
                                           dedupe_key__contains=':deadline:')
         self.assertIn(deadline.title, notice.title)
         self.assertEqual(freeze_views.monitor()['deadlines_inside'], 0)
+
+
+# --- the admin's direct writes (decided at Checkpoint 3D) ----
+
+class DirectWrites(FreezeFixture):
+    """Every path that writes section text outside a proposal refuses
+    while a freeze covers the document: everything, its series, or an
+    office that concurs on it. A per-manual exception lets it through."""
+
+    def admin_call(self, method, url, body=None):
+        return getattr(self.as_(self.admin), method)(
+            f'/api/{url}', body or {}, format='json',
+            HTTP_X_REAUTH_TOKEN=issue_reauth_token(self.admin))
+
+    def edit(self, **body):
+        return self.admin_call('patch', f'sections/{self.s1.pk}/update/',
+                               body or {'content': 'The Cashier releases it at once.'})
+
+    def test_every_direct_write_waits_and_writes_nothing(self):
+        self.freeze()
+        before = list(ManualSection.objects.order_by('pk').values_list('pk', 'content'))
+        cases = [
+            (self.edit(), 'Editing it directly'),
+            (self.admin_call('delete', f'sections/{self.s1.pk}/delete/'), 'Deleting a section'),
+            (self.admin_call('delete', f'manuals/{self.manual.pk}/delete/'), 'Deleting the manual'),
+            (self.admin_call('post', f'manuals/{self.manual.pk}/sections/create/',
+                             {'subtitle': '5.0 FORMS', 'content': 'Form FAM-01.'}), 'Adding sections'),
+            (self.admin_call('post', f'manuals/{self.manual.pk}/confirm-sections/',
+                             {'sections': [{'subtitle': '9.0 X', 'content': 'Y'}]}), 'Adding sections'),
+            (self.admin_call('post', f'sections/{self.s1.pk}/merge-next/'), 'Merging or splitting'),
+            (self.admin_call('post', f'sections/{self.s1.pk}/split/', {'at': 10, 'title': 'Part'}),
+             'Merging or splitting'),
+        ]
+        for response, words in cases:
+            self.assert_frozen(response)
+            self.assertIn(words, response.data['error'])
+        self.assertEqual(list(ManualSection.objects.order_by('pk').values_list('pk', 'content')),
+                         before)
+        self.assertTrue(Manual.objects.filter(pk=self.manual.pk).exists())
+
+    def test_changing_only_the_tag_is_not_an_edit_of_the_text(self):
+        self.freeze()
+        self.assertEqual(self.edit(tag='PROCEDURE').status_code, 200)
+
+    def test_filling_a_new_empty_manual_is_not_a_revision(self):
+        self.freeze()
+        fresh = Manual.objects.create(title='FAM 6.09', series=self.series)
+        response = self.admin_call('post', f'manuals/{fresh.pk}/confirm-sections/',
+                                   {'sections': [{'subtitle': '1.0 PURPOSE', 'content': 'New.'}]})
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_the_scope_series_or_a_concurring_office(self):
+        first = self.freeze(scope='series', series=[self.other_series]).data['id']
+        self.assertEqual(self.edit().status_code, 200)                       # not its series
+        self.lift(first)
+        second = self.freeze(scope='offices', offices=[self.vpaf]).data['id']
+        self.assertEqual(self.edit(content='Owner only.').status_code, 200)  # owns, does not concur
+        self.lift(second)
+        self.freeze(scope='offices', offices=[self.cash])
+        self.assert_frozen(self.edit(content='Cash concurs on it.'))
+
+    def test_an_exception_for_the_manual_lets_the_edit_through(self):
+        freeze_id = self.freeze().data['id']
+        self.assert_frozen(self.edit())
+        self.except_(freeze_id, manual_id=self.manual.pk)
+        self.assertEqual(self.edit().status_code, 200)
+        self.assertEqual(ManualSection.objects.get(pk=self.s1.pk).content,
+                         'The Cashier releases it at once.')
+
+    def test_lifting_ends_it(self):
+        freeze_id = self.freeze().data['id']
+        self.assert_frozen(self.edit())
+        self.lift(freeze_id)
+        self.assertEqual(self.edit().status_code, 200)
+
+
+class CommandsSkipFrozenManuals(FreezeFixture):
+    """Commands that rewrite section text skip a frozen manual, name it,
+    and write it only with `--ignore-freeze`."""
+
+    def run_command(self, name, *args):
+        out = StringIO()
+        call_command(name, *args, stdout=out, stderr=out)
+        return out.getvalue()
+
+    def media_with(self, pdf_bytes):
+        media = tempfile.mkdtemp(prefix='docuroute-freeze-')
+        (Path(media) / 'mastercopies').mkdir()
+        (Path(media) / 'mastercopies' / 'FAM_6.02.pdf').write_bytes(pdf_bytes)
+        return media
+
+    def text(self):
+        return ManualSection.objects.get(pk=self.s1.pk).content
+
+    def test_clean_section_content(self):
+        self.freeze()
+        manual = str(self.manual.pk)
+        with mock.patch('api.management.commands.clean_section_content.clean_extracted_text',
+                        side_effect=lambda text: text + ' (cleaned)'):
+            output = self.run_command('clean_section_content', '--apply', '--manual', manual)
+            self.assertIn('skipped - frozen for audit', output)
+            self.assertNotIn('(cleaned)', self.text())
+            output = self.run_command('clean_section_content', '--apply', '--manual', manual,
+                                      '--ignore-freeze')
+        self.assertIn('written anyway (--ignore-freeze)', output)
+        self.assertIn('(cleaned)', self.text())
+
+    def test_reextract_manuals(self):
+        media = self.media_with(b'%PDF-1.4\n%%EOF\n')
+        self.manual.file.name = 'mastercopies/FAM_6.02.pdf'
+        self.manual.save(update_fields=['file'])
+        extracted = ('3.0 POLICIES\nThe Cashier shall release the cheque within two days.\n'
+                     '4.0 PROCEDURES\nThe Accounting Staff verifies the request.\n')
+        self.freeze()
+        manual = str(self.manual.pk)
+        with override_settings(MEDIA_ROOT=media), mock.patch(
+                'api.management.commands.reextract_manuals.extract_text', return_value=extracted):
+            output = self.run_command('reextract_manuals', '--apply', '--manual', manual)
+            self.assertIn('skipped - frozen for audit', output)
+            self.assertIn('five days', self.text())
+            self.run_command('reextract_manuals', '--apply', '--manual', manual, '--ignore-freeze')
+        self.assertIn('two days', self.text())
+
+    def test_import_mastercopies_replace(self):
+        media = self.media_with(b'%PDF-1.4\nnew\n%%EOF\n')
+        CustomUser.objects.filter(pk=self.admin.pk).update(role='admin')
+        self.freeze()
+        with override_settings(MEDIA_ROOT=media), mock.patch(
+                'api.management.commands.import_mastercopies.extract_text',
+                return_value='1.0 PURPOSE\nNew text.\n2.0 SCOPE\nAll offices.\n'):
+            output = self.run_command('import_mastercopies', '--replace')
+            self.assertIn('skipped - frozen for audit', output)
+            self.assertTrue(Manual.objects.filter(pk=self.manual.pk).exists())
+            self.run_command('import_mastercopies', '--replace', '--ignore-freeze')
+        self.assertFalse(Manual.objects.filter(pk=self.manual.pk).exists())
+        self.assertTrue(Manual.objects.filter(title='FAM 6.02').exists())

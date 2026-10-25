@@ -13,9 +13,13 @@ While one is in force (started, not lifted) it blocks, within its scope:
 | Concurring and returning on proposals already in concurrence | allowed |
 | Signing, scans, the IMR's decision | allowed; only making effective waits |
 | Reading anything | never blocked |
+| The admin's direct edits, adding, deleting, merging or splitting sections, deleting a manual | refused |
+| Commands that rewrite section text (`reextract_manuals`, `clean_section_content`, `import_mastercopies --replace`) | skip frozen manuals unless `--ignore-freeze` |
 
 **Scope:** everything, selected offices (the office making the proposal),
-or selected manual series (the proposal's document). An **exception**
+or selected manual series (the proposal's document). A direct write has no
+proposing office: it is covered by everything, by the document's series,
+or by an office that concurs on the document. An **exception**
 names one proposal or one manual it lets through. Several freezes may be
 in force; any one covering an action blocks it.
 
@@ -31,11 +35,18 @@ from rest_framework.response import Response
 from .models import Freeze, FreezeException, FreezeTarget
 
 START, SEND_TO_HEAD, SUBMIT, MAKE_EFFECTIVE = 'start', 'send_to_head', 'submit', 'make_effective'
+EDIT, ADD, DELETE_SECTION, DELETE_MANUAL, RESTRUCTURE = (
+    'edit', 'add', 'delete_section', 'delete_manual', 'restructure')
 WAITS = {
     START: 'Starting a new proposal',
     SEND_TO_HEAD: 'Sending to the Head',
     SUBMIT: 'Submitting',
     MAKE_EFFECTIVE: 'Making it effective',
+    EDIT: 'Editing it directly',
+    ADD: 'Adding sections',
+    DELETE_SECTION: 'Deleting a section',
+    DELETE_MANUAL: 'Deleting the manual',
+    RESTRUCTURE: 'Merging or splitting sections',
 }
 
 
@@ -128,7 +139,49 @@ def blocking(proposal=None, manual=None, office=None, in_force=None):
 
 def refusal(action, proposal=None, manual=None, office=None):
     """A 409 saying why and until when, or None."""
-    freeze = blocking(proposal, manual, office)
+    return _refused(action, blocking(proposal, manual, office))
+
+
+def direct_blocking(manual, in_force=None):
+    """The freeze that blocks writing to this document directly, or None:
+    one over everything, its series, or an office that concurs on it -
+    unless the manual has an exception from it."""
+    from .org_tree import concurring_offices_of
+    in_force = in_force if in_force is not None else InForce()
+    if not in_force:
+        return None
+    offices = concurring_offices_of([manual.pk]).get(manual.pk, [])
+    office_ids, series_ids = set(offices), {manual.series_id} - {None}
+    for freeze in in_force.freezes:
+        if (in_force._covers(freeze, office_ids, series_ids)
+                and manual.pk not in in_force.excepted_manuals().get(freeze.pk, set())):
+            return freeze
+    return None
+
+
+def direct_refusal(action, manual):
+    """For the admin's direct writes: a 409 saying why and until when, or None."""
+    return _refused(action, direct_blocking(manual))
+
+
+def frozen_skip(command, manual, options):
+    """For a management command about to rewrite a manual's text: True
+    (named on stderr) when a change freeze covers it and the command was
+    not run with `--ignore-freeze`. With the flag it is written, and said."""
+    held = direct_blocking(manual)
+    if held is None:
+        return False
+    if options.get('ignore_freeze'):
+        command.stderr.write(f'  {manual.title}: under a change freeze '
+                             f'("{held.reason}"); written anyway (--ignore-freeze)')
+        return False
+    command.stderr.write(f'  {manual.title}: skipped - frozen for audit until '
+                         f'{held.expected_end_on:%d %b %Y} ("{held.reason}"). '
+                         f'Run with --ignore-freeze to write it anyway.')
+    return True
+
+
+def _refused(action, freeze):
     if freeze is None:
         return None
     return Response({

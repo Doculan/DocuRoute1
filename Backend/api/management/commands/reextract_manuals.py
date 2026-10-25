@@ -18,6 +18,7 @@ import re
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from api.freeze import frozen_skip
 from api.models import Manual, ManualSection
 from ml.ocr_engine import extract_text
 
@@ -40,6 +41,9 @@ class Command(BaseCommand):
         parser.add_argument("--title", help="Limit to manuals whose title contains this.")
         parser.add_argument("--show", type=int, default=2,
                             help="How many before/after samples to print.")
+        parser.add_argument("--ignore-freeze", action="store_true",
+                            help="Write to manuals under a change freeze too. "
+                                 "Without it they are skipped and named.")
 
     def handle(self, *args, **options):
         from api.views import _split_into_sections
@@ -99,6 +103,8 @@ class Command(BaseCommand):
                 for line in block["content"].splitlines()[:5]:
                     self.stdout.write("    " + line[:120])
 
+            if options["apply"] and changed_here and frozen_skip(self, manual, options):
+                continue
             if options["apply"] and changed_here:
                 with transaction.atomic():
                     for section, block in changed_here:

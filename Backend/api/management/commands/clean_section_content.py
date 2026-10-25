@@ -15,6 +15,7 @@ Dry run by default; pass --apply to write.
 """
 
 from django.core.management.base import BaseCommand
+from api.freeze import frozen_skip
 from api.models import ManualSection
 from ml.ocr_engine import clean_extracted_text
 
@@ -39,6 +40,9 @@ class Command(BaseCommand):
             default=3,
             help="How many before/after samples to print (default 3).",
         )
+        parser.add_argument("--ignore-freeze", action="store_true",
+                            help="Write to manuals under a change freeze too. "
+                                 "Without it they are skipped and named.")
 
     def handle(self, *args, **options):
         apply_changes = options["apply"]
@@ -83,6 +87,10 @@ class Command(BaseCommand):
             )
             return
 
+        manuals = {s.manual_id: s.manual for s, _, _ in changed}
+        skipped = {pk for pk, manual in manuals.items()
+                   if frozen_skip(self, manual, options)}
+        changed = [c for c in changed if c[0].manual_id not in skipped]
         for section, _original, cleaned in changed:
             section.content = cleaned
             section.save(update_fields=["content"])

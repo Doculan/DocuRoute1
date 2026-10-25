@@ -1473,6 +1473,13 @@ def confirm_manual_sections(request, manual_id):
     except Manual.DoesNotExist:
         return Response({'error': 'Manual not found'}, status=404)
 
+    # Adding to a document that already has sections changes it; filling
+    # a newly uploaded, empty one does not revise anything.
+    if manual.sections.exists():
+        frozen = freeze.direct_refusal(freeze.ADD, manual)
+        if frozen:
+            return frozen
+
     sections = request.data.get('sections')
     if not isinstance(sections, list):
         return Response({'error': 'Sections must be a list.'}, status=400)
@@ -1519,7 +1526,8 @@ def delete_manual(request, manual_id):
         manual = Manual.objects.get(id=manual_id)
     except Manual.DoesNotExist:
         return Response({'error': 'Manual not found'}, status=404)
-    held = _refuse_if_held(list(manual.sections.all()), 'deleted with the manual')
+    held = _refuse_if_held(list(manual.sections.all()), 'deleted with the manual') \
+        or freeze.direct_refusal(freeze.DELETE_MANUAL, manual)
     if held:
         return held
     manual.delete()
@@ -1648,6 +1656,10 @@ def create_section(request, manual_id):
     except Manual.DoesNotExist:
         return Response({'error': 'Manual not found'}, status=404)
 
+    frozen = freeze.direct_refusal(freeze.ADD, manual)
+    if frozen:
+        return frozen
+
     subtitle = request.data.get('subtitle')
     content = request.data.get('content', '')
     page_number = request.data.get('page_number', None)
@@ -1721,7 +1733,8 @@ def update_section(request, section_id):
     reason = (request.data.get('change_reason') or '').strip()
 
     if _text_would_change(request, section):
-        held = _refuse_if_held([section], 'edited')
+        held = _refuse_if_held([section], 'edited') \
+            or freeze.direct_refusal(freeze.EDIT, section.manual)
         if held:
             return held
 
@@ -1790,7 +1803,8 @@ def delete_section(request, section_id):
         section = ManualSection.objects.get(id=section_id)
     except ManualSection.DoesNotExist:
         return Response({'error': 'Section not found'}, status=404)
-    held = _refuse_if_held([section], 'deleted')
+    held = _refuse_if_held([section], 'deleted') \
+        or freeze.direct_refusal(freeze.DELETE_SECTION, section.manual)
     if held:
         return held
     section.delete()

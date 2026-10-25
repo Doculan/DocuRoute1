@@ -30,6 +30,7 @@ from django.conf import settings
 
 from django.core.management.base import BaseCommand
 
+from api.freeze import frozen_skip
 from api.models import CustomUser, Manual, ManualSection
 from api.views import _split_into_sections, extraction_quality
 from ml.ocr_engine import extract_text
@@ -95,6 +96,9 @@ class Command(BaseCommand):
             "--replace", action="store_true",
             help="delete and re-import a manual that already exists",
         )
+        parser.add_argument("--ignore-freeze", action="store_true",
+                            help="Write to manuals under a change freeze too. "
+                                 "Without it they are skipped and named.")
 
     def handle(self, *args, **options):
         source = Path(settings.MEDIA_ROOT) / "mastercopies"
@@ -174,6 +178,9 @@ class Command(BaseCommand):
                 )
                 continue
 
+            if existing and frozen_skip(self, existing, options):
+                skipped += 1
+                continue
             if existing:
                 existing.delete()
 

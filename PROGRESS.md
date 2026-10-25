@@ -3,6 +3,46 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — The freeze also blocks direct writes (decided at Checkpoint 3D)
+
+- **Decision (Checkpoint 3D, approved 26 Oct 2026):** a freeze blocks the
+  admin's direct edits to manual content too, with the same message and
+  the reason `frozen`. A per-manual exception (password, logged) lets an
+  edit through.
+- **Every path that writes section text outside a proposal**, surveyed and
+  guarded (`freeze.direct_refusal`): the direct edit (only when the text
+  would change, as the hold), deleting a section, deleting a manual,
+  adding a section, adding sections in bulk to a document that already
+  has some (filling a newly uploaded, empty one is not a revision), and
+  merging or splitting sections. Making effective was already blocked.
+  There is no staff direct-edit path: staff change text only through
+  proposals.
+- **Scope for a direct write:** it has no proposing office, so it is
+  covered by a freeze over everything, over the document's series, or
+  over an office that concurs on it. The owner (approving level) alone
+  does not cover it.
+- **Commands that rewrite section text** - `reextract_manuals --apply`,
+  `clean_section_content --apply`, `import_mastercopies --replace` - skip
+  a frozen manual and name it on stderr; `--ignore-freeze` writes it and
+  says so. Uploading a **new** manual is not blocked.
+- **Run:** 9 new tests in `tests_freeze` (`DirectWrites`,
+  `CommandsSkipFrozenManuals`), each failing without its code: 14
+  code-removal cases. Partial: `tests_freeze`, `tests_admin_safeguards`,
+  `tests_import_duplicates`, `tests_qms`, `tests_structure`: 106 passed.
+- **Not done, said plainly:** using `--ignore-freeze` is printed, not
+  recorded in the system log - a command run by whoever holds the server.
+
+## 26 October 2026 — One loader for the admin's notices screens
+
+- `useEffect(() => { load(); }, [load])` set state from the effect itself
+  (lint: `react-hooks/set-state-in-effect`), and a slow reply could
+  overwrite a newer one. Every effect in `Notices.jsx` already had a
+  dependency array. Replaced, once, by `useServerData(url, params)`:
+  state is set only in the request's callbacks, a stale reply is dropped,
+  and `reload()` refetches. Deadlines, a deadline's detail, Announcements
+  and Change freeze use it; lint on `Notices.jsx` is now clean. The same
+  line remains in eleven other screens, not changed here.
+
 ## 26 October 2026 — v4.2 Phase 3D: the change freeze (Checkpoint 3D)
 
 - **`Freeze`, `FreezeTarget`, `FreezeException`** (`api/freeze.py` decides

@@ -312,3 +312,8 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   for what it covers and catch up once it is lifted. Offices are told at
   start and lift; the admin is reminded when a freeze outlasts its
   expected end. Migration `0050`.
+- A freeze also blocks the admin's direct changes to a document's text -
+  editing, adding, deleting, merging or splitting sections, or deleting
+  the manual - unless the manual has an exception. The commands that
+  rewrite section text skip frozen manuals unless run with
+  `--ignore-freeze`.

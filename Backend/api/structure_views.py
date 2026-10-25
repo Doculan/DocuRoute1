@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from ml.svm_model import predict_section
 
 from .models import ManualSection, SectionChange, SectionHistory
+from . import freeze
 from .views import IsAdminRole, reauth_failure
 
 # Roughly what the AI check reads of each side. A section longer than
@@ -114,6 +115,9 @@ def merge_next(request, section_id):
     locked = locked_reason(manual, [keep, absorbed])
     if locked:
         return _refused(locked)
+    frozen = freeze.direct_refusal(freeze.RESTRUCTURE, manual)
+    if frozen:
+        return frozen
 
     note = (request.data.get('reason') or '').strip()
     reason = f'Merged with the next section, "{absorbed.subtitle}".'
@@ -157,6 +161,9 @@ def split(request, section_id):
     locked = locked_reason(manual, [section])
     if locked:
         return _refused(locked)
+    frozen = freeze.direct_refusal(freeze.RESTRUCTURE, manual)
+    if frozen:
+        return frozen
 
     try:
         at = int(request.data.get('at'))
