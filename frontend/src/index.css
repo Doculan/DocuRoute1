@@ -812,6 +812,9 @@ a:hover { color: var(--brand-500); }
 .board-main:hover:not(:disabled) { background: var(--paper-3); }
 .board-manual { font-weight: 500; }
 .board-action { min-width: 7.5rem; text-align: right; }
+.history-year { border-top: 1px solid var(--line); padding: 0.6rem 0; }
+.history-year > summary { cursor: pointer; display: flex; gap: 0.6rem; align-items: baseline; }
+.history-month { margin-left: 1rem; }
 .board-group { padding: 0.6rem 0.15rem 0.2rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* The audit block (spec §10). */

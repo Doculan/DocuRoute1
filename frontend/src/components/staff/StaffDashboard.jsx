@@ -14,6 +14,7 @@ import AnnouncementBanner from "../AnnouncementBanner";
 import DeadlinesPage from "../DeadlinesPage";
 import Account from "../Account";
 import Monitoring from "../Monitoring";
+import History from "../History";
 import logo from '../../assets/QMS.png';
 import manualsIcon from '../../assets/nav/manuals.svg';
 import sectionsIcon from '../../assets/nav/sections.svg';
@@ -42,6 +43,7 @@ const NAV_GROUPS = [
     items: [
       { key: "proposals", icon: sectionsIcon, label: "Proposals" },
       { key: "monitoring", icon: sectionsIcon, label: "Office monitoring" },
+      { key: "history", icon: sectionsIcon, label: "History" },
     ],
   },
   {
@@ -58,6 +60,7 @@ const CRUMBS = {
   sections: "Sections",
   proposals: "Proposals",
   monitoring: "Office monitoring",
+  history: "History",
   help: "Help",
   account: "My account",
   notifications: "Notifications",
@@ -196,6 +199,8 @@ export default function StaffDashboard({ onLogout }) {
         return <DeadlinesPage onOpenManual={openManual} />;
       case "monitoring":
         return <Monitoring title="Office monitoring" />;
+      case "history":
+        return <History onOpen={openProposal} />;
       default:
         return <StaffManuals onSelectManual={openManual}
                              onSelectSection={(manualId, sectionId) =>

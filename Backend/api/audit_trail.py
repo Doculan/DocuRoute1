@@ -229,42 +229,37 @@ def _line(i):
     return who, moved
 
 
-def to_csv(proposal, items, heading):
+def _esc(text):
+    return (str(text if text is not None else '').replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('\n', '<br/>'))
+
+
+def write_csv(heading, columns, rows):
+    """A CSV with a UTF-8 marker, the heading lines, a blank line, the
+    column names and the rows; every cell formula-safe."""
     out = io.StringIO()
-    out.write('﻿')    # UTF-8 marker, so spreadsheets read accented names
+    out.write('\ufeff')    # UTF-8 marker, so spreadsheets read accented names
     w = csv.writer(out)
     for label, value in heading:
         w.writerow([_cell(label), _cell(value)])
     w.writerow([])
-    w.writerow(['Version', 'Time', 'Step', 'Position · name', 'Office', 'Stage moved',
-                'Time in previous stage', 'Detail'])
-    for i in items:
-        who, moved = _line(i)
-        w.writerow([_cell(c) for c in (
-            i['version'], timezone.localtime(i['at']).strftime('%Y-%m-%d %H:%M'), i['label'],
-            who, i['office'], moved, i['time_in_previous'] or '', i['detail'])])
+    w.writerow([_cell(c) for c in columns])
+    for row in rows:
+        w.writerow([_cell(c) for c in row])
     return out.getvalue().encode('utf-8')
 
 
-def _esc(text):
-    return (str(text or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            .replace('\n', '<br/>'))
-
-
-def to_pdf(proposal, items, heading, footer):
+def write_pdf(title, heading, columns, rows, footer):
+    """An A4 PDF: the title, the heading block, then the rows as a table,
+    paged, with `footer` and "Page n of N" on every page."""
     import fitz
-    html = ['<h2 style="font-size:13px">Audit trail</h2><table style="font-size:9px">']
+    html = [f'<h2 style="font-size:13px">{_esc(title)}</h2><table style="font-size:9px">']
     html += [f'<tr><td><b>{_esc(k)}</b></td><td>{_esc(v)}</td></tr>' for k, v in heading]
-    html.append('</table><br/><table style="font-size:8px;border-collapse:collapse">')
-    html.append('<tr><th>V</th><th>Time</th><th>Step</th><th>Who</th><th>Stage</th><th>Detail</th></tr>')
-    for i in items:
-        who, moved = _line(i)
-        stage = moved + (f' (after {i["time_in_previous"]})' if i['time_in_previous'] else '')
-        html.append(
-            f'<tr><td>{i["version"]}</td>'
-            f'<td>{timezone.localtime(i["at"]):%d %b %Y %H:%M}</td>'
-            f'<td>{_esc(i["label"])}</td><td>{_esc(who)}<br/>{_esc(i["office"])}</td>'
-            f'<td>{_esc(stage)}</td><td>{_esc(i["detail"])}</td></tr>')
+    html.append('</table><br/><table style="font-size:8px;border-collapse:collapse"><tr>')
+    html += [f'<th>{_esc(c)}</th>' for c in columns]
+    html.append('</tr>')
+    for row in rows:
+        html.append('<tr>' + ''.join(f'<td>{_esc(c)}</td>' for c in row) + '</tr>')
     html.append('</table>')
     css = 'td, th { border-bottom: 0.5px solid #999; padding: 2px; vertical-align: top; text-align: left; }'
     story = fitz.Story(html=''.join(html), user_css=css)
@@ -285,6 +280,25 @@ def to_pdf(proposal, items, heading, footer):
         page.insert_text((36, page_rect.height - 30), f'{footer} · Page {number} of {total}',
                          fontsize=7)
     return document.tobytes()
+
+
+TRAIL_COLUMNS = ['Version', 'Time', 'Step', 'Position · name', 'Office', 'Stage moved',
+                 'Time in previous stage', 'Detail']
+
+
+def _trail_rows(items):
+    for i in items:
+        who, moved = _line(i)
+        yield (i['version'], timezone.localtime(i['at']).strftime('%Y-%m-%d %H:%M'), i['label'],
+               who, i['office'], moved, i['time_in_previous'] or '', i['detail'])
+
+
+def to_csv(proposal, items, heading):
+    return write_csv(heading, TRAIL_COLUMNS, _trail_rows(items))
+
+
+def to_pdf(proposal, items, heading, footer):
+    return write_pdf('Audit trail', heading, TRAIL_COLUMNS, list(_trail_rows(items)), footer)
 
 
 @api_view(['POST'])

@@ -5,6 +5,7 @@ import StaffSections from "../staff/StaffSections";
 import QmsRequests from "./QmsRequests";
 import Monitoring from "../Monitoring";
 import QmsHome from "./QmsHome";
+import History from "../History";
 import Topbar from "../Topbar";
 import Account from "../Account";
 import NeedsAction from "../NeedsAction";
@@ -22,6 +23,7 @@ const getAuth = () => ({
 
 const CRUMBS = {
   dashboard: "Dashboard", manuals: "Manuals", requests: "Requests", monitoring: "Monitoring",
+  history: "History",
   account: "My account",
   notifications: "Notifications",
 };
@@ -90,6 +92,7 @@ export default function QmsDashboard({ onLogout }) {
     if (activePage === "monitoring") {
       return <Monitoring key={JSON.stringify(monitorStart)} start={monitorStart} />;
     }
+    if (activePage === "history") return <History offices={false} onOpen={openRequestFrom} />;
     if (activePage === "dashboard") {
       return <QmsHome me={me} onRequests={() => go("requests")}
                       onMonitoring={(start) => { setMonitorStart(start); setActivePage("monitoring"); }} />;
@@ -149,6 +152,11 @@ export default function QmsDashboard({ onLogout }) {
                   onClick={() => go("monitoring")}>
             <img className="nav-icon" src={reviewIcon} alt="" />
             <span>Monitoring</span>
+          </button>
+          <button className={`nav-item${activePage === "history" ? " is-active" : ""}`}
+                  onClick={() => go("history")}>
+            <img className="nav-icon" src={reviewIcon} alt="" />
+            <span>History</span>
           </button>
         </nav>
         <div className="sidebar-footer">

@@ -6,6 +6,7 @@ import Sections from "./Sections";
 import SVMEvaluation from "./SVMEvaluation";
 import Notices from "./Notices";
 import Monitoring from "../Monitoring";
+import History from "../History";
 import AdminHome from "./AdminHome";
 import Offices from "./Offices";
 import Series from "./Series";
@@ -55,6 +56,7 @@ const NAV_GROUPS = [
     items: [
       { key: "proposals", icon: reviewIcon, label: "Proposals" },
       { key: "monitoring", icon: reviewIcon, label: "Monitoring" },
+      { key: "history", icon: reviewIcon, label: "History" },
     ],
   },
   {
@@ -95,6 +97,7 @@ const CRUMBS = {
   sections: "Sections",
   proposals: "Proposals",
   monitoring: "Monitoring",
+  history: "History",
   announcements: "Deadlines & announcements",
   evaluation: "Model health",
   account: "My account",
@@ -165,6 +168,7 @@ export default function AdminDashboard({ onLogout }) {
                           initialFilters={proposalFilters}
                           onOpenDeadlines={() => goTo("announcements")} />;
       case "monitoring": return <Monitoring />;
+      case "history": return <History offices={false} onOpen={openProposal} />;
       case "notifications": return <NotificationsPage onOpen={openNotice} />;
       case "evaluation": return <SVMEvaluation />;
       case "account": return <Account onNameChange={renamed} />;
