@@ -951,10 +951,14 @@ class Proposal(models.Model):
     # be returned and withdrawn, and what holds its office's slot.
     OPEN_STATUSES = (DRAFT, WITH_HEAD, CONCURRENCE)
 
-    # What the office may still edit. Not while it is with the Head: the
-    # Head decides on the text the Encoder sent, and recalling it is how
-    # the Encoder takes it back.
-    EDITABLE_STATUSES = (DRAFT, CONCURRENCE)
+    # What the office may still edit: a draft, and nothing else. Not while
+    # it is with the Head - the Head decides on the text the Encoder sent,
+    # and recalling it is how the Encoder takes it back. Not once it is
+    # submitted - offices concur with particular text, so after submission
+    # the text changes only through a return or a withdrawal, which make a
+    # new version. (v4.2.0-p3 allowed edits out for concurrence: an edit
+    # made no new version and left earlier concurrences standing.)
+    EDITABLE_STATUSES = (DRAFT,)
 
     # Holding its sections: everything not yet closed. A locked request is
     # still on its way to being made effective, and until then nobody else
@@ -1122,6 +1126,17 @@ class ProposalVersion(models.Model):
 
     def __str__(self):
         return f"{self.proposal.manual.title} v{self.number}"
+
+    def content_hash(self):
+        """A fingerprint of what the offices agree to: the overall reason
+        and every changed section's proposed text. Each concurrence stores
+        it, and the lock compares them with the text as it then stands."""
+        import hashlib
+        import json
+        changes = sorted(self.changes.values_list('section_id', 'new_text'))
+        payload = json.dumps({'reason': self.overall_reason or '', 'changes': changes},
+                             ensure_ascii=False, separators=(',', ':'))
+        return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
 
 class SectionChangeQuerySet(models.QuerySet):
@@ -1349,6 +1364,11 @@ class Concurrence(models.Model):
         null=True, blank=True, related_name='concurrences_recorded',
     )
     recorded_at = models.DateTimeField(auto_now_add=True)
+    # The version's `content_hash()` when the office decided: what it
+    # agreed to. Null on decisions recorded before this was kept; those
+    # are not compared at the lock, and the lock's record says so.
+    # Nullable so SQLite adds the column without rebuilding the table.
+    content_hash = models.CharField(max_length=64, null=True, blank=True)
 
     class Meta:
         ordering = ['version', 'office__name']
@@ -1686,6 +1706,7 @@ class Notification(models.Model):
     RETURNED_BY_OFFICE = 'returned_by_office'
     CONCURRED = 'concurred'
     LOCKED = 'locked'
+    SIGNING_AHEAD = 'signing_ahead'
     READY_FOR_IMR = 'ready_for_imr'
     IMR_ACCEPTED = 'imr_accepted'
     IMR_DENIED = 'imr_denied'
@@ -1722,6 +1743,7 @@ class Notification(models.Model):
         (RETURNED_BY_OFFICE, 'Returned by an office'),
         (CONCURRED, 'An office concurred'),
         (LOCKED, 'Locked; documents ready to sign'),
+        (SIGNING_AHEAD, 'Locked; documents coming to the signatories'),
         (READY_FOR_IMR, 'Ready for the IMR'),
         (IMR_ACCEPTED, 'Accepted by the IMR'),
         (IMR_DENIED, 'Denied by the IMR'),

@@ -303,6 +303,26 @@ def _concurring_ids(proposal):
         role=ProposalParticipant.CONCURRING).values_list('office_id', flat=True))
 
 
+def signatory_recipients(proposal):
+    """The Heads of the approving offices on the frozen route (the owner
+    and the levels above), for information - the system admin where an
+    approving office has no Head, as in the deadline ladder. Where the
+    requesting office is itself on the route, its Head keeps only the
+    lock's own notice: one notice per person per event."""
+    from dataclasses import replace
+    from .monitoring import system_admins
+    found, seen = [], set()
+    for office_id in proposal.participants.filter(
+            role=ProposalParticipant.APPROVING,
+    ).order_by('route_order').values_list('office_id', flat=True):
+        heads = office_recipients([office_id], head=INFO, encoder=None)
+        for r in heads or [replace(a, severity=INFO) for a in system_admins()]:
+            if r.user_id not in seen:
+                seen.add(r.user_id)
+                found.append(r)
+    return found
+
+
 def _participant_ids(proposal):
     """Every office in the request: concurring, and the approving route
     (the owner and the levels above it) - they signed, or would have."""
@@ -367,10 +387,17 @@ def _messages(event):
         return [(Notification.RETURNED_BY_OFFICE, office_recipients(initiating),
                  f'{office} returned {manual}', f'“{_excerpt(event.detail)}”{where}')]
     if kind == AuditEvent.LOCKED:
-        return [(Notification.LOCKED, office_recipients(initiating),
-                 f'{manual} is locked as {proposal.dcr_number}' if proposal.dcr_number
-                 else f'{manual} is locked',
-                 'Print, sign and upload the signed copies.')]
+        notices = [(Notification.LOCKED, office_recipients(initiating),
+                    f'{manual} is locked as {proposal.dcr_number}' if proposal.dcr_number
+                    else f'{manual} is locked',
+                    'Print, sign and upload the signed copies.')]
+        signatories = signatory_recipients(proposal)
+        if signatories:
+            notices.append((Notification.SIGNING_AHEAD, signatories,
+                            f'{number}: documents coming to you to sign',
+                            f'{manual}, from {proposal.initiating_office.name}. The signed DCR '
+                            'comes to the approving authority after the IMR accepts.'))
+        return notices
     if kind == AuditEvent.PACKAGE_COMPLETE:
         if proposal.status == proposal.READY_FOR_IMR:
             return [(Notification.READY_FOR_IMR, qms_recipients(Position.IMR),

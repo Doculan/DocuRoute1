@@ -3,6 +3,59 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — After `v4.2.0-p3`: the text is fixed at submission
+
+**Decided (26 Oct 2026):** fix the concurrence-edit defect before Phase 4,
+and tell the signatory offices of the lock.
+
+- **Edits only in Draft.** `Proposal.EDITABLE_STATUSES` was
+  `(DRAFT, CONCURRENCE)`: out for concurrence, the requesting office could
+  change a section, add one, change the reason or re-run a check. That
+  made no new version and left earlier concurrences standing. Now
+  `(DRAFT,)`: after submission the text changes only through a return or a
+  withdrawal (`not_open`). The screen already offered editing only in
+  Draft, so the defect was reachable only through the API.
+- **Each concurrence records what it agreed to.** `Concurrence.content_hash`
+  holds `ProposalVersion.content_hash()`: the reason and every proposed
+  text.
+- **The lock compares.** Any concurrence whose hash differs from the text
+  refuses the lock (`content_changed`, naming the offices), and the last
+  office's concurrence is rolled back with it. Concurrences from before
+  the field have no hash: they are not compared, and the lock's record
+  says how many. Live has 5 concurrences, none on a proposal still in
+  concurrence.
+- **The signatory offices are told of the lock.** A new notice kind,
+  `signing_ahead`, goes as info to the Head of each approving office on
+  the route. An approving office with no Head sends it to the system
+  admin, as in the deadline ladder. One notice per person per event, so
+  an owner that proposed keeps only the requesting office's notice.
+- **The data scan** (read-only; script in the session scratchpad,
+  `scan_after_submit.py`). For every submitted version it looked for a
+  change row added or rewritten after submission, or a check run after
+  it:
+  - **Live, its backups and every live-derived copy:** 3 submitted
+    versions, none changed.
+  - **Scale and demo-drive copies:** no row rewritten and no check re-run
+    after submission. They flag "added after submission" only because
+    `seed_scale` backdates `submitted_at` and writes the rows at seeding
+    time (all within 1.3 seconds on 24 Oct).
+  - **Not detectable:** a change deleted after submission (its text set
+    back to the original), or a reason edited after it, leaves no
+    timestamp.
+- **Migration `0051`:** `Concurrence.content_hash`, nullable so SQLite adds
+  the column without rebuilding the table (`ALTER TABLE ADD COLUMN`), plus
+  the new notice kind (no database operation). On a copy of live (backup
+  `db.sqlite3.bak-20261026-pre-0051`): every row identical, integrity and
+  foreign keys clean, the system log verifies, 7 events.
+- **Run:**
+  - new `tests_text_frozen` (13), with 9 code-removal cases each failing
+    on its assertion;
+  - **full suite: 951 tests passed** (models changed).
+
+  One removal case passed: excluding the requesting office from the
+  signatory notice was redundant, since a person gets one notice per
+  event. It was taken out, and its test kept.
+
 ## 26 October 2026 — Phase 3 closed: `v4.2.0-p3`
 
 - **Full suite: 938 tests, all passed**, on `0c4192e`. Tagged

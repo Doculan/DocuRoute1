@@ -628,6 +628,7 @@ def decide(request, proposal_id):
             version=version, office=office, decision=decision,
             feedback=feedback, section_id=section_id or None,
             recorded_by=request.user, recorded_by_position=position,
+            content_hash=version.content_hash(),
         )
 
         if decision == Concurrence.RETURN:
@@ -637,12 +638,41 @@ def decide(request, proposal_id):
                     request.user, office)
             outstanding = _offices_yet_to_decide(proposal, version)
             if not outstanding:
-                _lock(proposal, version, request.user, office,
-                      detail='All concurring offices agreed')
+                changed, unhashed = _agreed_to_other_text(version)
+                if changed:
+                    # Nothing of this decision is kept: the offices did not
+                    # all agree to the text that would be locked.
+                    transaction.set_rollback(True)
+                    return Response({
+                        'error': (f'The text changed after {", ".join(changed)} concurred, '
+                                  'so it cannot be locked. Return it, so every office '
+                                  'concurs on the text as it now stands.'),
+                        'reason': 'content_changed',
+                    }, status=409)
+                detail = 'All concurring offices agreed'
+                if unhashed:
+                    detail += (f'; {unhashed} concurrence(s) recorded before content '
+                               'hashing, not compared')
+                _lock(proposal, version, request.user, office, detail=detail)
                 proposal.refresh_open_changes()
 
     proposal.refresh_from_db()
     return Response(_full_payload(proposal))
+
+
+def _agreed_to_other_text(version):
+    """([office names whose concurrence was on other text], how many
+    concurrences carry no hash). Blank hashes predate the field and are
+    not compared."""
+    current = version.content_hash()
+    changed, unhashed = [], 0
+    for c in Concurrence.objects.filter(
+            version=version, decision=Concurrence.CONCUR).select_related('office'):
+        if not c.content_hash:
+            unhashed += 1
+        elif c.content_hash != current:
+            changed.append(c.office.name)
+    return sorted(changed), unhashed
 
 
 def _offices_yet_to_decide(proposal, version):
