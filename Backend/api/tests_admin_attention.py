@@ -112,13 +112,32 @@ class EachRequestOnce(AttentionFixture):
                         {'status': 'all'}, {'status': Proposal.WITH_HEAD}):
             first = self.attention(**filters)
             seen = []
-            for page in range(1, first['pages'] + 1):
-                seen += [r['proposal_id'] for r in self.attention(page=page, **filters)['rows']]
+            for group, n in first['groups'].items():
+                if not n:
+                    continue
+                part = self.attention(group=group, **filters)
+                for page in range(1, part['pages'] + 1):
+                    seen += [r['proposal_id'] for r in
+                             self.attention(group=group, page=page, **filters)['rows']]
             self.assertEqual(len(seen), len(set(seen)), filters)
             self.assertEqual(len(seen), first['count'], filters)
+            shown = [r['proposal_id'] for r in first['rows']]
+            self.assertEqual(len(shown), len(set(shown)), filters)
         listed = []
         for page in (1, 2):
             listed += [r['id'] for r in self.as_(self.admin).get(
                 '/api/admin/proposals/', {'status': 'all', 'page': page}).data['results']]
         self.assertEqual(len(listed), len(set(listed)))
         self.assertEqual(len(listed), 60)
+
+
+class TenEachThenShowMore(AttentionFixture):
+
+    def test_each_part_shows_ten_and_the_count(self):
+        for n in range(14):
+            self.owe(self.new_manual(), -1 - n)
+        first = self.attention()
+        self.assertEqual((first['groups']['overdue'], len(first['rows'])), (14, 10))
+        part = self.attention(group='overdue')
+        self.assertEqual((part['count'], len(part['rows'])), (14, 14))
+        self.assertEqual(self.attention(group='everything')['reason'], 'invalid_group')

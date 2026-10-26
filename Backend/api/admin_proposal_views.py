@@ -137,16 +137,18 @@ def admin_proposals(request):
 
 NEAR_DAYS = 30
 GROUPS = ('priority_or_near', 'overdue', 'stalled')
+GROUP_TOP = 10      # rows each part shows before "Show more"
 
 
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def admin_attention(request):
-    """`?status=&office=&series=&page=` - the block on top of the list,
-    under the same filters. In order: manuals marked priority or due within
-    30 days, then overdue, then stalled requests. A request appears once,
-    in the first group it belongs to; a manual not yet started appears once
-    per office. 50 a page."""
+    """`?status=&office=&series=` - the block on top of the list, under
+    the same filters. In order: manuals marked priority or due within 30
+    days, then overdue, then stalled requests. A request appears once, in
+    the first group it belongs to; a manual not yet started appears once
+    per office. Each part shows its first 10 rows and its count;
+    `?group=<part>&page=` pages through one part, 50 at a time."""
     params = request.query_params
     status = params.get('status') or 'open'
     if status not in STATUS_GROUPS and status not in STATUSES:
@@ -218,8 +220,18 @@ def admin_attention(request):
                + [e for e in entries if e[0] == 'stalled'])
 
     counts = {g: sum(1 for e in entries if e[0] == g) for g in GROUPS}
-    total = len(entries)
-    chosen = entries[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
+    group = params.get('group')
+    if group:
+        if group not in GROUPS:
+            return _refuse('Unknown part.', 'invalid_group')
+        entries = [e for e in entries if e[0] == group]
+        total = len(entries)
+        chosen = entries[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
+        pages = max(1, -(-total // PAGE_SIZE))
+    else:
+        total = len(entries)
+        chosen = [e for g in GROUPS for e in [x for x in entries if x[0] == g][:GROUP_TOP]]
+        pages = 1
     proposals = {p.pk: p for p in Proposal.objects.filter(
         pk__in=[e[2] for e in chosen if e[2]]).select_related('manual__series', 'initiating_office')}
     base = {r['proposal_id']: r for r in _proposal_rows(list(proposals.values()), now)}
@@ -262,5 +274,5 @@ def admin_attention(request):
                          'waiting_on': '', 'stalled': False,
                          'action': {'kind': 'deadline', 'label': 'Open deadline'}})
     return Response({'count': total, 'page': page, 'page_size': PAGE_SIZE,
-                     'pages': max(1, -(-total // PAGE_SIZE)), 'groups': counts,
+                     'pages': pages, 'groups': counts, 'top': GROUP_TOP,
                      'rows': tag_rows(request.user, rows)})
