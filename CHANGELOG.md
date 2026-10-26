@@ -328,3 +328,10 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   approving offices when a request is locked, so they know documents are
   coming to sign (the system admin where an office has no Head).
   Migration `0051`.
+- **Known defect in `v4.2.0-p4`, fixed by commit `b6f0e80`.** Opening
+  Advised revisions in Monitoring showed a white page, for every role. The
+  deadline tag, given to every row naming a manual, overwrote the row's
+  own deadline title, and the screen tried to print an object. The title
+  is now `deadline_title`, Monitoring sits inside an error boundary, and
+  a test crawls every endpoint to check that `deadline` is only ever the
+  tag or null.

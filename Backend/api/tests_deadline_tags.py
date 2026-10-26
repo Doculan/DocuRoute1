@@ -329,6 +329,10 @@ EXEMPT_PARTS = {
 # Long lists answer with a summary by default (3B-2), so the walk also
 # asks for their pages, where the manuals are.
 ALSO_ASK = {
+    'monitoring/items/': ['?bucket=advised', '?bucket=owed', '?bucket=unmet',
+                          '?bucket=open'],
+    'proposals/board/': ['?section=due', '?section=awaiting', '?section=mine',
+                         '?section=involving'],
     'staff/manuals/': ['?page=1', '?q=FAM', '?picker=1'],
     'manuals/': ['?page=1', '?picker=1'],
     'qms/queue/': ['?queue=imr', '?queue=approval'],
@@ -396,6 +400,25 @@ def _untagged(data, path='$', key=None, tagged=False):
     return found
 
 
+def _not_the_tag(data, path='$'):
+    """Every `deadline` in an answer that is neither null nor the tag (which
+    always carries `deadline_id` and `label`). The bug of 27 Oct 2026: a
+    row's own deadline title under `deadline` was overwritten by the tag,
+    and the screen printed an object."""
+    found = []
+    if isinstance(data, dict):
+        value = data.get('deadline', None)
+        if 'deadline' in data and value is not None and not (
+                isinstance(value, dict) and {'deadline_id', 'label'} <= value.keys()):
+            found.append(f'{path}.deadline')
+        for name, inner in data.items():
+            found += _not_the_tag(inner, f'{path}.{name}')
+    elif isinstance(data, list):
+        for n, inner in enumerate(data):
+            found += _not_the_tag(inner, f'{path}[{n}]')
+    return found
+
+
 class EveryScreenCarriesTheTag(ConcurrenceFixture):
     maxDiff = None
 
@@ -444,6 +467,26 @@ class EveryScreenCarriesTheTag(ConcurrenceFixture):
             'deadline_id': self.deadline.pk, 'announcement_id': 1, 'person_id': 1,
             'assignment_id': 1, 'attachment_id': 1, 'user_id': 1, 'serial': 'x',
         }
+
+    def test_deadline_is_always_the_tag_or_null(self):
+        wrong, called = {}, 0
+        for route, callback in _routes(urls.urlpatterns):
+            if route in NOT_JSON or not _answers_get(callback):
+                continue
+            url = '/api/' + route
+            for name, value in self.kwargs().items():
+                url = url.replace(f'<int:{name}>', str(value)).replace(f'<str:{name}>', str(value))
+            for asked in [''] + ALSO_ASK.get(route, []):
+                for user in self.viewers:
+                    response = self.as_(user).get(url + asked)
+                    if response.status_code != 200 or 'json' not in response.get('Content-Type', ''):
+                        continue
+                    called += 1
+                    found = _not_the_tag(json.loads(response.content))
+                    if found:
+                        wrong.setdefault(route + asked, set()).update(found[:3])
+        self.assertGreater(called, 50)
+        self.assertEqual(wrong, {})
 
     def test_every_manual_in_every_answer_has_a_deadline_key(self):
         missing, called, rows_seen = {}, 0, {}

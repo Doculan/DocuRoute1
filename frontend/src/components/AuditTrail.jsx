@@ -86,8 +86,8 @@ export default function AuditTrail({ proposalId }) {
         <div><dt>Versions</dt><dd>{s.versions}</dd></div>
         <div><dt>Returned</dt><dd>{s.times_returned
           ? `${s.times_returned} · ${s.returned_by.map((r) => r.by).join(", ")}` : "never"}</dd></div>
-        {s.deadline && <div><dt>Deadline</dt><dd>{s.deadline.title}
-          <span className="subtle"> · {s.deadline.type} · due {s.deadline.due_on}</span></dd></div>}
+        {s.due && <div><dt>Deadline</dt><dd>{s.due.title}
+          <span className="subtle"> · {s.due.type} · due {s.due.due_on}</span></dd></div>}
       </dl>
 
       <div className="row-wrap" style={{ gap: "0.4rem", margin: "0.9rem 0 0.6rem" }}>

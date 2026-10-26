@@ -177,7 +177,7 @@ def _summary(proposal, events, stage):
         'holder': holder,
         'versions': proposal.versions.count(),
         'times_returned': len(returned), 'returned_by': returned,
-        'deadline': {'title': deadline.deadline.title, 'type': deadline.deadline.type.name,
+        'due': {'title': deadline.deadline.title, 'type': deadline.deadline.type.name,
                      'due_on': deadline.deadline.due_on} if deadline else None,
     }
 
@@ -208,7 +208,11 @@ def trail(request, proposal_id):
         return error
     if not can_see(request.user, proposal):
         return Response({'error': 'Access denied', 'reason': 'not_visible'}, status=403)
-    return Response(build(proposal))
+    data = build(proposal)
+    # The manual's deadline tag, as on every screen naming a manual.
+    from .deadline_tags import deadline_tags_for
+    data['summary']['deadline'] = deadline_tags_for(request.user, [proposal.manual_id]).get(proposal.manual_id)
+    return Response(data)
 
 
 # ─── Export ──────────────────────────────────────────────────

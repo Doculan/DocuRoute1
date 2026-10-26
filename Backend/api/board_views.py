@@ -31,6 +31,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import access, lists
+from .deadline_tags import tag_rows
 from .models import DeadlineObligation, Proposal, ProposalParticipant
 from .monitoring_views import _proposal_rows, _returned
 
@@ -224,7 +225,7 @@ def _rows(viewer, proposals, obligation_for=None):
             'manual_id': p.manual_id, 'manual': p.manual.title,
             'series': p.manual.series.code if p.manual.series_id else None,
             'office': p.initiating_office.name,
-            'deadline': _deadline(ob, today), 'status': r['status'], 'holder': r['holder'],
+            'due': _deadline(ob, today), 'status': r['status'], 'holder': r['holder'],
             'days': r['days'], 'waiting_on': r['waiting_on'], 'stalled': r['stalled'],
             'action': {'kind': action[0], 'label': action[1]} if action else None,
         })
@@ -259,7 +260,7 @@ def _due_rows(viewer, pairs, today):
             'proposal_id': None, 'obligation_id': ob.pk,
             'manual_id': ob.manual_id, 'manual': ob.manual.title if ob.manual_id else None,
             'series': ob.manual.series.code if ob.manual_id and ob.manual.series_id else None,
-            'office': ob.office.name, 'deadline': _deadline(ob, today),
+            'office': ob.office.name, 'due': _deadline(ob, today),
             'status': 'Not started', 'holder': ob.office.name, 'days': None,
             'waiting_on': ('' if ob.manual_id else 'Any proposal your office submits meets it'),
             'stalled': False,
@@ -334,7 +335,7 @@ def board(request):
         total = len(due)
         paging = {'count': total, 'page': page, 'page_size': lists.PAGE_SIZE,
                   'pages': max(1, -(-total // lists.PAGE_SIZE))}
-        return Response({**paging, 'rows': rows})
+        return Response({**paging, 'rows': tag_rows(request.user, rows)})
 
     shown = list(due_ids)
     if key in ('mine', 'involving'):
@@ -349,4 +350,4 @@ def board(request):
         order = ('closed', '-updated_at', '-pk')
     proposals, paging = lists.page_of(query.order_by(*order), page)
     _mark_undecided(proposals, viewer)
-    return Response({**paging, 'rows': _rows(viewer, proposals)})
+    return Response({**paging, 'rows': tag_rows(request.user, _rows(viewer, proposals))})

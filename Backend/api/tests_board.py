@@ -54,7 +54,7 @@ class DueForSubmission(BoardFixture):
         rows = self.section('due')
         self.assertEqual([r['manual'] for r in rows],
                          ['FAM 9.05', 'FAM 9.04', 'FAM 9.03', 'FAM 9.02', 'FAM 9.01'])
-        self.assertEqual(rows[0]['deadline']['days_late'], 9)
+        self.assertEqual(rows[0]['due']['days_late'], 9)
         self.assertTrue(all(r['status'] == 'Not started' for r in rows))
         self.assertEqual(rows[0]['action'], {'kind': 'start', 'label': 'Start'})
         self.assertEqual(self.board()['overdue'], 2)
@@ -148,5 +148,5 @@ class OncePerManual(BoardFixture):
         self.owe(self.m[1], 40)
         self.owe(self.m[1], -4)
         rows = self.section('due')
-        self.assertEqual([(r['manual'], r['deadline']['days_late']) for r in rows], [('FAM 9.01', 4)])
+        self.assertEqual([(r['manual'], r['due']['days_late']) for r in rows], [('FAM 9.01', 4)])
         self.assertEqual(self.board()['sections'][0]['count'], 1)

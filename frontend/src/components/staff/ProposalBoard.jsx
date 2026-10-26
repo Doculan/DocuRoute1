@@ -123,13 +123,13 @@ function Rows({ sectionKey, filters, onOpen, onStart }) {
                 ? <span className="subtle text-xs"> · from {r.office}</span> : null}
             </span>
             <span className="board-deadline">
-              {r.deadline ? (
+              {r.due ? (
                 <>
-                  {r.deadline.days_late
-                    ? <span className="status-mark is-returned">Overdue · {r.deadline.days_late} days</span>
-                    : <span className="text-xs">Due {r.deadline.due_on}</span>}
-                  {r.deadline.priority && <span className="subtle text-xs"> · priority</span>}
-                  <div className="subtle text-xs">{r.deadline.title} · {r.deadline.type}</div>
+                  {r.due.days_late
+                    ? <span className="status-mark is-returned">Overdue · {r.due.days_late} days</span>
+                    : <span className="text-xs">Due {r.due.due_on}</span>}
+                  {r.due.priority && <span className="subtle text-xs"> · priority</span>}
+                  <div className="subtle text-xs">{r.due.title} · {r.due.type}</div>
                 </>
               ) : <span className="subtle text-xs">No deadline</span>}
             </span>
