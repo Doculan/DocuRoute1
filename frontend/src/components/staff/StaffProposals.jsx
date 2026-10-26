@@ -4,7 +4,7 @@ import ConfirmDestructive, { reauthHeader } from "../admin/ConfirmDestructive";
 import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
 import TrailReport from "../TrailReport";
-import { STATUS_LABEL, WITH_PACKAGE, statusTone } from "../proposalStatus";
+import { STATUS_LABEL, WITH_PACKAGE } from "../proposalStatus";
 // DocDiff, not DiffView: this is the submitter's view of their own
 // change, marked the way a person with a red pen would mark it.
 // DiffView is the reviewer's technical diff.
@@ -15,7 +15,7 @@ import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
 import AuditTrail from "../AuditTrail";
 import { freezeText } from "../deadlineText";
-import Pager from "../Pager";
+import ProposalBoard from "./ProposalBoard";
 
 const BASE_URL = "";
 
@@ -46,38 +46,14 @@ function when(value) {
  * with every section collapsed, and opening one is what starts an edit.
  */
 export default function StaffProposals({ startManualId, onDone, openRequest, onOpened }) {
-  const [tab, setTab] = useState("mine");
-  const [mine, setMine] = useState([]);
-  // Each a page of 50 with its total: { proposals, total, page, pages, ... }.
-  const [awaiting, setAwaiting] = useState(null);
-  const [involving, setInvolving] = useState(null);
   const [open, setOpen] = useState(null);       // proposal id
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // Bumped after anything that changes the list, so it reloads.
+  const [refresh, setRefresh] = useState(0);
+  const reload = useCallback(() => setRefresh((n) => n + 1), []);
   // The document a new proposal is waiting on the password for.
   const [confirmStart, setConfirmStart] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [ours, theirs, others] = await Promise.all([
-        axios.get(`${BASE_URL}/api/proposals/`, getAuth()),
-        axios.get(`${BASE_URL}/api/proposals/awaiting/`, getAuth()),
-        axios.get(`${BASE_URL}/api/proposals/involving/`, getAuth()),
-      ]);
-      setMine(ours.data.proposals);
-      setAwaiting(theirs.data);
-      setInvolving(others.data);
-      setError("");
-    } catch (err) {
-      setError(err.response?.data?.error || "Could not load proposals.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   // Arriving from a section's "Propose changes".
   useEffect(() => {
@@ -98,10 +74,10 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
         else setError(body?.error || "Could not start a proposal.");
       } finally {
         onDone?.();
-        load();
+        reload();
       }
     })();
-  }, [startManualId, onDone, load]);
+  }, [startManualId, onDone, reload]);
 
   const start = async (token) => {
     const manualId = confirmStart;
@@ -135,30 +111,11 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
       <Proposal
         key={open}
         proposalId={open}
-        onBack={() => { setOpen(null); load(); onDone?.(); }}
+        onBack={() => { setOpen(null); reload(); onDone?.(); }}
         onSay={say}
       />
     );
   }
-
-  if (loading) {
-    return <div className="loading-row"><span className="spinner" /> Loading…</div>;
-  }
-
-  const turnPage = async (name, page) => {
-    try {
-      const { data } = await axios.get(`${BASE_URL}/api/proposals/${name}/`,
-                                        { ...getAuth(), params: { page } });
-      (name === "awaiting" ? setAwaiting : setInvolving)(data);
-    } catch (err) {
-      setError(err.response?.data?.error || "Could not load proposals.");
-    }
-  };
-
-  const paged = { awaiting, involving }[tab];
-  const rows = tab === "mine" ? mine : paged?.proposals || [];
-  const awaitingTotal = awaiting?.total || 0;
-  const involvingTotal = involving?.total || 0;
 
   return (
     <div>
@@ -176,7 +133,7 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
         <div>
           <h1 className="page-title">Proposals</h1>
           <p className="page-subtitle">
-            Changes to a whole document, agreed by the offices that work on it.
+            What your office owes first, then what waits on it, then the rest.
           </p>
         </div>
       </header>
@@ -184,57 +141,7 @@ export default function StaffProposals({ startManualId, onDone, openRequest, onO
       {error && <div className="alert alert-danger">{error}</div>}
       {message && <div className="toast">{message}</div>}
 
-      <div className="tabs">
-        <button className={`tab${tab === "mine" ? " is-active" : ""}`}
-                onClick={() => setTab("mine")}>
-          From my office{mine.length > 0 ? ` (${mine.length})` : ""}
-        </button>
-        <button className={`tab${tab === "awaiting" ? " is-active" : ""}`}
-                onClick={() => setTab("awaiting")}>
-          Awaiting my office{awaitingTotal > 0 ? ` (${awaitingTotal.toLocaleString()})` : ""}
-        </button>
-        {/* Requests my office agreed to, after they stop waiting on us -
-            including what became of them. Only when there are any. */}
-        {involvingTotal > 0 && (
-          <button className={`tab${tab === "involving" ? " is-active" : ""}`}
-                  onClick={() => setTab("involving")}>
-            Other offices' requests ({involvingTotal.toLocaleString()})
-          </button>
-        )}
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-title">
-            {tab === "mine" ? "No proposals yet" : "Nothing waiting on you"}
-          </p>
-          <p className="empty-text">
-            {tab === "mine"
-              ? "Open a document, find the section you want to change, and choose Propose changes."
-              : "Proposals needing your office's agreement will appear here."}
-          </p>
-        </div>
-      ) : (
-        <div className="col" style={{ gap: "0.15rem" }}>
-          {rows.map((p) => (
-            <button key={p.id} className="series-row" onClick={() => setOpen(p.id)}>
-              <span className="series-code">{p.manual}</span>
-              <span className="series-title">
-                {p.changed_sections} section{p.changed_sections === 1 ? "" : "s"}
-                {p.version > 1 ? ` · version ${p.version}` : ""}
-                {p.deadline && <> <DeadlineTag tag={p.deadline} /></>}
-              </span>
-              <span className={`status-mark is-${statusTone(p.status)}`}>
-                {STATUS_LABEL[p.status]}
-              </span>
-              {tab !== "mine" && (
-                <span className="subtle text-xs">from {p.initiating_office}</span>
-              )}
-            </button>
-          ))}
-          {tab !== "mine" && <Pager paging={paged} onPage={(n) => turnPage(tab, n)} />}
-        </div>
-      )}
+      <ProposalBoard refreshKey={refresh} onOpen={setOpen} onStart={setConfirmStart} />
     </div>
   );
 }

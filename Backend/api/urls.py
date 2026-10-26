@@ -14,6 +14,7 @@ from . import delegation_views
 from . import freeze_views
 from . import monitoring_views
 from . import audit_trail
+from . import board_views
 from . import structure_views as structure
 from . import admin_proposal_views
 from . import action_views
@@ -96,6 +97,7 @@ urlpatterns = [
     path('proposals/<int:proposal_id>/return-to-encoder/', concurrence.return_to_encoder),
     path('proposals/<int:proposal_id>/decide/', concurrence.decide),
     path('proposals/<int:proposal_id>/withdraw/', concurrence.withdraw),
+    path('proposals/board/', board_views.board),
     path('proposals/awaiting/', concurrence.awaiting_my_office),
     path('proposals/involving/', concurrence.involving_my_office),
     path('notifications/', inbox.inbox),

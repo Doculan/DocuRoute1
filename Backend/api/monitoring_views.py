@@ -344,10 +344,17 @@ def _proposal_rows(proposals, now):
                 entered=Max('events__at', filter=Q(events__event__in=MOVES + (AuditEvent.CREATED,)))
             ).values_list('pk', 'entered'))
     waiting = _undecided([p for p in proposals if p.status == Proposal.CONCURRENCE])
-    returned_by = dict(
-        AuditEvent.objects.filter(proposal__in=[p for p in proposals if p.status == Proposal.DRAFT],
-                                  event__in=(AuditEvent.RETURNED, AuditEvent.RETURNED_TO_ENCODER))
-        .order_by('proposal_id', 'at').values_list('proposal_id', 'office_name_at_time'))
+    # Who returned each draft whose last move was a return: the Head, or
+    # the concurring office by name.
+    drafts = [p.pk for p in proposals if p.status == Proposal.DRAFT]
+    still_returned = set(_returned(Proposal.objects.filter(pk__in=drafts)).values_list('pk', flat=True))
+    returned_by = {}
+    for proposal_id, event, office_name in AuditEvent.objects.filter(
+            proposal_id__in=still_returned,
+            event__in=(AuditEvent.RETURNED, AuditEvent.RETURNED_TO_ENCODER),
+    ).order_by('proposal_id', 'at').values_list('proposal_id', 'event', 'office_name_at_time'):
+        returned_by[proposal_id] = ('the Head' if event == AuditEvent.RETURNED_TO_ENCODER
+                                    else office_name)
     rows = []
     for p in proposals:
         since = entered.get(p.pk) or p.updated_at

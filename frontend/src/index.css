@@ -800,6 +800,19 @@ a:hover { color: var(--brand-500); }
 .segmented-item + .segmented-item { border-left: 1px solid var(--line); }
 .segmented-item.is-active { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
 
+/* Deadline-first Proposals (spec §8.3). */
+.board-section { border-top: 1px solid var(--line); }
+.board-head { display: flex; align-items: center; gap: 0.6rem; width: 100%; border: 0; background: none; padding: 0.75rem 0.15rem; font: inherit; text-align: left; cursor: pointer; }
+.board-toggle { width: 1rem; color: var(--text-muted); }
+.board-title { font-weight: 600; }
+.board-rows { padding: 0 0 0.75rem; }
+.board-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.75rem; border-top: 1px solid var(--paper-2); }
+.board-main { display: grid; grid-template-columns: minmax(12rem, 1.4fr) minmax(10rem, 1fr) minmax(10rem, 1fr); gap: 0.75rem; align-items: start; border: 0; background: none; padding: 0.55rem 0.15rem; font: inherit; text-align: left; cursor: pointer; }
+.board-main:disabled { cursor: default; color: inherit; opacity: 1; }
+.board-main:hover:not(:disabled) { background: var(--paper-3); }
+.board-manual { font-weight: 500; }
+.board-action { min-width: 7.5rem; text-align: right; }
+
 /* The audit block (spec §10). */
 .audit-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.5rem 1.5rem; margin: 0.9rem 0 0; }
 .audit-summary dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
