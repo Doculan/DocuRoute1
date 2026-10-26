@@ -795,6 +795,10 @@ a:hover { color: var(--brand-500); }
 .monitor-count { font-variant-numeric: tabular-nums; font-weight: 600; }
 .monitor-count.is-danger { color: var(--danger); }
 .monitor-count.is-warning { color: var(--gold); }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-xs); overflow: hidden; }
+.segmented-item { border: 0; background: none; padding: 0.25rem 0.75rem; font: inherit; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); }
+.segmented-item + .segmented-item { border-left: 1px solid var(--line); }
+.segmented-item.is-active { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
 .action-banner-list li + li { margin-top: 0.15rem; }
 
 .app-content {

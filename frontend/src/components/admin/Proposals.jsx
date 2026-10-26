@@ -50,8 +50,8 @@ const FILTER_STYLE = { width: "auto", flex: "1 1 12rem", maxWidth: "20rem" };
  * The reviewer's technical diff, not the submitter's marked-up one: this
  * audience is checking what changed, not reading the document.
  */
-export default function Proposals({ openId = null }) {
-  const [filters, setFilters] = useState(NO_FILTERS);
+export default function Proposals({ openId = null, initialFilters = null }) {
+  const [filters, setFilters] = useState({ ...NO_FILTERS, ...(initialFilters || {}) });
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [offices, setOffices] = useState([]);

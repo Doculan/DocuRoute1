@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from .models import (
     Announcement, Concurrence, CustomUser,
     Manual, ManualSection, Office, OfficeLink,
-    Position, Proposal, ProposalVersion, RecentlyOpened, SectionHistory,
+    Position, Proposal, RecentlyOpened, SectionHistory,
 )
 from ml.ocr_engine import extract_text
 from api import access, document_status, freeze, lists
@@ -943,64 +943,6 @@ def _relationship_for(user, manual):
     return ' · '.join(dict.fromkeys(labels)) or None
 
 
-# How many separate days must carry activity before a line through them
-# means anything. Four points over four months is not a trend, and drawing
-# it as one invites the reader to see a slope that is really just the gaps
-# between submissions. Below this the same numbers are shown as a table,
-# which makes no claim about the shape.
-ACTIVITY_CHART_MINIMUM_DAYS = 5
-
-# Far enough back to show a term's worth of work, short enough that the
-# series stays readable at dashboard width.
-ACTIVITY_WINDOW_DAYS = 30
-
-
-def _activity_series(window_start, today):
-    """Work per day, oldest first.
-
-    Counted on the day each thing happened: a proposal submitted (once per
-    version, so a redraft sent again counts again - it was), agreed (locked:
-    every concurring office concurred), or returned by an office. The
-    question this answers is how much work is moving, day by day.
-    """
-    submitted = {}
-    approved, rejected = {}, {}
-
-    def add(bucket, value):
-        day = timezone.localtime(value).date()
-        bucket[day] = bucket.get(day, 0) + 1
-
-    for value in ProposalVersion.objects.filter(
-        submitted_at__isnull=False, submitted_at__date__gte=window_start,
-    ).values_list('submitted_at', flat=True):
-        add(submitted, value)
-
-    for value in Proposal.objects.filter(
-        locked_at__isnull=False, locked_at__date__gte=window_start,
-    ).values_list('locked_at', flat=True):
-        add(approved, value)
-
-    for value in Concurrence.objects.filter(
-        decision='return', recorded_at__date__gte=window_start,
-    ).values_list('recorded_at', flat=True):
-        add(rejected, value)
-
-    days = []
-    cursor = window_start
-    while cursor <= today:
-        days.append({
-            'date': cursor,
-            'submitted': submitted.get(cursor, 0),
-            'approved': approved.get(cursor, 0),
-            'rejected': rejected.get(cursor, 0),
-        })
-        cursor += timedelta(days=1)
-
-    active = sum(1 for d in days
-                 if d['submitted'] or d['approved'] or d['rejected'])
-    return days, active
-
-
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def admin_dashboard(request):
@@ -1013,7 +955,6 @@ def admin_dashboard(request):
     disagree with each other.
     """
     today = timezone.localdate()
-    window_start = today - timedelta(days=ACTIVITY_WINDOW_DAYS - 1)
     from . import monitoring
     monitoring.maybe_run_for()
 
@@ -1039,28 +980,6 @@ def admin_dashboard(request):
         'proposals_locked': Proposal.objects.filter(
             status__in=Proposal.FROZEN_STATUSES
         ).count(),
-    }
-
-    # -- 2. activity over time -----------------------------------
-    days, active_days = _activity_series(window_start, today)
-    activity = {
-        'days': [{
-            'date': d['date'].isoformat(),
-            'submitted': d['submitted'],
-            'approved': d['approved'],
-            'rejected': d['rejected'],
-        } for d in days],
-        'active_days': active_days,
-        'window_days': ACTIVITY_WINDOW_DAYS,
-        # Decided here rather than in the component so the rule lives in one
-        # place and can be tested.
-        'enough_for_chart': active_days >= ACTIVITY_CHART_MINIMUM_DAYS,
-        'minimum_days': ACTIVITY_CHART_MINIMUM_DAYS,
-        'totals': {
-            'submitted': sum(d['submitted'] for d in days),
-            'approved': sum(d['approved'] for d in days),
-            'rejected': sum(d['rejected'] for d in days),
-        },
     }
 
     # -- 3. upcoming ---------------------------------------------
@@ -1092,7 +1011,6 @@ def admin_dashboard(request):
 
     return Response({
         'attention': attention,
-        'activity': activity,
         'proposals': _recent_proposals(request.user),
         'upcoming': upcoming,
         'upcoming_total': scheduled.count(),

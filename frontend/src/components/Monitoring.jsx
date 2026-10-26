@@ -1,11 +1,13 @@
 import { useState } from "react";
 import useServerData from "./useServerData";
+import OfficesChart from "./OfficesChart";
 
 /**
  * Monitoring (v4.2 Phase 4): read-only, scoped by the server.
  *
  * Counts first; every count opens its list. Below them, open requests by
  * office, and the office tree rolled up from beneath - most overdue first.
+ * Advised revisions is a lens beside the overview, not a tab of its own.
  * The admin and QMS see the whole institution, a Head their branch, an
  * Encoder their own office.
  */
@@ -24,6 +26,7 @@ const LIST_TITLES = {
   in_concurrence: "In concurrence", awaiting_signatures: "Awaiting signatures",
   with_qms: "With QMS", drafting: "Drafting", with_head: "With the Head",
   owed: "Deadline obligations", unmet: "Unmet deadline obligations", open: "Open requests",
+  advised: "Advised revisions",
 };
 
 const OPEN_BUCKETS = ["drafting", "with_head", "in_concurrence", "returned", "awaiting_signatures", "with_qms"];
@@ -31,6 +34,7 @@ const openOf = (c) => OPEN_BUCKETS.reduce((n, b) => n + (c[b] || 0), 0);
 
 export default function Monitoring({ title = "Monitoring" }) {
   const [list, setList] = useState(null);   // {bucket, office, officeName}
+  const [lens, setLens] = useState("overview");
   const { data, error } = useServerData("/api/monitoring/overview/", null, "Could not load monitoring.");
 
   if (list) return <ItemList {...list} onBack={() => setList(null)} />;
@@ -54,6 +58,16 @@ export default function Monitoring({ title = "Monitoring" }) {
           <p className="empty-text">You hold no post in an office.</p></div>
       ) : (
         <>
+          <div className="tabs" style={{ marginBottom: "1.25rem" }}>
+            <button type="button" className={`tab${lens === "overview" ? " is-active" : ""}`}
+                    onClick={() => setLens("overview")}>Overview</button>
+            <button type="button" className={`tab${lens === "advised" ? " is-active" : ""}`}
+                    onClick={() => setLens("advised")}>
+              Advised revisions
+              {data.counts.advised > 0 && <span className="tab-count">{data.counts.advised}</span>}
+            </button>
+          </div>
+          {lens === "advised" ? <ItemList bucket="advised" embedded /> : (<>
           <div className="stat-grid monitor-tiles">
             {TILES.map(([key, label, note, tone]) => (
               <button key={key} type="button" className={`stat-card ${data.counts[key] ? tone : ""}`}
@@ -64,41 +78,14 @@ export default function Monitoring({ title = "Monitoring" }) {
               </button>
             ))}
           </div>
-          <OfficesChart chart={data.chart} onOpen={(bar) => setList({
+          <OfficesChart title="Requests by office" onOpen={(bar) => setList({
             bucket: "open", office: bar.office_id, officeName: bar.office })} />
           <OfficeTree onOpen={(office, bucket) => setList({
             bucket, office: office.id, officeName: office.name, subtree: true })} />
+          </>)}
         </>
       )}
     </div>
-  );
-}
-
-function OfficesChart({ chart, onOpen }) {
-  if (!chart || chart.bars.length === 0) return null;
-  const top = chart.bars[0].open;
-  return (
-    <section className="monitor-section">
-      <h2 className="section-title">Open requests by office</h2>
-      <div className="monitor-bars">
-        {chart.bars.map((bar) => (
-          <button key={bar.office_id} type="button" className="monitor-bar" onClick={() => onOpen(bar)}
-                  title={OPEN_BUCKETS.filter((b) => bar.stages[b]).map((b) => `${LIST_TITLES[b]}: ${bar.stages[b]}`).join(" · ")}>
-            <span className="monitor-bar-label">{bar.office}</span>
-            <span className="monitor-bar-track">
-              <span className="monitor-bar-fill" style={{ width: `${Math.max(4, (bar.open / top) * 100)}%` }} />
-            </span>
-            <span className="monitor-bar-value">{bar.open}</span>
-          </button>
-        ))}
-      </div>
-      {(chart.more > 0 || chart.none > 0) && (
-        <p className="subtle text-xs" style={{ margin: "0.5rem 0 0" }}>
-          {chart.more > 0 && `${chart.more} more offices with open requests. `}
-          {chart.none > 0 && `No open requests · ${chart.none} offices.`}
-        </p>
-      )}
-    </section>
   );
 }
 
@@ -178,16 +165,25 @@ function TreeRow({ office, depth, onOpen }) {
   );
 }
 
-function ItemList({ bucket, office, officeName, subtree, onBack }) {
+function ItemList({ bucket, office, officeName, subtree, onBack, embedded = false }) {
   const [page, setPage] = useState(1);
   const params = { bucket, page, ...(office ? { office } : {}), ...(subtree ? { subtree: 1 } : {}) };
   const { data, error } = useServerData("/api/monitoring/items/", params, "Could not load the list.");
   return (
     <div>
-      <button className="btn btn-ghost btn-sm" onClick={onBack}>← Monitoring</button>
-      <h1 className="page-title" style={{ marginTop: "0.75rem" }}>
-        {LIST_TITLES[bucket]}{officeName ? ` · ${officeName}${subtree ? " and beneath" : ""}` : ""}
-      </h1>
+      {!embedded && (
+        <>
+          <button className="btn btn-ghost btn-sm" onClick={onBack}>← Monitoring</button>
+          <h1 className="page-title" style={{ marginTop: "0.75rem" }}>
+            {LIST_TITLES[bucket]}{officeName ? ` · ${officeName}${subtree ? " and beneath" : ""}` : ""}
+          </h1>
+        </>
+      )}
+      {embedded && (
+        <p className="subtle text-sm" style={{ margin: "0 0 0.75rem" }}>
+          Manuals the admin has advised an office to revise, open ones first.
+        </p>
+      )}
       {error && <div className="alert alert-danger">{error}</div>}
       {!data ? (
         <div className="loading-row"><span className="spinner" /> Loading…</div>
@@ -197,7 +193,25 @@ function ItemList({ bucket, office, officeName, subtree, onBack }) {
         <>
           <p className="subtle text-xs">{data.count} in all</p>
           <div className="table-wrap">
-            {data.kind === "obligations" ? (
+            {data.kind === "advised" ? (
+              <table className="table">
+                <thead><tr><th>Manual</th><th>Deadline</th><th>Status</th><th>Holder</th><th>Days late</th></tr></thead>
+                <tbody>
+                  {data.rows.map((r) => (
+                    <tr key={r.obligation_id}>
+                      <td>{r.manual}{r.priority && <span className="subtle text-xs"> · priority</span>}
+                        <div className="subtle text-xs">{r.office}</div></td>
+                      <td>{r.deadline}<div className="subtle text-xs">{r.type} · due {r.due_on}</div></td>
+                      <td>{r.met ? <span className="subtle">{r.status}</span> : r.status}</td>
+                      <td>{r.holder}</td>
+                      <td>{r.days_late
+                        ? <span className="status-mark is-returned">{r.days_late}</span>
+                        : <span className="subtle">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : data.kind === "obligations" ? (
               <table className="table">
                 <thead><tr><th>Deadline</th><th>Office</th><th>Manual</th><th>Due</th><th>State</th></tr></thead>
                 <tbody>

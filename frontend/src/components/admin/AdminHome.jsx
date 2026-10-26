@@ -4,6 +4,7 @@ import { STATUS_LABEL, statusTone } from "../proposalStatus";
 import Icon from "../Icon";
 import NeedsAction from "../NeedsAction";
 import DeadlineTag from "../DeadlineTag";
+import OfficesChart from "../OfficesChart";
 
 // Relative, so the browser sends it to whichever host served the page and
 // Vite's proxy forwards it. See StaffManuals for the full reasoning.
@@ -38,7 +39,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * One request for every area. They read the same few tables, and the
  * first screen after signing in is the worst one to make slow.
  */
-export default function AdminHome({ onGo, onOpenProposal }) {
+export default function AdminHome({ onGo, onOpenProposal, onOpenOffice }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -72,7 +73,7 @@ export default function AdminHome({ onGo, onOpenProposal }) {
     );
   }
 
-  const { attention, activity, proposals, upcoming,
+  const { attention, proposals, upcoming,
           upcoming_total: upcomingTotal, system } = data;
 
   return (
@@ -93,7 +94,8 @@ export default function AdminHome({ onGo, onOpenProposal }) {
 
       <div className="dash-grid" style={{ marginTop: "1.75rem" }}>
         <div className="col" style={{ gap: "1.75rem", minWidth: 0 }}>
-          <Activity activity={activity} />
+          <OfficesChart title="Proposals by office"
+                        onOpen={(bar, mode) => onOpenOffice?.(bar.office_id, mode)} />
           <RecentProposals rows={proposals} onGo={onGo} />
         </div>
 
@@ -173,152 +175,8 @@ function Attention({ counts, onGo }) {
   );
 }
 
-/* ── 2. Activity over time ──────────────────────────────────────────── */
+/* ── 2. Recent proposals ───────────────────────────────────────────── */
 
-/** Submissions and decisions over the last month.
- *
- *  The backend decides whether there is enough history for a line, and this
- *  follows it. Drawing four points spread over a month as a trend line
- *  invites the reader to see a slope that is really the gaps between
- *  submissions; the table says exactly the same numbers and claims nothing
- *  about the shape.
- */
-function Activity({ activity }) {
-  const { days, enough_for_chart: enough, totals, window_days: window,
-          active_days: activeDays, minimum_days: minimum } = activity;
-
-  const summary = (
-    <p className="subtle text-xs" style={{ margin: "0 0 0.75rem" }}>
-      Last {window} days · {totals.submitted} submitted ·{" "}
-      {totals.approved} agreed ·{" "}
-      {totals.rejected} returned
-    </p>
-  );
-
-  return (
-    <section className="admin-dashboard-section">
-      <h2 className="section-title">Activity</h2>
-      {summary}
-      {totals.submitted + totals.approved + totals.rejected === 0 ? (
-        <p className="subtle text-sm" style={{ margin: 0 }}>
-          Nothing has been submitted or decided in the last {window} days.
-        </p>
-      ) : enough ? (
-        <ActivityChart days={days} />
-      ) : (
-        <ActivityTable days={days} activeDays={activeDays} minimum={minimum} />
-      )}
-    </section>
-  );
-}
-
-/** Hand-drawn SVG rather than a charting library: three series over thirty
- *  points does not justify 200kB and a second set of theme rules. */
-function ActivityChart({ days }) {
-  const W = 620, H = 160, PAD_L = 28, PAD_R = 24, PAD_T = 12, PAD_B = 26;
-  const peak = Math.max(1, ...days.map((d) =>
-    Math.max(d.submitted, d.approved + d.rejected)));
-  // A whole number of rows, so every gridline lands on a count that exists.
-  const top = peak <= 4 ? peak : Math.ceil(peak / 4) * 4;
-  const step = (W - PAD_L - PAD_R) / Math.max(1, days.length - 1);
-  const y = (v) => PAD_T + (H - PAD_T - PAD_B) * (1 - v / top);
-  const x = (i) => PAD_L + i * step;
-
-  const line = (key) => days.map((d, i) =>
-    `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(d[key]).toFixed(1)}`).join(" ");
-
-  // Submitted is drawn as a filled area, not a third line. Three lines of
-  // the same weight read as one tangle where they cross, and at the zero
-  // baseline - which is most of a quiet fortnight - they overlap exactly,
-  // so the only series visible is whichever was drawn last. A fill differs
-  // in *form*, which survives both the overlap and a greyscale printout.
-  const area = `${line("submitted")} L${x(days.length - 1).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
-
-  const ticks = top <= 4
-    ? Array.from({ length: top + 1 }, (_, i) => i)
-    : [0, top / 4, top / 2, (top * 3) / 4, top];
-
-  const labelEvery = Math.ceil(days.length / 6);
-
-  return (
-    <div className="chart-frame">
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" role="img"
-           aria-label={`Revisions submitted and decided over the last ${days.length} days`}>
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={PAD_L} x2={W - PAD_R} y1={y(t)} y2={y(t)} className="chart-grid" />
-            <text x={PAD_L - 6} y={y(t) + 3.5} className="chart-tick" textAnchor="end">{t}</text>
-          </g>
-        ))}
-
-        {days.map((d, i) => (i % labelEvery === 0 || i === days.length - 1) && (
-          <text key={d.date} x={x(i)} y={H - 8} className="chart-tick" textAnchor="middle">
-            {formatDay(d.date)}
-          </text>
-        ))}
-
-        <path d={area} className="chart-area" />
-        <path d={line("submitted")} className="chart-line is-submitted" />
-        <path d={line("approved")} className="chart-line is-approved" />
-        <path d={line("rejected")} className="chart-line is-rejected" />
-
-        {/* Single days show as dots; a lone point on a line is invisible. */}
-        {days.map((d, i) => d.submitted > 0 && (
-          <circle key={`s${d.date}`} cx={x(i)} cy={y(d.submitted)} r="2.6"
-                  className="chart-dot is-submitted" />
-        ))}
-      </svg>
-
-      <div className="chart-legend">
-        <span className="chart-key is-submitted">Submitted</span>
-        <span className="chart-key is-approved">Agreed</span>
-        <span className="chart-key is-rejected">Returned</span>
-      </div>
-    </div>
-  );
-}
-
-/** The same numbers, with the empty days dropped — those are what make the
- *  line misleading, and in a table they are simply absent. */
-function ActivityTable({ days, activeDays, minimum }) {
-  const rows = days.filter((d) => d.submitted || d.approved || d.rejected)
-                   .slice().reverse();
-  return (
-    <div>
-      <p className="subtle text-xs" style={{ margin: "0 0 0.6rem" }}>
-        Shown as a table: {plural(activeDays, "day")} with activity, and a line
-        needs {minimum} before its shape means anything.
-      </p>
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Day</th>
-              <th style={{ textAlign: "right" }}>Submitted</th>
-              <th style={{ textAlign: "right" }}>Agreed</th>
-              <th style={{ textAlign: "right" }}>Returned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((d) => (
-              <tr key={d.date}>
-                <td className="table-strong">{formatDay(d.date)}</td>
-                <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d.submitted || "—"}</td>
-                <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d.approved || "—"}</td>
-                <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d.rejected || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-/* ── 3. Recent proposals ────────────────────────────────────────────── */
-
-/** What is moving: the last few proposals and how far each has got. Not
- *  shown at all until there is one. */
 function RecentProposals({ rows, onGo }) {
   if (!rows || rows.length === 0) return null;
   return (
@@ -346,7 +204,7 @@ function RecentProposals({ rows, onGo }) {
   );
 }
 
-/* ── 4. Upcoming ────────────────────────────────────────────────────── */
+/* ── 3. Upcoming ────────────────────────────────────────────────────── */
 
 /** The same list the staff dashboard shows, except unfiltered: this is the
  *  desk the notices are posted from, so every office's are visible. */
@@ -389,7 +247,7 @@ function Upcoming({ rows, total, onGo }) {
   );
 }
 
-/* ── 5. System state ────────────────────────────────────────────────── */
+/* ── 4. System state ────────────────────────────────────────────────── */
 
 /** What is in the system. Plain figures, because none of these change often
  *  enough for a chart to say anything a number does not. */

@@ -269,3 +269,51 @@ class AddMonitors(TestCase):
         output = self.run_command('--add-monitors')
         self.assertIn('Refusing: these Head posts are already held', output)
         self.assertFalse(CustomUser.objects.filter(username='PRES_Antonio').exists())
+
+
+# --- step 3: the offices chart; step 4: advised revisions -----
+
+class TheChartAndAdvised(TheCounts):
+
+    def chart(self, user, **params):
+        return self.as_(user).get('/api/monitoring/offices-chart/', params).data
+
+    def test_pending_is_open_requests_by_office_highest_first(self):
+        self.proposal('ACC', Proposal.WITH_HEAD, 1)
+        self.proposal('ACC', Proposal.CONCURRENCE, 1)
+        self.proposal('BUD', Proposal.DRAFT, 1)
+        self.proposal('HRMO', Proposal.WITH_HEAD, 1)              # another branch
+        data = self.chart(self.caof_head)
+        self.assertEqual([(b['office'], b['value']) for b in data['bars']],
+                         [('ACC Office', 2), ('BUD Office', 1)])
+        self.assertEqual(data['none'], 2)                          # CAO-F and CMO have none
+        self.assertEqual(self.chart(self.admin)['bars'][0]['stages']['in_concurrence'], 1)
+
+    def test_approved_counts_what_was_made_effective_in_the_period(self):
+        done = self.proposal('ACC', Proposal.EFFECTIVE, 0, event=AuditEvent.MADE_EFFECTIVE)
+        old = self.proposal('BUD', Proposal.EFFECTIVE, 400, event=AuditEvent.MADE_EFFECTIVE)
+        this_month = self.chart(self.admin, mode='approved', period='month')['bars']
+        self.assertEqual([(b['office'], b['value']) for b in this_month], [('ACC Office', 1)])
+        self.assertEqual(self.chart(self.admin, mode='pending')['bars'], [])
+        self.assertTrue(done and old)
+        response = self.as_(self.admin).get('/api/monitoring/offices-chart/', {'mode': 'x'})
+        self.assertEqual(response.data['reason'], 'invalid_filter')
+
+    def test_advised_revisions_say_where_each_office_has_got(self):
+        advised = self.obligation('ACC', -2)
+        advised.manual = self.manual
+        advised.save(update_fields=['manual'])
+        other = Manual.objects.create(title='FAM 7.01', series=self.series)
+        waiting = self.obligation('BUD', 5)
+        waiting.manual = other
+        waiting.save(update_fields=['manual'])
+        Proposal.objects.create(manual=other, initiating_office=self.o['BUD'],
+                                created_by=self.admin, status=Proposal.CONCURRENCE)
+        self.obligation('CMO', 5)                                  # office-level: not advised
+        self.assertEqual(self.counts(self.caof_head)['advised'], 2)
+        rows = self.as_(self.caof_head).get('/api/monitoring/items/?bucket=advised').data['rows']
+        self.assertEqual([(r['office'], r['manual'], r['status'], r['days_late']) for r in rows],
+                         [('ACC Office', 'FAM 6.02', 'Not started', 2),
+                          ('BUD Office', 'FAM 7.01', 'In concurrence', 0)])
+        self.assertEqual(self.as_(self.acc_enc).get('/api/monitoring/items/?bucket=advised')
+                         .data['count'], 1)

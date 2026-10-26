@@ -24,10 +24,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    Announcement, Concurrence, CustomUser, Manual, ManualSection, Office,
+    Announcement, CustomUser, Manual, ManualSection, Office,
     Proposal, ProposalVersion,
 )
-from api.views import ACTIVITY_CHART_MINIMUM_DAYS, ACTIVITY_WINDOW_DAYS
 
 
 class AdminDashboardTests(TestCase):
@@ -131,64 +130,6 @@ class AdminDashboardTests(TestCase):
         )
         self.assertEqual(self.get()["attention"]["untagged_sections"], 2)
 
-    # -- 2. activity -----------------------------------------------
-
-    def test_the_series_covers_the_whole_window_including_empty_days(self):
-        """A gap is information: a line drawn only through the days that
-        have data would compress a fortnight of silence into one step."""
-        activity = self.get()["activity"]
-        self.assertEqual(len(activity["days"]), ACTIVITY_WINDOW_DAYS)
-        self.assertEqual(activity["active_days"], 0)
-
-    def test_agreement_counts_on_the_day_it_was_reached(self):
-        """Not the day the proposal was submitted: a lock today on a
-        three-week-old submission is today's work."""
-        self.a_submission(submitted_days_ago=20, locked_days_ago=0)
-        days = {d["date"]: d for d in self.get()["activity"]["days"]}
-        today = timezone.localdate().isoformat()
-        then = (timezone.localdate() - timedelta(days=20)).isoformat()
-        self.assertEqual(days[today]["approved"], 1)
-        self.assertEqual(days[today]["submitted"], 0)
-        self.assertEqual(days[then]["submitted"], 1)
-        self.assertEqual(days[then]["approved"], 0)
-
-    def test_a_returned_proposal_is_not_counted_as_agreed(self):
-        _, version = self.a_submission()
-        Concurrence.objects.create(
-            version=version, office=self.other, decision=Concurrence.RETURN,
-            feedback="Too short.", recorded_by=self.staff,
-        )
-        totals = self.get()["activity"]["totals"]
-        self.assertEqual(totals["rejected"], 1)
-        self.assertEqual(totals["approved"], 0)
-
-    def test_thin_history_does_not_get_a_chart(self):
-        for day in range(ACTIVITY_CHART_MINIMUM_DAYS - 1):
-            self.a_submission(submitted_days_ago=day)
-        activity = self.get()["activity"]
-        self.assertEqual(activity["active_days"], ACTIVITY_CHART_MINIMUM_DAYS - 1)
-        self.assertFalse(activity["enough_for_chart"])
-
-    def test_enough_separate_days_earns_the_chart(self):
-        for day in range(ACTIVITY_CHART_MINIMUM_DAYS):
-            self.a_submission(submitted_days_ago=day)
-        self.assertTrue(self.get()["activity"]["enough_for_chart"])
-
-    def test_many_submissions_on_one_day_are_still_one_day(self):
-        """Volume is not history. Twenty submissions in an afternoon say
-        nothing about a trend, and drawing them as one would be a spike
-        with nothing to compare it to."""
-        for _ in range(20):
-            self.a_submission(submitted_days_ago=0)
-        activity = self.get()["activity"]
-        self.assertEqual(activity["active_days"], 1)
-        self.assertFalse(activity["enough_for_chart"])
-        self.assertEqual(activity["totals"]["submitted"], 20)
-
-    def test_work_older_than_the_window_is_left_out(self):
-        self.a_submission(submitted_days_ago=ACTIVITY_WINDOW_DAYS + 5)
-        self.assertEqual(self.get()["activity"]["totals"]["submitted"], 0)
-
     # -- 3. upcoming: the next deadlines ----------------------------
 
     def a_deadline(self, title, days, active=True):
@@ -246,4 +187,4 @@ class AdminDashboardTests(TestCase):
             side_effect=AssertionError("the dashboard ran an assessment"),
         ):
             data = self.get()
-        self.assertEqual(data["activity"]["totals"]["approved"], 1)
+        self.assertEqual(len(data["proposals"]), 1)

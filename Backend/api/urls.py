@@ -179,6 +179,7 @@ urlpatterns = [
     path('monitoring/overview/', monitoring_views.overview),
     path('monitoring/offices/', monitoring_views.offices),
     path('monitoring/items/', monitoring_views.items),
+    path('monitoring/offices-chart/', monitoring_views.offices_chart),
     path('admin/freezes/', freeze_views.freezes),
     path('admin/freezes/<int:freeze_id>/lift/', freeze_views.lift),
     path('admin/freezes/<int:freeze_id>/extend/', freeze_views.extend),

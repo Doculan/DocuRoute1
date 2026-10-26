@@ -3,6 +3,7 @@
     GET monitoring/overview/                       counts for the viewer's scope, and the offices chart
     GET monitoring/offices/?parent=<id>&page=      one level of the office tree, rolled up from beneath
     GET monitoring/items/?bucket=&office=&subtree=&page=   the rows behind a count, 50 a page
+    GET monitoring/offices-chart/?mode=pending|approved&period=month|year|last_year
 
 **Scope** is `access.monitoring_scope`: the admin and QMS everything, a
 Head (or delegate) their office and everything beneath it, an Encoder
@@ -21,13 +22,14 @@ over the scope, whatever its size:
 | with_qms | Ready for the IMR, awaiting the approving authority, with the custodian |
 | stalled | open requests in their current stage longer than its stall limit - computed now, from when they entered it, with the limits `run_monitoring` uses; never from its notices |
 | owed / unmet / overdue | deadline obligations on active deadlines: all, still open, and open past their due date |
+| advised | advised revisions still open: obligations that name a manual (the admin advised the office to revise it) |
 
 Requests count under the office that made them; obligations under the
 office that owes them.
 """
 
 from collections import Counter
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.db.models import Count, F, Max, Q
 from django.utils import timezone
@@ -51,7 +53,7 @@ PROPOSAL_BUCKETS = {
     'with_qms': (Proposal.READY_FOR_IMR, Proposal.AWAITING_APPROVAL, Proposal.WITH_CUSTODIAN),
 }
 OBLIGATION_BUCKETS = ('owed', 'unmet', 'overdue')
-BUCKETS = tuple(PROPOSAL_BUCKETS) + ('stalled',) + OBLIGATION_BUCKETS
+BUCKETS = tuple(PROPOSAL_BUCKETS) + ('stalled',) + OBLIGATION_BUCKETS + ('advised',)
 
 # The events that move a draft, and those that mean it came back.
 MOVES = (AuditEvent.SENT_TO_HEAD, AuditEvent.RECALLED, AuditEvent.RETURNED_TO_ENCODER,
@@ -68,7 +70,6 @@ STATUS_WORDS = {
     Proposal.WITH_CUSTODIAN: 'With custodian',
 }
 
-CHART_TOP = 15
 
 
 def _refuse(message, reason, status=400):
@@ -149,8 +150,9 @@ def office_counts(scope, now=None):
             owed=Count('id'),
             unmet=Count('id', filter=Q(state=DeadlineObligation.OPEN)),
             overdue=Count('id', filter=Q(state=DeadlineObligation.OPEN,
-                                         deadline__due_on__lt=today))):
-        for bucket in OBLIGATION_BUCKETS:
+                                         deadline__due_on__lt=today)),
+            advised=Count('id', filter=Q(state=DeadlineObligation.OPEN, manual__isnull=False))):
+        for bucket in OBLIGATION_BUCKETS + ('advised',):
             add(row['office_id'], bucket, row[bucket])
     return counts
 
@@ -166,32 +168,81 @@ def _open_total(c):
     return sum(c.get(b, 0) for b in PROPOSAL_BUCKETS)
 
 
+def chart(scope, counts=None, mode='pending', period='month', now=None):
+    """Bars per office in scope, highest first: open requests by stage
+    (pending), or changes made effective in the period (approved), counted
+    by the office that made them. Offices with none are counted, not
+    listed."""
+    names = dict(Office.objects.filter(pk__in=scope.ids).values_list('pk', 'name'))
+    if mode == 'approved':
+        start, end = period_bounds(period, now)
+        events = AuditEvent.objects.filter(event=AuditEvent.MADE_EFFECTIVE, at__gte=start, at__lt=end)
+        if not scope.everything:
+            events = events.filter(proposal__initiating_office_id__in=scope.ids)
+        values = dict(events.values('proposal__initiating_office_id')
+                      .annotate(n=Count('proposal', distinct=True))
+                      .values_list('proposal__initiating_office_id', 'n'))
+        bars = [{'office_id': pk, 'office': names.get(pk, '?'), 'value': n, 'stages': {}}
+                for pk, n in values.items() if n]
+    else:
+        counts = counts if counts is not None else office_counts(scope, now)
+        bars = [{'office_id': pk, 'office': names.get(pk, '?'), 'value': _open_total(c),
+                 'stages': {b: c.get(b, 0) for b in PROPOSAL_BUCKETS}}
+                for pk, c in counts.items() if _open_total(c)]
+    bars.sort(key=lambda b: (-b['value'], b['office']))
+    return {'mode': mode, 'bars': bars, 'none': len(scope.ids) - len(bars)}
+
+
+PERIODS = ('month', 'year', 'last_year')
+
+
+def period_bounds(period, now=None):
+    """[start, end) in local time: this month, this year, or last year."""
+    today = timezone.localdate(now)
+    if period == 'year':
+        first, after = today.replace(month=1, day=1), today.replace(year=today.year + 1, month=1, day=1)
+    elif period == 'last_year':
+        first, after = today.replace(year=today.year - 1, month=1, day=1), today.replace(month=1, day=1)
+    else:
+        first = today.replace(day=1)
+        after = (first + timedelta(days=32)).replace(day=1)
+    zone = timezone.get_current_timezone()
+    return (timezone.make_aware(datetime.combine(first, time.min), zone),
+            timezone.make_aware(datetime.combine(after, time.min), zone))
+
+
 # ─── Endpoints ───────────────────────────────────────────────
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def overview(request):
-    """Counts first; every count opens its list. The offices chart: open
-    requests per office in scope, highest first, top 15, the rest counted."""
+    """Counts first; every count opens its list. The offices chart is
+    `offices_chart`, loaded beside it."""
     scope = Scope(request.user)
     if not scope.ids:
         return Response({'scope': 'none', 'counts': None, 'chart': None})
     counts = office_counts(scope)
-    names = dict(Office.objects.filter(pk__in=scope.ids).values_list('pk', 'name'))
-    bars = sorted(((names.get(pk, '?'), pk, _open_total(c)) for pk, c in counts.items()
-                   if _open_total(c)), key=lambda b: (-b[2], b[0]))
     return Response({
         'scope': 'all' if scope.everything else 'offices',
         'offices_in_scope': len(scope.ids),
         'counts': _summed(counts, scope.ids),
-        'chart': {
-            'bars': [{'office_id': pk, 'office': name, 'open': n,
-                      'stages': {b: counts[pk].get(b, 0) for b in PROPOSAL_BUCKETS}}
-                     for name, pk, n in bars[:CHART_TOP]],
-            'more': max(len(bars) - CHART_TOP, 0),
-            'none': len(scope.ids) - len(bars),
-        },
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def offices_chart(request):
+    """The offices bar chart on its own: `mode=pending` (default) or
+    `approved`, with `period=month|year|last_year` for approved."""
+    scope = Scope(request.user)
+    mode = request.query_params.get('mode') or 'pending'
+    period = request.query_params.get('period') or 'month'
+    if mode not in ('pending', 'approved') or period not in PERIODS:
+        return _refuse('Choose pending or approved, and this month, this year or last year.',
+                       'invalid_filter')
+    if not scope.ids:
+        return Response({'mode': mode, 'bars': [], 'none': 0, 'period': period})
+    return Response({**chart(scope, mode=mode, period=period), 'period': period})
 
 
 @api_view(['GET'])
@@ -243,6 +294,8 @@ def items(request):
         office_ids = (scope.subtree(int(raw)) if request.query_params.get('subtree') == '1'
                       else {int(raw)})
     page = lists.page_number(request.query_params)
+    if bucket == 'advised':
+        return Response(_advised_page(office_ids, page))
     if bucket in OBLIGATION_BUCKETS:
         return Response(_obligation_page(office_ids, bucket, page))
     return Response(_proposal_page(office_ids, bucket, page))
@@ -341,3 +394,46 @@ def _obligation_page(office_ids, bucket, page):
         'days_late': max((today - ob.deadline.due_on).days, 0)
         if ob.state == DeadlineObligation.OPEN else 0,
     } for ob in rows]}
+
+
+def _advised_page(office_ids, page):
+    """Advised revisions (spec §7.3.6): manuals the admin has advised an
+    office to revise - obligations that name a manual - still open first,
+    then by due date. Each row says where the office has got: not started,
+    its request's stage and holder, or met."""
+    now = timezone.now()
+    today = timezone.localdate(now)
+    query = DeadlineObligation.objects.filter(
+        deadline__active=True, manual__isnull=False, office_id__in=office_ids,
+    ).select_related('deadline__type', 'office', 'manual').annotate(
+        still_open=Count('id', filter=Q(state=DeadlineObligation.OPEN)),
+    ).order_by('-still_open', 'deadline__due_on', 'office__name', 'pk')
+    rows, paging = lists.page_of(query, page)
+    pairs = {(ob.manual_id, ob.office_id) for ob in rows if ob.state == DeadlineObligation.OPEN}
+    working = {}
+    if pairs:
+        open_requests = Proposal.objects.filter(
+            manual_id__in={m for m, _ in pairs}, initiating_office_id__in={o for _, o in pairs},
+        ).exclude(status__in=Proposal.CLOSED_STATUSES).select_related('manual', 'initiating_office')
+        found = [p for p in open_requests if (p.manual_id, p.initiating_office_id) in pairs]
+        by_id = {r['proposal_id']: r for r in _proposal_rows(found, now)}
+        working = {(p.manual_id, p.initiating_office_id): by_id[p.pk] for p in found}
+    out = []
+    for ob in rows:
+        is_open = ob.state == DeadlineObligation.OPEN
+        request_row = working.get((ob.manual_id, ob.office_id))
+        if not is_open:
+            status, holder = ob.get_state_display(), '—'
+        elif request_row:
+            status, holder = request_row['status'], request_row['holder']
+        else:
+            status, holder = 'Not started', ob.office.name
+        out.append({
+            'obligation_id': ob.pk, 'manual': ob.manual.title, 'office': ob.office.name,
+            'deadline': ob.deadline.title, 'type': ob.deadline.type.name,
+            'due_on': ob.deadline.due_on, 'priority': ob.priority,
+            'status': status, 'holder': holder, 'met': not is_open,
+            'days_late': max((today - ob.deadline.due_on).days, 0) if is_open else 0,
+            'proposal_id': request_row['proposal_id'] if request_row else None,
+        })
+    return {**paging, 'kind': 'advised', 'rows': out}

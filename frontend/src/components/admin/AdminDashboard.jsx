@@ -110,6 +110,8 @@ export default function AdminDashboard({ onLogout }) {
   const [pending, setPending] = useState({ users: 0 });
   // A proposal opened from a notice or from Needs your action.
   const [openProposalId, setOpenProposalId] = useState(null);
+  // Set when the offices chart opens Proposals for one office.
+  const [proposalFilters, setProposalFilters] = useState(null);
   const [displayName, setDisplayName] = useState(
     () => localStorage.getItem("display_name") || localStorage.getItem("username") || "Admin"
   );
@@ -148,7 +150,7 @@ export default function AdminDashboard({ onLogout }) {
   const renderPage = () => {
     switch (activePage) {
       case "home":
-        return <AdminHome onGo={goTo} onOpenProposal={openProposal} />;
+        return <AdminHome onGo={goTo} onOpenProposal={openProposal} onOpenOffice={openOfficeProposals} />;
       case "users": return <UserManagement />;
       case "manuals":
         return <Manuals onOpenSections={openSections} />;
@@ -158,7 +160,9 @@ export default function AdminDashboard({ onLogout }) {
       case "offices": return <Offices />;
       case "series": return <Series />;
       case "people": return <People />;
-      case "proposals": return <Proposals openId={openProposalId} />;
+      case "proposals":
+        return <Proposals key={JSON.stringify(proposalFilters)} openId={openProposalId}
+                          initialFilters={proposalFilters} />;
       case "monitoring": return <Monitoring />;
       case "notifications": return <NotificationsPage onOpen={openNotice} />;
       case "evaluation": return <SVMEvaluation />;
@@ -173,11 +177,22 @@ export default function AdminDashboard({ onLogout }) {
   const goTo = (page) => {
     if (page !== "sections") setDrillManual(null);
     setOpenProposalId(null);
+    setProposalFilters(null);
     setActivePage(page);
+  };
+
+  // The offices chart: Proposals for that office - open ones for Pending,
+  // made effective for Approved.
+  const openOfficeProposals = (officeId, mode) => {
+    setDrillManual(null);
+    setOpenProposalId(null);
+    setProposalFilters({ office: String(officeId), status: mode === "approved" ? "effective" : "open" });
+    setActivePage("proposals");
   };
 
   const openProposal = (id) => {
     setDrillManual(null);
+    setProposalFilters(null);
     setOpenProposalId(id);
     setActivePage("proposals");
   };

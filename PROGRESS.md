@@ -3,6 +3,29 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — Phase 4 steps 3 and 4: offices chart, Advised revisions
+
+- **Live:** `seed_demo_org --add-monitors` added the four monitor-only
+  Heads. Backup `db.sqlite3.bak-20261026-pre-monitors-live` (opened,
+  integrity ok, 15 users) and the command's own
+  `db.sqlite3.bak-20261026-140359-pre-monitors`. System log chain intact.
+- **Offices chart** (`monitoring/offices-chart/`, scoped):
+  - **Pending:** open requests by stage.
+  - **Approved:** made effective this month, this year or last year, by
+    the `made_effective` event.
+  - Highest first, top 15 then "Show more"; offices with none on one
+    line.
+  - It **replaces the admin dashboard's activity chart.** The activity
+    series, its table fallback, `enough_for_chart` and their 6 tests are
+    removed.
+  - A bar opens Proposals filtered to that office: in progress, or
+    effective for Approved.
+  - The same chart sits on the Monitoring Overview.
+- **Advised revisions:** a lens beside the Overview, with its open count.
+  It lists obligations that name a manual: open first, then by due date.
+  Each says Not started, the office's request stage and holder, or met.
+- **Run:** `tests_monitoring_scope` (16) and `tests_admin_dashboard`.
+
 ## 26 October 2026 — Phase 4 step 2: monitoring scope, Overview, By office
 
 - **`access.monitoring_scope`**: who sees what.
