@@ -13,6 +13,7 @@ from . import reviews
 from . import delegation_views
 from . import freeze_views
 from . import monitoring_views
+from . import audit_trail
 from . import structure_views as structure
 from . import admin_proposal_views
 from . import action_views
@@ -104,6 +105,8 @@ urlpatterns = [
     path('action-banner/', action_views.action_banner),
     path('proposals/<int:proposal_id>/package/', package.package),
     path('proposals/<int:proposal_id>/trail-report/', trail.generate),
+    path('proposals/<int:proposal_id>/trail/', audit_trail.trail),
+    path('proposals/<int:proposal_id>/trail/export/', audit_trail.export),
     path('proposals/<int:proposal_id>/trail-report/log/', trail.log),
     path('trail-reports/<str:serial>/', trail.verify),
     path('proposals/<int:proposal_id>/imr/', qms.imr_decide),

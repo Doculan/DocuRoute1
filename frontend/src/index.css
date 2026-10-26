@@ -799,6 +799,19 @@ a:hover { color: var(--brand-500); }
 .segmented-item { border: 0; background: none; padding: 0.25rem 0.75rem; font: inherit; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); }
 .segmented-item + .segmented-item { border-left: 1px solid var(--line); }
 .segmented-item.is-active { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
+
+/* The audit block (spec §10). */
+.audit-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.5rem 1.5rem; margin: 0.9rem 0 0; }
+.audit-summary dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.audit-summary dd { margin: 0.1rem 0 0; font-size: 0.875rem; }
+.audit-version { border-top: 1px solid var(--line); padding: 0.5rem 0; }
+.audit-version > summary { cursor: pointer; list-style: revert; }
+.audit-steps { list-style: none; margin: 0.5rem 0 0; padding: 0 0 0 0.9rem; border-left: 2px solid var(--line); }
+.audit-steps li { padding: 0.35rem 0 0.35rem 0.6rem; }
+.audit-steps li.is-check { opacity: 0.85; }
+.audit-step-head { display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; align-items: baseline; }
+.audit-step-label { font-weight: 600; font-size: 0.875rem; }
+.audit-detail { white-space: pre-wrap; font-size: 0.85rem; margin-top: 0.2rem; padding: 0.35rem 0.6rem; background: var(--paper-2); border-radius: var(--r-xs); }
 .action-banner-list li + li { margin-top: 0.15rem; }
 
 .app-content {

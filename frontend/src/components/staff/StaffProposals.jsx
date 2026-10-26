@@ -13,6 +13,7 @@ import AiNote from "../AiNote";
 import SectionContentEditor from "../SectionContentEditor";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
+import AuditTrail from "../AuditTrail";
 import { freezeText } from "../deadlineText";
 import Pager from "../Pager";
 
@@ -393,21 +394,6 @@ function Proposal({ proposalId, onBack, onSay }) {
         </section>
       )}
 
-      <section style={{ marginTop: "1.75rem" }}>
-        <h2 className="section-title">History</h2>
-        <div className="col" style={{ gap: "0.2rem" }}>
-          {data.events.map((e, i) => (
-            <div key={i} className="row" style={{ gap: "0.6rem", alignItems: "baseline" }}>
-              <span className="text-sm">{e.label}</span>
-              <span className="subtle text-xs">
-                {e.by.position}{e.by.name && ` · ${e.by.name}`} · {when(e.at)}
-              </span>
-              {e.detail && <span className="subtle text-xs">— {e.detail}</span>}
-            </div>
-          ))}
-        </div>
-      </section>
-
       {data.freeze && (data.can_send_to_head || data.can_submit) && (
         <p className="subtle text-sm" style={{ margin: "1.75rem 0 -1rem" }}>
           {freezeText(data.freeze)}: {data.freeze.reason}. Keep editing; sending waits.
@@ -550,6 +536,8 @@ function Proposal({ proposalId, onBack, onSay }) {
           onCancel={() => setPending(null)}
         />
       )}
+
+      <AuditTrail key={`${data.status}-${data.events.length}`} proposalId={proposalId} />
     </div>
   );
 }

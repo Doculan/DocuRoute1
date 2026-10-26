@@ -5,6 +5,7 @@ import DiffView from "../DiffView";
 import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
 import TrailReport from "../TrailReport";
+import AuditTrail from "../AuditTrail";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
 import {
@@ -333,20 +334,7 @@ export function ProposalDetail({
         </div>
       </section>
 
-      <section style={{ marginTop: "1.75rem" }}>
-        <h2 className="section-title">History</h2>
-        <div className="col" style={{ gap: "0.2rem" }}>
-          {data.events.map((e, i) => (
-            <div key={i} className="row" style={{ gap: "0.6rem", alignItems: "baseline" }}>
-              <span className="text-sm">{e.label}</span>
-              <span className="subtle text-xs">
-                {e.by.position}{e.by.name && ` · ${e.by.name}`} · {when(e.at)}
-              </span>
-              {e.detail && <span className="subtle text-xs">— {e.detail}</span>}
-            </div>
-          ))}
-        </div>
-      </section>
+      <AuditTrail key={`${data.status}-${data.events.length}`} proposalId={data.id} />
     </div>
   );
 }
