@@ -2,6 +2,8 @@
 
     GET monitoring/overview/                       counts for the viewer's scope, and the offices chart
     GET monitoring/offices/?parent=<id>&page=      one level of the office tree, rolled up from beneath
+    GET monitoring/offices/?show=not_submitted|overdue|all&deadline=<id>&page=
+                                                   a flat list of the offices in scope that match
     GET monitoring/items/?bucket=&office=&subtree=&page=   the rows behind a count, 50 a page
     GET monitoring/offices-chart/?mode=pending|approved&period=month|year|last_year
 
@@ -40,7 +42,7 @@ from rest_framework.response import Response
 from . import access, lists
 from .deadline_tags import tag_rows
 from .models import (
-    AuditEvent, DeadlineObligation, MonitoringSetting, Office, Proposal,
+    AuditEvent, Deadline, DeadlineObligation, MonitoringSetting, Office, Proposal,
 )
 from .monitoring import STAGES, STAGE_LABEL, _entered, _undecided
 
@@ -102,6 +104,8 @@ class Scope:
 
     def obligations(self):
         query = DeadlineObligation.objects.filter(deadline__active=True)
+        if getattr(self, 'deadline_id', None):
+            query = query.filter(deadline_id=self.deadline_id)
         return query if self.everything else query.filter(office_id__in=self.ids)
 
 
@@ -253,6 +257,9 @@ def offices(request):
     scope's top offices), each rolled up from everything beneath it in
     scope, most overdue first, then most stalled, then by name."""
     scope = Scope(request.user)
+    show = request.query_params.get('show')
+    if show:
+        return _flat(request, scope, show)
     raw = request.query_params.get('parent')
     if raw:
         if not raw.isdigit() or not scope.allows(int(raw)):
@@ -276,6 +283,47 @@ def offices(request):
     start = (page - 1) * lists.PAGE_SIZE
     return Response({'offices': rows[start:start + lists.PAGE_SIZE], 'count': len(rows),
                      'page': page, 'pages': max(1, -(-len(rows) // lists.PAGE_SIZE))})
+
+
+FLAT_SHOWS = ('not_submitted', 'overdue', 'all')
+
+
+def _flat(request, scope, show):
+    """Every office in scope that matches, each with its own counts (not
+    rolled up): `not_submitted` - deadline obligations still unmet;
+    `overdue` - unmet past their due date; `all` - every office. With
+    `deadline`, the obligation counts are for that deadline alone. Most
+    overdue first, then most unmet, then by name; 50 a page."""
+    if show not in FLAT_SHOWS:
+        return _refuse('Show not submitted, overdue, or all.', 'invalid_show')
+    raw = request.query_params.get('deadline') or ''
+    if raw:
+        if not raw.isdigit():
+            return _refuse('Choose a deadline from the list.', 'invalid_deadline')
+        scope.deadline_id = int(raw)
+    counts = office_counts(scope)
+    offices = Office.objects.in_bulk(list(scope.ids))
+    rows = []
+    for pk in scope.ids:
+        own = _summed(counts, [pk])
+        if show == 'not_submitted' and not own['unmet']:
+            continue
+        if show == 'overdue' and not own['overdue']:
+            continue
+        if show == 'all' and not offices[pk].is_active and not any(own.values()):
+            continue
+        rows.append({'id': pk, 'name': offices[pk].name, 'active': offices[pk].is_active,
+                     'has_children': False, 'own': own, 'counts': own})
+    rows.sort(key=lambda r: (-r['counts']['overdue'], -r['counts']['unmet'], r['name']))
+    page = lists.page_number(request.query_params) or 1
+    start = (page - 1) * lists.PAGE_SIZE
+    deadlines = Deadline.objects.filter(active=True).order_by('due_on')
+    if not scope.everything:
+        deadlines = deadlines.filter(obligations__office_id__in=scope.ids).distinct()
+    return Response({'offices': rows[start:start + lists.PAGE_SIZE], 'count': len(rows),
+                     'page': page, 'pages': max(1, -(-len(rows) // lists.PAGE_SIZE)),
+                     'deadlines': [{'id': d.pk, 'title': d.title, 'due_on': d.due_on}
+                                   for d in deadlines]})
 
 
 @api_view(['GET'])

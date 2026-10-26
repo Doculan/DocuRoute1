@@ -94,7 +94,7 @@ function MonitoringScreen({ title = "Monitoring", start = null }) {
           <OfficesChart title="Requests by office" onOpen={(bar) => setList({
             bucket: "open", office: bar.office_id, officeName: bar.office })} />
           <OfficeTree onOpen={(office, bucket) => setList({
-            bucket, office: office.id, officeName: office.name, subtree: true })} />
+            bucket, office: office.id, officeName: office.name, subtree: !office.flat })} />
           </>)}
         </>
       )}
@@ -102,23 +102,76 @@ function MonitoringScreen({ title = "Monitoring", start = null }) {
   );
 }
 
+const SHOWS = [["", "The tree"], ["not_submitted", "Not submitted"], ["overdue", "Overdue"], ["all", "All offices"]];
+
 function OfficeTree({ onOpen }) {
+  // "" is the tree; otherwise a flat list of the offices that match,
+  // each with its own counts, optionally for one deadline.
+  const [show, setShow] = useState("");
+  const [deadline, setDeadline] = useState("");
   return (
     <section className="monitor-section">
-      <h2 className="section-title">By office</h2>
-      <p className="subtle text-xs" style={{ margin: "-0.25rem 0 0.6rem" }}>
-        Each office with everything beneath it. Owed, unmet and overdue are deadline obligations;
-        stalled is computed now from each request's stage limit.
+      <div className="row-wrap" style={{ gap: "0.6rem", alignItems: "center", marginBottom: "0.4rem" }}>
+        <h2 className="section-title" style={{ margin: 0 }}>By office</h2>
+        <select className="select" style={{ width: "auto" }} aria-label="Show"
+                value={show} onChange={(e) => setShow(e.target.value)}>
+          {SHOWS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        </select>
+        {show && <DeadlinePicker value={deadline} onChange={setDeadline} />}
+      </div>
+      <p className="subtle text-xs" style={{ margin: "0 0 0.6rem" }}>
+        {show ? "Each office on its own, not rolled up." : "Each office with everything beneath it."}
+        {" "}Owed, unmet and overdue are deadline obligations; stalled is computed now from each
+        request's stage limit.
       </p>
       <div className="table-wrap">
         <table className="table monitor-tree">
           <thead>
             <tr><th>Office</th><th>Open</th><th>Stalled</th><th>Owed</th><th>Unmet</th><th>Overdue</th></tr>
           </thead>
-          <TreeLevel parent={null} depth={0} onOpen={onOpen} />
+          {show
+            ? <FlatLevel key={`${show}-${deadline}`} show={show} deadline={deadline} onOpen={onOpen} />
+            : <TreeLevel parent={null} depth={0} onOpen={onOpen} />}
         </table>
       </div>
     </section>
+  );
+}
+
+function DeadlinePicker({ value, onChange }) {
+  const { data } = useServerData("/api/monitoring/offices/", { show: "all", page: 1 });
+  return (
+    <select className="select" style={{ width: "auto" }} aria-label="Deadline"
+            value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Every deadline</option>
+      {(data?.deadlines || []).map((d) => <option key={d.id} value={d.id}>{d.title} · {d.due_on}</option>)}
+    </select>
+  );
+}
+
+function FlatLevel({ show, deadline, onOpen }) {
+  const [page, setPage] = useState(1);
+  const { data } = useServerData("/api/monitoring/offices/",
+                                 { show, page, ...(deadline ? { deadline } : {}) });
+  if (!data) return <tbody><tr><td colSpan={6} className="subtle text-xs">Loading…</td></tr></tbody>;
+  if (data.count === 0) {
+    return <tbody><tr><td colSpan={6} className="subtle text-sm">No office matches.</td></tr></tbody>;
+  }
+  return (
+    <>
+      {data.offices.map((office) => (
+        <TreeRow key={office.id} office={{ ...office, flat: true }} depth={0} onOpen={onOpen} />
+      ))}
+      {data.pages > 1 && (
+        <tbody><tr><td colSpan={6}>
+          <div className="pager">
+            <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
+            <span className="subtle text-xs">Page {data.page} of {data.pages} · {data.count} offices</span>
+            <button className="btn btn-ghost btn-sm" disabled={page >= data.pages} onClick={() => setPage(page + 1)}>Next</button>
+          </div>
+        </td></tr></tbody>
+      )}
+    </>
   );
 }
 

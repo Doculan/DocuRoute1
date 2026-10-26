@@ -337,3 +337,41 @@ class TheListsKeepTheirShape(TheChartAndAdvised):
                 for row in rows:
                     self.assertIsInstance(row['deadline_title'], str, (user.username, bucket))
                     self.assertTrue(row['deadline'] is None or isinstance(row['deadline'], dict))
+
+
+class TheFlatFilter(TheCounts):
+    """By office, flat: Not submitted, Overdue or All, optionally for one
+    deadline - and never an office outside scope."""
+
+    def flat(self, user, **params):
+        return self.as_(user).get('/api/monitoring/offices/', params).data
+
+    def names(self, data):
+        return [r['name'] for r in data['offices']]
+
+    def test_not_submitted_overdue_and_all(self):
+        self.obligation('ACC', -3)                                   # overdue
+        self.obligation('BUD', 10)                                   # unmet, not due
+        self.obligation('CMO', -2, DeadlineObligation.SUBMITTED)     # met
+        self.assertEqual(self.names(self.flat(self.caof_head, show='not_submitted')),
+                         ['ACC Office', 'BUD Office'])
+        self.assertEqual(self.names(self.flat(self.caof_head, show='overdue')), ['ACC Office'])
+        self.assertEqual(set(self.names(self.flat(self.caof_head, show='all'))),
+                         {'CAO-F Office', 'ACC Office', 'BUD Office', 'CMO Office'})
+        self.assertEqual(self.flat(self.caof_head, show='nothing')['reason'], 'invalid_show')
+
+    def test_for_one_deadline(self):
+        first = self.obligation('ACC', -3)
+        self.obligation('BUD', -4)
+        data = self.flat(self.caof_head, show='overdue', deadline=first.deadline_id)
+        self.assertEqual(self.names(data), ['ACC Office'])
+        self.assertEqual(data['offices'][0]['counts']['overdue'], 1)
+
+    def test_never_outside_scope(self):
+        self.obligation('HRMO', -3)
+        self.obligation('ACC', -3)
+        self.assertEqual(self.names(self.flat(self.caof_head, show='overdue')), ['ACC Office'])
+        self.assertNotIn('HRMO Office', self.names(self.flat(self.caof_head, show='all')))
+        self.assertEqual(self.names(self.flat(self.acc_enc, show='all')), ['ACC Office'])
+        self.assertEqual(set(self.names(self.flat(self.admin, show='overdue'))),
+                         {'ACC Office', 'HRMO Office'})
