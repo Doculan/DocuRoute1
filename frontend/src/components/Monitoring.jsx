@@ -32,9 +32,11 @@ const LIST_TITLES = {
 const OPEN_BUCKETS = ["drafting", "with_head", "in_concurrence", "returned", "awaiting_signatures", "with_qms"];
 const openOf = (c) => OPEN_BUCKETS.reduce((n, b) => n + (c[b] || 0), 0);
 
-export default function Monitoring({ title = "Monitoring" }) {
-  const [list, setList] = useState(null);   // {bucket, office, officeName}
-  const [lens, setLens] = useState("overview");
+export default function Monitoring({ title = "Monitoring", start = null }) {
+  // `start`: open on a list ({bucket, office, officeName}) or a lens
+  // ({lens: "advised"}), as a dashboard count asks.
+  const [list, setList] = useState(start?.bucket ? start : null);
+  const [lens, setLens] = useState(start?.lens || "overview");
   const { data, error } = useServerData("/api/monitoring/overview/", null, "Could not load monitoring.");
 
   if (list) return <ItemList {...list} onBack={() => setList(null)} />;

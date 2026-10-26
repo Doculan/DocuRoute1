@@ -3,6 +3,20 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — Phase 4 step 5: the QMS dashboard
+
+- The QMS portal now opens on a **Dashboard**:
+  - **the viewer's queue as counts only,** from `qms/queue/`: the IMR sees
+    "Ready for your decision" and "Signed DCR to upload", the Custodian
+    "With you to make effective". Each opens Requests;
+  - **across the institution:** Overdue, Stalled and Advised revisions,
+    each opening Monitoring at that list or lens;
+  - **the offices chart.**
+- Monitoring stays in the navigation, read-only for the whole
+  institution; Manuals is one click away.
+- No backend change, so no new tests. Drive on a copy of live as QMS_Ana
+  (IMR) and QMS_Pedro (Custodian); no console errors.
+
 ## 26 October 2026 — Phase 4 steps 3 and 4: offices chart, Advised revisions
 
 - **Live:** `seed_demo_org --add-monitors` added the four monitor-only

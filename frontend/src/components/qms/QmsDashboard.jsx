@@ -4,6 +4,7 @@ import StaffManuals from "../staff/StaffManuals";
 import StaffSections from "../staff/StaffSections";
 import QmsRequests from "./QmsRequests";
 import Monitoring from "../Monitoring";
+import QmsHome from "./QmsHome";
 import Topbar from "../Topbar";
 import Account from "../Account";
 import NeedsAction from "../NeedsAction";
@@ -20,21 +21,25 @@ const getAuth = () => ({
 });
 
 const CRUMBS = {
-  manuals: "Manuals", requests: "Requests", monitoring: "Monitoring", account: "My account",
+  dashboard: "Dashboard", manuals: "Manuals", requests: "Requests", monitoring: "Monitoring",
+  account: "My account",
   notifications: "Notifications",
 };
 
 /**
  * The QMS portal: the IMR and the Document Custodian.
  *
- * Reading comes first here too - the custodian keeps every document and
- * both read them daily - so it opens on the manuals, read only. Requests
- * sit beside them, with a count only when something is actually waiting.
+ * It opens on a Dashboard (v4.2 Phase 4, spec §7.7): the queue as counts,
+ * then the institution's overdue, stalled and advised revisions and the
+ * offices chart. Manuals, read only, stay one click away; Requests holds
+ * the lists; Monitoring is read-only across the whole institution.
  * What someone may *decide* comes from the position they hold, which the
  * server checks; this portal only shows the way.
  */
 export default function QmsDashboard({ onLogout }) {
-  const [activePage, setActivePage] = useState("manuals");
+  const [activePage, setActivePage] = useState("dashboard");
+  // Where Monitoring opens when a dashboard count is clicked.
+  const [monitorStart, setMonitorStart] = useState(null);
   const [manualId, setManualId] = useState(null);
   const [openRequest, setOpenRequest] = useState(null);
   const [waiting, setWaiting] = useState(0);
@@ -59,6 +64,7 @@ export default function QmsDashboard({ onLogout }) {
   const onCount = useCallback((n) => setWaiting(n), []);
 
   const go = (page) => {
+    setMonitorStart(null);
     setActivePage(page);
     setManualId(null);
     setOpenRequest(null);
@@ -81,7 +87,13 @@ export default function QmsDashboard({ onLogout }) {
   const renderPage = () => {
     if (activePage === "account") return <Account onNameChange={renamed} />;
     if (activePage === "notifications") return <NotificationsPage onOpen={openNotice} />;
-    if (activePage === "monitoring") return <Monitoring />;
+    if (activePage === "monitoring") {
+      return <Monitoring key={JSON.stringify(monitorStart)} start={monitorStart} />;
+    }
+    if (activePage === "dashboard") {
+      return <QmsHome me={me} onRequests={() => go("requests")}
+                      onMonitoring={(start) => { setMonitorStart(start); setActivePage("monitoring"); }} />;
+    }
     if (activePage === "requests") {
       return <QmsRequests onCount={onCount} openId={openRequest} onOpen={setOpenRequest} />;
     }
@@ -113,6 +125,11 @@ export default function QmsDashboard({ onLogout }) {
         </div>
         <div className="sidebar-eyebrow">QMS Portal</div>
         <nav className="sidebar-nav">
+          <button className={`nav-item${activePage === "dashboard" ? " is-active" : ""}`}
+                  onClick={() => go("dashboard")}>
+            <img className="nav-icon" src={reviewIcon} alt="" />
+            <span>Dashboard</span>
+          </button>
           <div className="nav-group">Read documents</div>
           <button className={`nav-item${activePage === "manuals" ? " is-active" : ""}`}
                   onClick={() => go("manuals")}>
