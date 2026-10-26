@@ -401,7 +401,9 @@ def _obligation_page(office_ids, bucket, page):
         'deadline__due_on', 'office__name', 'pk')
     rows, paging = lists.page_of(query, page)
     return {**paging, 'kind': 'obligations', 'rows': [{
-        'obligation_id': ob.pk, 'deadline': ob.deadline.title, 'type': ob.deadline.type.name,
+        # `deadline_title`, not `deadline`: `deadline` is the manual's
+        # deadline tag, which `tag_rows` sets on every row naming a manual.
+        'obligation_id': ob.pk, 'deadline_title': ob.deadline.title, 'type': ob.deadline.type.name,
         'due_on': ob.deadline.due_on, 'office': ob.office.name,
         'manual': ob.manual.title if ob.manual_id else None,
         'manual_id': ob.manual_id,
@@ -446,7 +448,7 @@ def _advised_page(office_ids, page):
         out.append({
             'obligation_id': ob.pk, 'manual_id': ob.manual_id, 'manual': ob.manual.title,
             'office': ob.office.name,
-            'deadline': ob.deadline.title, 'type': ob.deadline.type.name,
+            'deadline_title': ob.deadline.title, 'type': ob.deadline.type.name,
             'due_on': ob.deadline.due_on, 'priority': ob.priority,
             'status': status, 'holder': holder, 'met': not is_open,
             'days_late': max((today - ob.deadline.due_on).days, 0) if is_open else 0,

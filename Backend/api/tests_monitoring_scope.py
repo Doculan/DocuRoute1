@@ -317,3 +317,23 @@ class TheChartAndAdvised(TheCounts):
                           ('BUD Office', 'FAM 7.01', 'In concurrence', 0)])
         self.assertEqual(self.as_(self.acc_enc).get('/api/monitoring/items/?bucket=advised')
                          .data['count'], 1)
+
+
+class TheListsKeepTheirShape(TheChartAndAdvised):
+    """The bug of 27 Oct 2026: every row naming a manual is given its
+    deadline tag under `deadline`, and the advised and obligation rows
+    also used `deadline` for the deadline's title - so the screen printed
+    an object and went white. Each role opens each lens."""
+
+    def test_every_role_opens_advised_and_the_obligation_lists(self):
+        advised = self.obligation('ACC', -2)
+        advised.manual = self.manual
+        advised.save(update_fields=['manual'])
+        self.obligation('ACC', 5)
+        for user in (self.admin, self.imr, self.acc_head, self.acc_enc):
+            for bucket in ('advised', 'overdue', 'owed', 'unmet'):
+                rows = self.as_(user).get(f'/api/monitoring/items/?bucket={bucket}').data['rows']
+                self.assertTrue(rows, (user.username, bucket))
+                for row in rows:
+                    self.assertIsInstance(row['deadline_title'], str, (user.username, bucket))
+                    self.assertTrue(row['deadline'] is None or isinstance(row['deadline'], dict))

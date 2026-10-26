@@ -1,6 +1,7 @@
 import { useState } from "react";
 import useServerData from "./useServerData";
 import OfficesChart from "./OfficesChart";
+import ErrorBoundary from "./ErrorBoundary";
 
 /**
  * Monitoring (v4.2 Phase 4): read-only, scoped by the server.
@@ -32,7 +33,17 @@ const LIST_TITLES = {
 const OPEN_BUCKETS = ["drafting", "with_head", "in_concurrence", "returned", "awaiting_signatures", "with_qms"];
 const openOf = (c) => OPEN_BUCKETS.reduce((n, b) => n + (c[b] || 0), 0);
 
-export default function Monitoring({ title = "Monitoring", start = null }) {
+/** Every Monitoring screen sits inside an error boundary: a crash shows a
+ *  short message and a way back, never a white page. */
+export default function Monitoring(props) {
+  return (
+    <ErrorBoundary title="Monitoring could not be shown" backLabel="Back to Monitoring">
+      <MonitoringScreen {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function MonitoringScreen({ title = "Monitoring", start = null }) {
   // `start`: open on a list ({bucket, office, officeName}) or a lens
   // ({lens: "advised"}), as a dashboard count asks.
   const [list, setList] = useState(start?.bucket ? start : null);
@@ -203,7 +214,7 @@ function ItemList({ bucket, office, officeName, subtree, onBack, embedded = fals
                     <tr key={r.obligation_id}>
                       <td>{r.manual}{r.priority && <span className="subtle text-xs"> · priority</span>}
                         <div className="subtle text-xs">{r.office}</div></td>
-                      <td>{r.deadline}<div className="subtle text-xs">{r.type} · due {r.due_on}</div></td>
+                      <td>{r.deadline_title}<div className="subtle text-xs">{r.type} · due {r.due_on}</div></td>
                       <td>{r.met ? <span className="subtle">{r.status}</span> : r.status}</td>
                       <td>{r.holder}</td>
                       <td>{r.days_late
@@ -219,7 +230,7 @@ function ItemList({ bucket, office, officeName, subtree, onBack, embedded = fals
                 <tbody>
                   {data.rows.map((r) => (
                     <tr key={r.obligation_id}>
-                      <td>{r.deadline}<div className="subtle text-xs">{r.type}</div></td>
+                      <td>{r.deadline_title}<div className="subtle text-xs">{r.type}</div></td>
                       <td>{r.office}</td>
                       <td>{r.manual || <span className="subtle">Any proposal</span>}</td>
                       <td>{r.due_on}</td>
