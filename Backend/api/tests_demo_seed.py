@@ -44,8 +44,8 @@ class DemoSeedTests(TestCase):
         self.seed()
         self.assertEqual(Office.objects.count(), 14)
         self.assertEqual(ManualSeries.objects.count(), 4)
-        self.assertEqual(CustomUser.objects.count(), 14)
-        self.assertEqual(PositionAssignment.objects.count(), 14)
+        self.assertEqual(CustomUser.objects.count(), 18)   # 14 people and the four monitor-only Heads
+        self.assertEqual(PositionAssignment.objects.count(), 18)
 
     def test_the_documents_are_placed_by_prefix(self):
         self.seed()

@@ -3,6 +3,7 @@ import axios from "axios";
 import StaffManuals from "../staff/StaffManuals";
 import StaffSections from "../staff/StaffSections";
 import QmsRequests from "./QmsRequests";
+import Monitoring from "../Monitoring";
 import Topbar from "../Topbar";
 import Account from "../Account";
 import NeedsAction from "../NeedsAction";
@@ -19,7 +20,7 @@ const getAuth = () => ({
 });
 
 const CRUMBS = {
-  manuals: "Manuals", requests: "Requests", account: "My account",
+  manuals: "Manuals", requests: "Requests", monitoring: "Monitoring", account: "My account",
   notifications: "Notifications",
 };
 
@@ -80,6 +81,7 @@ export default function QmsDashboard({ onLogout }) {
   const renderPage = () => {
     if (activePage === "account") return <Account onNameChange={renamed} />;
     if (activePage === "notifications") return <NotificationsPage onOpen={openNotice} />;
+    if (activePage === "monitoring") return <Monitoring />;
     if (activePage === "requests") {
       return <QmsRequests onCount={onCount} openId={openRequest} onOpen={setOpenRequest} />;
     }
@@ -125,6 +127,11 @@ export default function QmsDashboard({ onLogout }) {
             {waiting > 0 && (
               <span className="nav-count" title="Waiting for your decision">{waiting}</span>
             )}
+          </button>
+          <button className={`nav-item${activePage === "monitoring" ? " is-active" : ""}`}
+                  onClick={() => go("monitoring")}>
+            <img className="nav-icon" src={reviewIcon} alt="" />
+            <span>Monitoring</span>
           </button>
         </nav>
         <div className="sidebar-footer">

@@ -5,6 +5,7 @@ import Manuals from "./Manuals";
 import Sections from "./Sections";
 import SVMEvaluation from "./SVMEvaluation";
 import Notices from "./Notices";
+import Monitoring from "../Monitoring";
 import AdminHome from "./AdminHome";
 import Offices from "./Offices";
 import Series from "./Series";
@@ -53,6 +54,7 @@ const NAV_GROUPS = [
     label: "Change workflow",
     items: [
       { key: "proposals", icon: reviewIcon, label: "Proposals" },
+      { key: "monitoring", icon: reviewIcon, label: "Monitoring" },
     ],
   },
   {
@@ -92,6 +94,7 @@ const CRUMBS = {
   manuals: "Manuals",
   sections: "Sections",
   proposals: "Proposals",
+  monitoring: "Monitoring",
   announcements: "Deadlines & announcements",
   evaluation: "Model health",
   account: "My account",
@@ -156,6 +159,7 @@ export default function AdminDashboard({ onLogout }) {
       case "series": return <Series />;
       case "people": return <People />;
       case "proposals": return <Proposals openId={openProposalId} />;
+      case "monitoring": return <Monitoring />;
       case "notifications": return <NotificationsPage onOpen={openNotice} />;
       case "evaluation": return <SVMEvaluation />;
       case "account": return <Account onNameChange={renamed} />;

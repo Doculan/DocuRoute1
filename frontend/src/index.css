@@ -774,6 +774,27 @@ a:hover { color: var(--brand-500); }
   background: var(--paper-2); color: var(--text-muted); font-weight: 500;
 }
 .action-banner-list { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+
+/* Monitoring (v4.2 Phase 4): tiles, the offices chart and the tree. */
+.monitor-tiles { margin-bottom: 1.5rem; }
+.monitor-tiles .stat-card { text-align: left; font: inherit; border-top: 0; border-bottom: 0; border-left: 0; cursor: pointer; }
+.monitor-tiles .stat-card:disabled { cursor: default; opacity: 0.75; }
+.monitor-section { margin-top: 1.75rem; }
+.monitor-bars { display: flex; flex-direction: column; gap: 0.3rem; max-width: 52rem; }
+.monitor-bar {
+  display: grid; grid-template-columns: minmax(10rem, 16rem) 1fr 2.5rem; align-items: center; gap: 0.75rem;
+  border: 0; background: none; padding: 0.15rem 0; font: inherit; text-align: left; cursor: pointer;
+}
+.monitor-bar:hover .monitor-bar-fill { background: var(--brand-600); }
+.monitor-bar-label { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.monitor-bar-track { height: 0.7rem; background: var(--paper-2); border-radius: var(--r-xs); overflow: hidden; }
+.monitor-bar-fill { display: block; height: 100%; background: var(--brand-500); border-radius: var(--r-xs); }
+.monitor-bar-value { font-size: 0.85rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+.monitor-tree td { white-space: nowrap; }
+.monitor-toggle { display: inline-block; width: 1.1rem; }
+.monitor-count { font-variant-numeric: tabular-nums; font-weight: 600; }
+.monitor-count.is-danger { color: var(--danger); }
+.monitor-count.is-warning { color: var(--gold); }
 .action-banner-list li + li { margin-top: 0.15rem; }
 
 .app-content {

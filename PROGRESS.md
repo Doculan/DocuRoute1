@@ -3,6 +3,38 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 26 October 2026 — Phase 4 step 2: monitoring scope, Overview, By office
+
+- **`access.monitoring_scope`**: who sees what.
+  - admin and QMS: everything;
+  - a Head (or a delegate while it runs): the office and everything
+    beneath it;
+  - an Encoder: their own office;
+  - no post: nothing.
+- **`monitoring/overview|offices|items`**: read-only, scoped, counted live
+  with grouped queries. There is no summary table.
+  - **Stalled** is computed from stage entry against the stall limits
+    (`monitoring._entered`), independent of `run_monitoring`.
+  - **Overdue** is open deadline obligations past their due date.
+  - The tree rolls up open requests, stalled, owed, unmet and overdue,
+    most overdue first.
+- **Screens:** "Monitoring" for the admin and QMS, "Office monitoring" for
+  staff: six tiles, the offices chart (top 15), and the By office tree.
+  Each count opens its list, 50 a page.
+- **`seed_demo_org --add-monitors`**: the four monitor-only Heads
+  (PRES_Antonio, VPAF_Ramil, CAOF_Cynthia, CAOA_Dante). It is idempotent,
+  backs up an SQLite file first, and refuses a Head post already held.
+  Fresh seeds include them. **Not yet run on live.**
+- **At scale** (500 offices; admin): overview 45 ms and 13 queries; tree
+  43 ms; stalled list 328 ms. A VP Head (86 offices): 24–36 ms.
+- **Fixed while building:** grouping annotated counts by office compared
+  the office's latest events rather than each request's. Now chosen per
+  request, then grouped.
+- **Run:** `tests_monitoring_scope` (13); 8 scope-isolation removal
+  proofs, each failing without its code (a ninth was redundant: the counts
+  are summed over the scope anyway); `tests_demo_seed` and
+  `tests_monitoring` (46 together, counts updated for the four Heads).
+
 ## 26 October 2026 — After `v4.2.0-p3`: the text is fixed at submission
 
 **Decided (26 Oct 2026):** fix the concurrence-edit defect before Phase 4,

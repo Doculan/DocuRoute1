@@ -261,3 +261,68 @@ def manuals_for(user, queryset):
 
 def sections_for(user, queryset):
     return _narrow(user, queryset, 'manual__')
+
+
+# ─── Monitoring scope (v4.2 Phase 4) ─────────────────────────
+
+MONITOR_ALL = 'all'
+
+
+def office_tree():
+    """{office id: parent id} for every office, active or not: history
+    must still read, so retired offices stay in the tree. One query."""
+    from .models import Office
+    return dict(Office.objects.values_list('pk', 'parent_id'))
+
+
+def descendants(office_id, tree):
+    """This office and every office beneath it, walked in memory."""
+    children = {}
+    for pk, parent in tree.items():
+        children.setdefault(parent, []).append(pk)
+    found, stack = set(), [office_id]
+    while stack:
+        current = stack.pop()
+        if current in found:
+            continue
+        found.add(current)
+        stack.extend(children.get(current, []))
+    return found
+
+
+def monitoring_scope(user, tree=None):
+    """What this person may monitor: `MONITOR_ALL`, or a set of office ids.
+
+    - The system admin and QMS staff: everything.
+    - A Head, or a delegate while the delegation runs: the office and
+      every office beneath it - never a sibling, a parent or a branch
+      beside it, even where they concur on the same manuals.
+    - An Encoder: their own office only.
+    - No post: nothing.
+
+    Several posts give the union.
+    """
+    if not (user and user.is_authenticated):
+        return set()
+    if reads_everything(user):
+        return MONITOR_ALL
+    from .delegation import delegated_posts
+    from .models import Position, PositionAssignment
+    today = timezone.localdate()
+    posts = list(PositionAssignment.objects.filter(
+        user=user, position__is_active=True, position__office__is_active=True,
+        starts_on__lte=today,
+    ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today)).select_related('position'))
+    posts += delegated_posts(user)
+    if not posts:
+        return set()
+    scope, heads = set(), set()
+    for post in posts:
+        scope.add(post.position.office_id)
+        if post.position.kind == Position.HEAD:
+            heads.add(post.position.office_id)
+    if heads:
+        tree = tree if tree is not None else office_tree()
+        for office_id in heads:
+            scope |= descendants(office_id, tree)
+    return scope

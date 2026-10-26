@@ -26,6 +26,7 @@ data.
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from api.models import (
@@ -86,6 +87,17 @@ PEOPLE = [
     ('VPAS_Teresa', 'Teresa Navarro', 'VPAS', Position.HEAD),
 ]
 
+# Monitor-only Heads (v4.2 Phase 4): offices that neither propose nor
+# concur, so their Heads see Monitoring for their branch and nothing to
+# act on. Added to a fresh seed, or to an existing one with
+# `--add-monitors`.
+MONITORS = [
+    ('PRES_Antonio', 'Antonio Valdez', 'OP', Position.HEAD),
+    ('VPAF_Ramil', 'Ramil Castro', 'VPAF', Position.HEAD),
+    ('CAOF_Cynthia', 'Cynthia Morales', 'CAO-F', Position.HEAD),
+    ('CAOA_Dante', 'Dante Rivera', 'CAO-A', Position.HEAD),
+]
+
 
 class Command(BaseCommand):
     help = 'Seed a fictional organisation for demonstrations. Not for a server.'
@@ -94,6 +106,11 @@ class Command(BaseCommand):
         parser.add_argument(
             '--clear', action='store_true',
             help='remove exactly what this command created, and stop',
+        )
+        parser.add_argument(
+            '--add-monitors', action='store_true',
+            help='add only the four monitor-only Heads to an existing seed '
+                 '(backs up an SQLite database first); safe to run twice',
         )
 
     # -- bookkeeping ----------------------------------------------
@@ -150,6 +167,68 @@ class Command(BaseCommand):
             f'people {CustomUser.objects.count()}'
         )
 
+    # -- monitor-only Heads on an existing seed ---------------------
+
+    def _backup(self):
+        """Copy an SQLite file database beside itself before writing."""
+        import sqlite3
+        from django.db import connection
+        name = str(connection.settings_dict.get('NAME') or '')
+        if connection.vendor != 'sqlite' or not name or 'memory' in name:
+            return None
+        target = f'{name}.bak-{timezone.localtime():%Y%m%d-%H%M%S}-pre-monitors'
+        source = sqlite3.connect(f'file:{name}?mode=ro', uri=True)
+        copy = sqlite3.connect(target)
+        source.backup(copy)
+        copy.close()
+        source.close()
+        return target
+
+    def _add_monitors(self):
+        offices = {o.abbreviation: o for o in Office.objects.filter(
+            abbreviation__in=[abbr for _, _, abbr, _ in MONITORS])}
+        missing = [abbr for _, _, abbr, _ in MONITORS if abbr not in offices]
+        if missing:
+            self.stderr.write(f'Refusing: no office with abbreviation {", ".join(missing)}. '
+                              'Seed the organisation first.')
+            return
+        today = timezone.localdate()
+        todo, held = [], []
+        for username, full_name, abbr, kind in MONITORS:
+            if CustomUser.objects.filter(username=username).exists():
+                self.stdout.write(f'  {username}: already there, skipped')
+                continue
+            holder = PositionAssignment.objects.filter(
+                position__office=offices[abbr], position__kind=kind, starts_on__lte=today,
+            ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today)).select_related('user').first()
+            if holder is not None:
+                held.append(f'{offices[abbr].name} (held by {holder.user.username})')
+                continue
+            todo.append((username, full_name, abbr, kind))
+        if held:
+            self.stderr.write('Refusing: these Head posts are already held - end them first, '
+                              'or leave them: ' + '; '.join(held))
+            return
+        if not todo:
+            self.stdout.write('Nothing to add.')
+            return
+        backup = self._backup()
+        if backup:
+            self.stdout.write(f'  backup: {backup}')
+        with transaction.atomic():
+            for username, full_name, abbr, kind in todo:
+                person = self._record(CustomUser.objects.create_user(
+                    username=username, password=DEMO_PASSWORD, full_name=full_name,
+                    is_approved=True, system_role=CustomUser.USER,
+                ))
+                position = Position.objects.filter(office=offices[abbr], kind=kind).first()
+                if position is None:
+                    position = self._record(Position.objects.create(office=offices[abbr], kind=kind))
+                self._record(PositionAssignment.objects.create(
+                    user=person, position=position, starts_on=today))
+                self.stdout.write(f'  {username}: Head of {offices[abbr].name}')
+        self.stdout.write(self.style.SUCCESS(f'Added {len(todo)} monitor-only Head(s).'))
+
     # -- seeding ---------------------------------------------------
 
     def handle(self, *args, **options):
@@ -159,6 +238,9 @@ class Command(BaseCommand):
 
         if options['clear']:
             self._clear()
+            return
+        if options['add_monitors']:
+            self._add_monitors()
             return
 
         def seeded(label):
@@ -242,7 +324,7 @@ class Command(BaseCommand):
                    if skipped else '')
             )
 
-            for username, full_name, abbr, kind in PEOPLE:
+            for username, full_name, abbr, kind in PEOPLE + MONITORS:
                 person = CustomUser.objects.create_user(
                     username=username, password=DEMO_PASSWORD,
                     full_name=full_name, is_approved=True,
@@ -263,7 +345,7 @@ class Command(BaseCommand):
                 self._record(PositionAssignment.objects.create(
                     user=person, position=position, starts_on=today,
                 ))
-            self.stdout.write(f'  {len(PEOPLE)} people, all approved')
+            self.stdout.write(f'  {len(PEOPLE) + len(MONITORS)} people, all approved')
 
         self.stdout.write(self.style.SUCCESS(
             f'\nDemonstration organisation seeded. Every person in it is '

@@ -12,6 +12,7 @@ from . import trail_views as trail
 from . import reviews
 from . import delegation_views
 from . import freeze_views
+from . import monitoring_views
 from . import structure_views as structure
 from . import admin_proposal_views
 from . import action_views
@@ -175,6 +176,9 @@ urlpatterns = [
     path('admin/deadlines/<int:deadline_id>/', notices.admin_deadline_detail),
     path('admin/deadlines/<int:deadline_id>/obligations/', notices.admin_deadline_obligations),
     path('admin/deadlines/<int:deadline_id>/priority/', notices.admin_deadline_priority),
+    path('monitoring/overview/', monitoring_views.overview),
+    path('monitoring/offices/', monitoring_views.offices),
+    path('monitoring/items/', monitoring_views.items),
     path('admin/freezes/', freeze_views.freezes),
     path('admin/freezes/<int:freeze_id>/lift/', freeze_views.lift),
     path('admin/freezes/<int:freeze_id>/extend/', freeze_views.extend),
