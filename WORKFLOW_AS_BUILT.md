@@ -473,14 +473,132 @@ branch and have nothing to act on. Password `Office123!`.
 to an existing seed: once, after backing up the database, and refusing a
 Head post already held.
 
+What was not built here is listed at the end of this document.
+
+---
+
+## The audit trail, proposals and history, as built
+
+*Built 26–27 October 2026, after Monitoring; tag `v4.2.0-p5`.*
+
+### The audit trail block
+
+On every proposal page (staff, admin, QMS), titled **Audit trail**, below
+the action buttons.
+
+- **Summary:**
+  - who started it (position, full name) and when;
+  - the stage, and who holds it for how long;
+  - days open, and the number of versions;
+  - times returned, and by whom;
+  - the linked deadline.
+- **Timeline, grouped by version:** the current version is open, earlier
+  ones folded. Each step shows:
+  - the step, then position first and the person's full name;
+  - the time, and the stage it moved from and to, with the time spent in
+    the previous stage;
+  - notes, feedback, reasons and comments word for word, including the
+    Head's note to the Encoder, an office's return with its section, the
+    IMR's comments, the custodian's return and replacement reasons;
+  - each AI check, shown from its stored result, never re-run.
+- **Filters:** step, office, version, and a date range. They narrow the
+  screen and the export alike.
+- **Exports, CSV and PDF:**
+  - **Who:** the same people who may generate the audit trail report.
+    These are the offices in the request, the IMR and the Custodian. The
+    system admin may too, with a reason.
+  - **Logged:** each export is recorded in the trail report log with its
+    own serial (`AT-…-CSV` or `AT-…-PDF`), who exported it and as what,
+    and the file's SHA-256.
+  - **CSV:** carries a UTF-8 marker and formula-safe cells.
+  - **PDF:** prints the serial and "Page n of N" on every page.
+  - **Both:** say the trail is not tamper-evident.
+- **Not shown:** individual section edits (they are not recorded as
+  steps), and notices read or acted on.
+
+### Proposals for staff: deadline-first
+
+The staff Proposals screen lists the viewer's offices' work in sections,
+in this order. Each section shows its count and pages at 50; empty
+sections disappear; only the first opens, and the others load when
+opened.
+
+| Section | Holds |
+|---|---|
+| Due for submission | every open deadline obligation of the office: overdue (most days late first), due within 30 days, priority, then the rest. One row per manual, under its most urgent deadline. A manual not begun shows **Not started** with **Start**; a deadline any proposal meets shows "Any document" |
+| Awaiting your office | concurrence requests the office has not decided on |
+| Returned to you | drafts back after a return (by the Head or an office), and packages the custodian returned |
+| From my office | everything else the office started, open first |
+| Other offices' requests | requests the office concurs on, once they no longer wait on it |
+
+- **A request appears once,** in the first section it belongs to.
+- **Each row:** the manual and series, the deadline and its type, the
+  status, who holds it and for how long, and one action that fits the
+  viewer:
+  - **Encoder:** Start, Continue, Recall, Redraft, Upload scans.
+  - **Head:** Start, Submit, Submit or return, Concur or return,
+    Redraft, Upload scans.
+
+  Someone who cannot act sees no button. The action opens the request,
+  where the step itself is done; Start asks for the password.
+- **Filters:** deadline, series, manual, status and "Overdue only",
+  remembered per person.
+
+### Admin Proposals: Needs attention
+
+On top of the admin Proposals list, under the same filters (status,
+office, series).
+
+- **Three parts, in order:**
+  1. manuals marked priority or due within 30 days;
+  2. overdue, most days late first;
+  3. stalled requests.
+- **The cap:** each part shows its count and its first 10 rows. "Show
+  more" pages through the rest of that part, 50 at a time.
+- **A request appears once,** in its first part. A manual not started
+  appears once per office.
+- **Each row:** the deadline and its type, the status, who holds it and
+  for how long, and one action: open the request, or open the deadline
+  for a manual not started.
+
+### History
+
+A **History** page in the staff, QMS and admin portals: what is done,
+read-only.
+
+- **Holds:** closed requests (made effective, denied, withdrawn) and
+  "Reviewed, no change" entries.
+- **Grouping:** year, then month, with counts by outcome on each. The
+  current year is open; earlier years fold. A month's rows load when it
+  is opened, 50 a page.
+- **Each row:** the outcome, DCR number, manual and number of sections
+  changed, the office, opened and closed dates, days open, and times
+  returned. The manual opens the request's audit trail.
+- **Filters:** closed or submitted date, with quick ranges (this month,
+  this year, last year) and a custom range; outcome; office; series; DCR
+  number. Remembered per person.
+- **Scope, the same as Monitoring:**
+  - the admin and QMS see everything;
+  - a Head (or delegate) sees the office and everything beneath it;
+  - an Encoder sees their own office.
+
+  For offices, **Mine** is what they initiated or reviewed, and
+  **Participated** is what they concurred on or sign for, initiated
+  elsewhere. An office outside scope is refused.
+- **Exports:** CSV and PDF, with the audit block's writers. Each prints
+  its filters, scope, the exporter's position and the time.
+  **History exports are not recorded in the export log**: that log
+  records one request per row, and a History export covers many.
+
 ### Not built
 
 - the critical-times timeline
-- exports (CSV, PDF)
-- the History tab
-- deadline-first Proposals screens
+- office timeliness columns
+- the By manual and By deadline views
+- saved views
+- stored summary counts (counts are read live)
+- section edits, and notices read or acted on, in the audit trail
+- the generated draft copy holding the whole manual
+- the error message for scanned PDFs
 - the per-proposal audit hash chain: the proposal trail is not
   tamper-evident
-- the generated draft copy holding the whole manual
-- office timeliness columns, the By manual and By deadline views, saved
-  views, and stored summary counts
