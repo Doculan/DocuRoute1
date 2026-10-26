@@ -187,7 +187,7 @@ Things that hold throughout:
 
 ### IMR
 
-1. **Requests** shows what is ready; the dashboard shows counts.
+1. **Requests** shows what is ready.
 2. **Accept** or **Deny** (password). Comments are required to deny, and every office involved can read them.
 3. After acceptance, the approving authority signs section 4 on paper; **upload the completed signed DCR** (the requesting office may too).
 
@@ -299,7 +299,7 @@ Overdue, escalation and weekly deadline notices **pause** for what a freeze cove
 
 **Rules:** the check is **mandatory and its advice never blocks submission**; the reason for the change is never an input to the model; each check is bound to a hash of its text, so editing a section clears only that section's check; without the model files the check still runs on the rules alone.
 
-**Figures** (5-fold cross-validation, grouped by document, fold means): rules alone 79.1%, model alone 95.1%, full pipeline **97.8%** verdict agreement and **0.854** issue micro-F1. Always say it as: *agreement with generated labels on unseen documents, with label quality audited at 44 of 50*. It is not accuracy on real revisions. A known weakness is **overconfidence on harmless real edits** the training data never covered. See `MODEL_EXPLAINED.md` and `EVALUATION.md`.
+**Figures** (5-fold cross-validation, grouped by document, fold means): rules alone 79.1%, model alone 95.1%, full pipeline **97.8%** verdict agreement and **0.854** issue micro-F1. Always say it as: *agreement with generated labels on unseen documents, with label quality audited at 44 of 50*. It is not accuracy on real revisions. A known weakness is **overconfidence on harmless real edits** the training data never covered. See the HMRAP technical report (`Backend/ml/reports/HMRAP_TECHNICAL_REPORT_2026-10-01.md`) and `EVALUATION.md`.
 
 ---
 
@@ -357,7 +357,6 @@ No generated file carries personal metadata.
 <project folder>/
 ├── CLAUDE.md, README.md, CHANGELOG.md, PROGRESS.md
 ├── WORKFLOW_AS_BUILT.md          the process as built
-├── MODEL_EXPLAINED.md            the AI, explained
 ├── DEPLOYMENT.md, DEMO_CHECKLIST.md
 ├── Backend/
 │   ├── manage.py
@@ -366,7 +365,7 @@ No generated file carries personal metadata.
 │   ├── media/                    templates, master copies, generated files (NOT served directly)
 │   └── ml/
 │       ├── revision_pipeline/    HMRAP code, wording file, vocabulary
-│       ├── datasets/, reports/
+│       ├── datasets/, reports/   the HMRAP technical report is in reports/
 │       └── saved_models/context_v2/   the trained model — NOT in git
 └── frontend/
 ```
@@ -516,7 +515,7 @@ Run from `Backend/` with `..\venv\Scripts\python.exe manage.py <command>`.
 | --- | --- |
 | `QMS_CDMS_GUIDE.md` | This guide |
 | `WORKFLOW_AS_BUILT.md` | The process exactly as built, with every refusal reason |
-| `MODEL_EXPLAINED.md` | The AI, for readers without an ML background |
+| `Backend/ml/reports/HMRAP_TECHNICAL_REPORT_2026-10-01.md` | The HMRAP technical report |
 | `Backend/ml/reports/EVALUATION.md` | Full evaluation, figures and limitations |
 | `DEMO_CHECKLIST.md` | Running a presentation |
 | `DEPLOYMENT.md` | Deploying beyond a laptop, and the measured SQLite limits |
