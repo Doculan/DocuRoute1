@@ -1,7 +1,8 @@
 import { useState } from "react";
 import useServerData from "../useServerData";
 
-const FILTERS_KEY = "staff_board_filters";
+// Per person, not per browser: a shared demo browser changes hands.
+const filtersKey = () => `staff_board_filters:${localStorage.getItem("username") || ""}`;
 const NO_FILTERS = { deadline: "", series: "", manual: "", status: "", overdue: "" };
 const STATUSES = [
   ["not_started", "Not started"], ["drafting", "Drafting"], ["returned", "Returned"],
@@ -10,12 +11,12 @@ const STATUSES = [
 ];
 
 function readFilters() {
-  try { return { ...NO_FILTERS, ...JSON.parse(localStorage.getItem(FILTERS_KEY) || "{}") }; }
+  try { return { ...NO_FILTERS, ...JSON.parse(localStorage.getItem(filtersKey()) || "{}") }; }
   catch { return NO_FILTERS; }
 }
 
 function writeFilters(value) {
-  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(value)); } catch { /* per viewer only */ }
+  try { localStorage.setItem(filtersKey(), JSON.stringify(value)); } catch { /* per viewer only */ }
 }
 
 const clean = (f) => Object.fromEntries(Object.entries(f).filter(([, v]) => v));
