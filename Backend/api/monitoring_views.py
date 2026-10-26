@@ -38,6 +38,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import access, lists
+from .deadline_tags import tag_rows
 from .models import (
     AuditEvent, DeadlineObligation, MonitoringSetting, Office, Proposal,
 )
@@ -295,10 +296,15 @@ def items(request):
                       else {int(raw)})
     page = lists.page_number(request.query_params)
     if bucket == 'advised':
-        return Response(_advised_page(office_ids, page))
-    if bucket in OBLIGATION_BUCKETS:
-        return Response(_obligation_page(office_ids, bucket, page))
-    return Response(_proposal_page(office_ids, bucket, page))
+        result = _advised_page(office_ids, page)
+    elif bucket in OBLIGATION_BUCKETS:
+        result = _obligation_page(office_ids, bucket, page)
+    else:
+        result = _proposal_page(office_ids, bucket, page)
+    # Every row naming a manual carries its deadline tag (spec §6.7),
+    # computed for the page at once.
+    tag_rows(request.user, result['rows'])
+    return Response(result)
 
 
 def _proposal_page(office_ids, bucket, page):
@@ -367,7 +373,8 @@ def _proposal_rows(proposals, now):
             word = f'Returned by {returned_by[p.pk]}'
         stage = STAGES.get(p.status, (None,))[0]
         rows.append({
-            'proposal_id': p.pk, 'manual': p.manual.title, 'office': office,
+            'proposal_id': p.pk, 'manual_id': p.manual_id, 'manual': p.manual.title,
+            'office': office,
             'status': word, 'holder': holder, 'days': days, 'waiting_on': waits,
             'stalled': bool(stage and days >= thresholds[stage]),
             'limit': thresholds.get(stage) if stage else None,
@@ -390,6 +397,7 @@ def _obligation_page(office_ids, bucket, page):
         'obligation_id': ob.pk, 'deadline': ob.deadline.title, 'type': ob.deadline.type.name,
         'due_on': ob.deadline.due_on, 'office': ob.office.name,
         'manual': ob.manual.title if ob.manual_id else None,
+        'manual_id': ob.manual_id,
         'state': ob.get_state_display(), 'met': ob.state != DeadlineObligation.OPEN,
         'days_late': max((today - ob.deadline.due_on).days, 0)
         if ob.state == DeadlineObligation.OPEN else 0,
@@ -429,7 +437,8 @@ def _advised_page(office_ids, page):
         else:
             status, holder = 'Not started', ob.office.name
         out.append({
-            'obligation_id': ob.pk, 'manual': ob.manual.title, 'office': ob.office.name,
+            'obligation_id': ob.pk, 'manual_id': ob.manual_id, 'manual': ob.manual.title,
+            'office': ob.office.name,
             'deadline': ob.deadline.title, 'type': ob.deadline.type.name,
             'due_on': ob.deadline.due_on, 'priority': ob.priority,
             'status': status, 'holder': holder, 'met': not is_open,

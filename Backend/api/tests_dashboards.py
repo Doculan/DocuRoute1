@@ -143,12 +143,13 @@ class AdminDashboardTests(DashboardFixture):
         )
         return proposal
 
-    def test_proposal_work_appears_in_the_activity_chart(self):
+    def test_proposal_work_appears_in_the_offices_chart(self):
+        """The offices chart replaced the activity chart (Phase 4)."""
         self.a_locked_proposal()
 
-        activity = self.as_admin().get('/api/admin/dashboard/').data['activity']
-        self.assertEqual(activity['totals']['submitted'], 1)
-        self.assertEqual(activity['totals']['approved'], 1)
+        bars = self.as_admin().get('/api/monitoring/offices-chart/').data['bars']
+        self.assertEqual([(b['office_id'], b['value']) for b in bars], [(self.accounting.pk, 1)])
+        self.assertEqual(bars[0]['stages']['awaiting_signatures'], 1)
 
     def test_open_proposals_are_counted_for_attention(self):
         Proposal.objects.create(
