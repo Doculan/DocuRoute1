@@ -317,3 +317,14 @@ not touched (fingerprint `6a6a5c667a3c4d11`; 0.978 / 0.854).
   the manual - unless the manual has an exception. The commands that
   rewrite section text skip frozen manuals unless run with
   `--ignore-freeze`.
+- **Known defect in `v4.2.0-p3`, fixed by commit `656f54a`.** The tagged
+  release let the requesting office edit a proposal while it was out for
+  concurrence. The edit made no new version and left the concurrences
+  already given standing, though they were on text that no longer
+  existed. Edits are now allowed in Draft only. Each concurrence records
+  the content hash of the text it agreed to, and the lock is refused if
+  any no longer matches. A scan of the live data found no proposal whose
+  text changed after submission. The same commit tells the Heads of the
+  approving offices when a request is locked, so they know documents are
+  coming to sign (the system admin where an office has no Head).
+  Migration `0051`.

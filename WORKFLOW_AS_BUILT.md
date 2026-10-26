@@ -1,8 +1,10 @@
 # The change process, as built
 
-*State at the end of Phase 3 (tag `v4.2.0-p3`, 26 October 2026). Written
-from the code, not the plans: where the build differs from `CLAUDE.md` or
-the specs, it says so under **Differences from the design**.*
+*State at the end of Phase 3 (tag `v4.2.0-p3`, 26 October 2026), with the
+fix made after it: edits only in Draft, concurrences checked against the
+text at the lock, and the signatory offices told of the lock. Written from
+the code, not the plans: where the build differs from `CLAUDE.md` or the
+specs, it says so under **Differences from the design**.*
 
 DocuRoute routes, records, notifies, generates the documents to be signed
 and stores the signed scans. It does not sign anything and does not verify
@@ -38,7 +40,7 @@ stored.
 | 1a | With the Head | Head | Submit for concurrence | yes | Out for concurrence (or Locked) |
 | | | Head | Return to Encoder | no; a note is required | Draft |
 | | | Encoder | Recall | no | Draft |
-| 2 | Out for concurrence | Head of each concurring office | Concur | yes | Locked, when the last one concurs |
+| 2 | Out for concurrence | Head of each concurring office | Concur | yes | Locked, when the last one concurs and the text is still what each agreed to |
 | | | Head of each concurring office | Return with feedback | yes; feedback required | Draft (new version) |
 | | | Head of the requesting office | Withdraw | yes, with a reason | Withdrawn |
 | 3 | Locked → Awaiting signature | the system, on the last concurrence | — | — | Awaiting signature |
@@ -66,9 +68,13 @@ further happens to a closed request.
   - a change freeze covers it (`frozen`).
 
   The owner (an approving office) and readers do not propose.
-- **Editing.** Anyone in the requesting office edits. Each changed section
-  is its own box with its own mandatory AI check; editing a section
-  clears only that section's check. A section held by another office's
+- **Editing, in Draft only.** Anyone in the requesting office edits while
+  the proposal is a draft - never with the Head (`with_head`) and never
+  after submission (`not_open`): no section text, no new section, no
+  change to the reason, no AI check. After submission the text changes
+  only through a return or a withdrawal. Each changed section is its own
+  box with its own mandatory AI check; editing a section clears only that
+  section's check. A section held by another office's
   open request cannot be changed (`section_in_another_proposal`). One
   overall reason is required; per-section notes are optional. The AI
   check is rate-limited per person and per proposal.
@@ -98,6 +104,8 @@ further happens to a closed request.
   proposal, with the password (`not_head`, `not_participating`,
   `already_decided`). A return needs feedback (`feedback_required`), may
   name a section, and is seen by every office involved.
+- **Each concurrence records what it agreed to**: the version's content
+  hash, over the overall reason and every proposed text.
 - **Any return** makes a new version back in Draft, carrying the text but
   not the checks. **Every concurrence resets**: an office concurs with
   particular text.
@@ -108,10 +116,15 @@ further happens to a closed request.
 
 When the last concurring office concurs, in **one transaction**, the system:
 
-1. numbers the request (`DCR-YYYY-NNN`, counted per year from the numbers
+1. compares each concurrence's hash with the text as it now stands. If
+   any differs, the lock is refused (`content_changed`, naming the
+   offices) and the last office's concurrence is not kept. Concurrences
+   recorded before the hash existed (before this fix) are not compared,
+   and the lock's record says how many;
+2. numbers the request (`DCR-YYYY-NNN`, counted per year from the numbers
    already issued);
-2. locks the content;
-3. generates the pre-filled DCR, the revised manual pages and the
+3. locks the content;
+4. generates the pre-filled DCR, the revised manual pages and the
    concurrence record.
 
 A generator that fails takes the lock with it, so a proposal is never
@@ -120,6 +133,14 @@ never names**.
 
 Locked content cannot be amended. Its sections stay **held** until the
 request is effective, denied or withdrawn.
+
+**Who is told of the lock:**
+- the requesting office (action: print, sign, upload);
+- the Head of each approving office on the route (the owner and the
+  levels above), for information, so they know documents are coming.
+  An approving office with no Head sends it to the system admin, as in
+  the deadline ladder. A person gets one notice per event, so an owner
+  that proposed keeps only the requesting office's.
 
 ## 4. Awaiting signature — the signed copies
 
@@ -197,6 +218,7 @@ read). The person who acted is not told of their own act.
 | Concurred | the requesting office | info |
 | Returned by an office | the requesting office | action |
 | Locked | the requesting office | action: print, sign, upload |
+| Locked: documents coming | the Heads of the approving offices (no Head: the system admin) | info |
 | Both signed copies in | the IMR | action |
 | IMR accepts | the requesting office | info |
 | IMR denies | the requesting office and every participating office | info |
@@ -323,19 +345,11 @@ everything owed, priority manuals first.
 
 ## Differences from the design
 
-- **Locking tells only the requesting office.** `CLAUDE.md` says it also
-  tells the signatory offices (the owner and the approving levels above),
-  so they know documents are coming. The built notice goes to the
-  requesting office alone.
-- **Defect: the text can change while out for concurrence.** The
-  requesting office can still edit a section after submission.
-  `EDITABLE_STATUSES` includes *Out for concurrence*. The edit:
-  - is accepted;
-  - makes no new version;
-  - leaves concurrences already given on the earlier text standing.
-
-  This contradicts "an office concurs with particular text". Confirmed by
-  a probe on 26 Oct 2026; not yet fixed.
+- **Fixed after `v4.2.0-p3`:** that release let the requesting office
+  edit a section while out for concurrence, with no new version and the
+  earlier concurrences left standing; and it told only the requesting
+  office of the lock. Both are fixed (see `CHANGELOG.md`). A scan of the
+  live data found no proposal whose text changed after submission.
 - **The proposal audit trail is not hash-chained.** Only the system log
   (`SystemEvent`) is chained. Phase 6 adds a per-proposal chain; until
   then, no document calls the proposal trail tamper-evident.
