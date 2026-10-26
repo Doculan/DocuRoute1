@@ -812,6 +812,7 @@ a:hover { color: var(--brand-500); }
 .board-main:hover:not(:disabled) { background: var(--paper-3); }
 .board-manual { font-weight: 500; }
 .board-action { min-width: 7.5rem; text-align: right; }
+.board-group { padding: 0.6rem 0.15rem 0.2rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* The audit block (spec §10). */
 .audit-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.5rem 1.5rem; margin: 0.9rem 0 0; }

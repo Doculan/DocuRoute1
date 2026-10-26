@@ -6,6 +6,7 @@ import ProposalPackage from "../ProposalPackage";
 import QmsDecisions from "../QmsDecisions";
 import TrailReport from "../TrailReport";
 import AuditTrail from "../AuditTrail";
+import NeedsAttention from "./NeedsAttention";
 import Icon from "../Icon";
 import DeadlineTag from "../DeadlineTag";
 import {
@@ -51,7 +52,7 @@ const FILTER_STYLE = { width: "auto", flex: "1 1 12rem", maxWidth: "20rem" };
  * The reviewer's technical diff, not the submitter's marked-up one: this
  * audience is checking what changed, not reading the document.
  */
-export default function Proposals({ openId = null, initialFilters = null }) {
+export default function Proposals({ openId = null, initialFilters = null, onOpenDeadlines }) {
   const [filters, setFilters] = useState({ ...NO_FILTERS, ...(initialFilters || {}) });
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
@@ -144,6 +145,9 @@ export default function Proposals({ openId = null, initialFilters = null }) {
           </button>
         )}
       </div>
+
+      <NeedsAttention key={JSON.stringify(filters)} filters={filters} onOpen={setOpen}
+                      onOpenDeadlines={onOpenDeadlines} />
 
       {!data ? (
         <div className="loading-row"><span className="spinner" /> Loading…</div>

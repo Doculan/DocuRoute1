@@ -162,7 +162,8 @@ export default function AdminDashboard({ onLogout }) {
       case "people": return <People />;
       case "proposals":
         return <Proposals key={JSON.stringify(proposalFilters)} openId={openProposalId}
-                          initialFilters={proposalFilters} />;
+                          initialFilters={proposalFilters}
+                          onOpenDeadlines={() => goTo("announcements")} />;
       case "monitoring": return <Monitoring />;
       case "notifications": return <NotificationsPage onOpen={openNotice} />;
       case "evaluation": return <SVMEvaluation />;

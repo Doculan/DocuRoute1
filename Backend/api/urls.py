@@ -174,6 +174,7 @@ urlpatterns = [
     path('admin/dashboard/', admin_dashboard),
     # Every proposal, paged and filtered - not the dashboard's recent six.
     path('admin/proposals/', admin_proposal_views.admin_proposals),
+    path('admin/proposals/attention/', admin_proposal_views.admin_attention),
     path('admin/announcements/', notices.admin_announcements),
     path('admin/announcements/<int:announcement_id>/', notices.admin_announcement_detail),
     # Deadlines: tracked obligations, office by office.
