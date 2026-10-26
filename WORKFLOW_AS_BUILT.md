@@ -355,3 +355,132 @@ everything owed, priority manuals first.
   then, no document calls the proposal trail tamper-evident.
 - **The DCR number format** `DCR-YYYY-NNN` is provisional, pending the QMS
   office.
+
+---
+
+## Monitoring, as built
+
+*Phase 4, steps 2 to 5 (26 October 2026). Read-only: nothing here changes
+a request.*
+
+### Who sees what
+
+| Viewer | Sees |
+|---|---|
+| System admin, QMS staff (IMR, Document Custodian) | the whole institution |
+| A Head, or a delegate while the delegation runs | the office and every office beneath it |
+| An Encoder | their own office only |
+| No post | nothing |
+
+- **Never a sibling, a parent, or a branch beside it**, even where offices
+  concur on the same manuals. Several posts give the union.
+- **One rule for every endpoint:** `access.monitoring_scope`. An office
+  outside it is refused (`out_of_scope`).
+- **Where to find it:** "Monitoring" in the admin and QMS portals,
+  "Office monitoring" in the staff portal.
+
+### The Overview counts
+
+Counted live from the data each time, with grouped queries. There is no
+stored summary.
+
+| Tile | How it is computed |
+|---|---|
+| Overdue | deadline obligations still open whose due date has passed |
+| Stalled | open requests that have been in their current stage longer than its stall limit (with the Head 3 days, in concurrence 7, awaiting signed copies 14, with the IMR 7, with the custodian 10), from when they entered it. Computed now, whether or not `run_monitoring` has run |
+| Returned | drafts whose last move was a return, by an office or by the Head |
+| In concurrence | out for concurrence |
+| Awaiting signatures | locked, awaiting signature, or returned for package defects |
+| With QMS | ready for the IMR, awaiting the approving authority, or with the custodian |
+
+- **Who counts it:** requests count under the office that made them,
+  obligations under the office that owes them.
+- **Each tile opens its list,** 50 rows a page. Each request row shows
+  who holds it, for how many days, and what it waits on, e.g.
+  "Concurrence: Budget Office".
+
+### By office
+
+- **The tree:** the offices in scope, each rolled up from everything
+  beneath it, most overdue first, then most stalled.
+- **Loading:** a branch opens one level at a time, 50 offices a page.
+- **Columns:**
+
+  | Column | Meaning |
+  |---|---|
+  | Open | open requests |
+  | Stalled | as on the Overview |
+  | Owed | deadline obligations on active deadlines |
+  | Unmet | those still open |
+  | Overdue | those open past their due date |
+
+  Owed against unmet shows which offices have submitted and which have
+  not. Every number opens its list.
+
+### The offices chart
+
+- **Where:** on the admin dashboard, where it replaces the activity
+  chart; on the Monitoring Overview; and on the QMS dashboard.
+- **Scope:** always the viewer's.
+- **Pending:** open requests per office, by the office that made them;
+  hovering shows the stages.
+- **Approved:** changes made effective this month, this year or last
+  year.
+- **Layout:** highest first, values printed on the bars, the top 15 then
+  "Show more", offices with none collapsed into one line.
+- **A click on a bar:** on the admin dashboard, opens Proposals filtered
+  to that office (in progress, or effective). Elsewhere, opens that
+  office's list in Monitoring.
+
+### Advised revisions
+
+- **What it lists:** a lens beside the Overview showing the manuals the
+  admin has advised an office to revise. These are deadline obligations
+  that name a manual.
+- **Each row:** the manual, the office, the deadline and its type, the
+  status, who holds it, and days late. The status is *Not started*, the
+  office's request stage, or met.
+- **Order:** open first, then by due date.
+- **The count** of open ones shows on the lens and on the QMS dashboard.
+
+### The QMS dashboard
+
+The QMS portal opens on it:
+
+1. **Your queue,** as counts that open Requests. The IMR sees "Ready for
+   your decision" and "Signed DCR to upload"; the Custodian sees "With you
+   to make effective".
+2. **Across the institution:** Overdue, Stalled and Advised revisions,
+   each opening Monitoring at that list.
+3. **The offices chart.**
+
+Monitoring is read-only for the whole institution, and Manuals is one
+click away.
+
+### The four monitor-only accounts
+
+Heads of offices that neither propose nor concur, so they monitor their
+branch and have nothing to act on. Password `Office123!`.
+
+| Username | Name | Office | Sees |
+|---|---|---|---|
+| `PRES_Antonio` | Antonio Valdez | Office of the President | everything beneath the President |
+| `VPAF_Ramil` | Ramil Castro | VP for Administration and Finance | both CAO branches |
+| `CAOF_Cynthia` | Cynthia Morales | CAO for Finance | Accounting, Budget, Cash Management |
+| `CAOA_Dante` | Dante Rivera | CAO for Administration | HR Management, QMS Office |
+
+`seed_demo_org` includes them. `seed_demo_org --add-monitors` adds them
+to an existing seed: once, after backing up the database, and refusing a
+Head post already held.
+
+### Not built
+
+- the critical-times timeline
+- exports (CSV, PDF)
+- the History tab
+- deadline-first Proposals screens
+- the per-proposal audit hash chain: the proposal trail is not
+  tamper-evident
+- the generated draft copy holding the whole manual
+- office timeliness columns, the By manual and By deadline views, saved
+  views, and stored summary counts
