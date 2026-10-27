@@ -289,7 +289,7 @@ def _options(viewer):
     from .models import ManualSeries
     deadlines = (DeadlineObligation.objects.filter(
         office_id__in=viewer.ids, deadline__active=True,
-    ).values_list('deadline_id', 'deadline__title').distinct().order_by('deadline__due_on'))
+    ).exclude(state=DeadlineObligation.CANCELLED).values_list('deadline_id', 'deadline__title').distinct().order_by('deadline__due_on'))
     series = ManualSeries.objects.filter(
         Q(documents__obligations__office_id__in=viewer.ids)
         | Q(documents__proposals__initiating_office_id__in=viewer.ids),

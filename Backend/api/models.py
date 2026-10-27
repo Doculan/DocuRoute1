@@ -2312,8 +2312,13 @@ class DeadlineObligation(models.Model):
     SUBMITTED = 'submitted'
     REVIEWED = 'reviewed'
     EFFECTIVE = 'effective'
+    # No longer targeted: the admin changed the deadline's targets. Kept,
+    # never deleted; reopened if the office is targeted again. Left out
+    # of every count, banner, tag, reminder and escalation.
+    CANCELLED = 'cancelled'
     STATE_CHOICES = [(OPEN, 'Not yet met'), (SUBMITTED, 'Submitted'),
-                     (REVIEWED, 'Reviewed, no change'), (EFFECTIVE, 'Made effective')]
+                     (REVIEWED, 'Reviewed, no change'), (EFFECTIVE, 'Made effective'),
+                     (CANCELLED, 'No longer targeted')]
     MET_STATES = (SUBMITTED, REVIEWED, EFFECTIVE)
 
     deadline = models.ForeignKey(Deadline, on_delete=models.PROTECT, related_name='obligations')

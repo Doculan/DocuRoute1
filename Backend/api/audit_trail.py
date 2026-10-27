@@ -163,7 +163,8 @@ def _summary(proposal, events, stage):
                 .select_related('deadline__type').first()
                 or DeadlineObligation.objects.filter(
                     manual=proposal.manual, office=proposal.initiating_office,
-                    deadline__active=True).select_related('deadline__type')
+                    deadline__active=True).exclude(state=DeadlineObligation.CANCELLED)
+                .select_related('deadline__type')
                 .order_by('deadline__due_on').first())
     return {
         'dcr_number': proposal.dcr_number, 'manual': proposal.manual.title,

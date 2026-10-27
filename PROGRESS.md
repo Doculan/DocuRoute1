@@ -3,6 +3,36 @@
 Working log for the plan in `REVISION_AI_OVERHAUL.md`.
 **Read both files at the start of any session.**
 
+## 27 October 2026 — After p4: By office filter, Deadlines tabs, editing deadlines
+
+- **By office filter** (`fd33d0f`): Monitoring's By office has a Show
+  choice (not submitted, overdue, all) and a deadline picker. Each office
+  is listed on its own, with its own counts.
+- **Staff Deadlines tab** (`9716ea4`): what the office owes, with each
+  manual's status and priority manuals first. It replaces the Home panel,
+  and the office's own deadline tags open it.
+- **QMS Deadlines tab** (`5d090ab`): the admin's list and detail,
+  read-only. QMS staff may GET; POST and PATCH return 403.
+- **Editing deadlines** (admin): title, type, due date, note, reminders,
+  targets and priority manuals.
+  - **Migration 0052** adds the `cancelled` obligation state. It changes
+    the choices only (`sqlmigrate`: no-op).
+  - **Removing never deletes.** An open obligation that is no longer
+    targeted is cancelled. Its office's open notices clear, and if the
+    office then owes nothing it gets one information notice. Met
+    obligations stay. Targeting the office again reopens the same row and
+    tells the office again.
+  - **Cancelled obligations drop out of every count, list, tag, reminder
+    and escalation.** Reads that took met ones too now exclude them.
+  - **Preview** names the offices added and removed, and saves nothing.
+  - **The `deadline_changed` entry** keeps old and new values for the
+    changed fields only, the targets before and after in words, and the
+    offices added and removed. The removal notices hang from that entry.
+  - **Priority:** "unmark" clears the flag. An open obligation that only
+    the priority created is cancelled. Marking a cancelled pair again
+    reopens it.
+  - **A past due date** can be kept on edit, but not newly set.
+
 ## 26 October 2026 — Phase 4 step 5: the QMS dashboard
 
 - The QMS portal now opens on a **Dashboard**:

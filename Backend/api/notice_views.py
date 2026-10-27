@@ -341,7 +341,8 @@ def _clean_deadline(data, user, partial, deadline=None):
         due, bad = _date(data.get('due_on'))
         if bad or due is None:
             return None, None, _refuse('Use a date like 2026-11-12.', 'invalid_date')
-        if due < timezone.localdate():
+        # An edit may keep a date that has passed; it may not set one.
+        if due < timezone.localdate() and (deadline is None or due != deadline.due_on):
             return None, None, _refuse('The due date has passed.', 'due_in_past')
         fields['due_on'] = due
     if 'note' in data or not partial:
@@ -431,7 +432,8 @@ def admin_deadline_detail(request, deadline_id):
         } for t in deadline.targets.select_related('office', 'series', 'manual')]
         tree = Tree()
         by_branch = {}
-        for office_id, state, n in (deadline.obligations.values_list('office_id', 'state')
+        for office_id, state, n in (deadline.obligations.exclude(
+                state=DeadlineObligation.CANCELLED).values_list('office_id', 'state')
                                     .annotate(n=Count('pk'))):
             branch = tree.branch(office_id)
             row = by_branch.setdefault(branch, {'branch_id': branch, 'branch': tree.name[branch],
@@ -444,27 +446,72 @@ def admin_deadline_detail(request, deadline_id):
                                                 deadline=deadline)
     if refusal:
         return refusal
+    moved = deadlines.changes(deadline, targets) if targets is not None else None
+    if _truthy(request.query_params.get('preview')) or _truthy(request.data.get('preview')):
+        # What saving would do, saving nothing: who is told, and who is
+        # added or taken off.
+        told = deadlines.preview(targets) if targets is not None else {}
+        names = dict(Office.objects.filter(pk__in=sum((moved or {}).values(), []))
+                     .values_list('pk', 'name'))
+        for key in ('offices_added', 'offices_removed'):
+            told[key] = sorted(names[o] for o in (moved or {}).get(key, []))
+        return Response(told)
     with transaction.atomic():
         if 'new_type' in fields:
             fields['type'], refusal = _new_type(fields.pop('new_type'), request.user)
             if refusal:
                 transaction.set_rollback(True)
                 return refusal
+        before = {name: _shown(getattr(deadline, name)) for name in fields}
+        if targets is not None:
+            before['targets'] = _targets_shown(deadline.targets.select_related(
+                'office', 'series', 'manual'))
         for name, value in fields.items():
             setattr(deadline, name, value)
         deadline.save()
+        after = {name: _shown(value) for name, value in fields.items()}
+        if targets is not None:
+            after['targets'] = _targets_shown(targets)
+        changed = sorted(name for name in after if after[name] != before[name])
+        detail = {'deadline': deadline.pk, 'fields': changed,
+                  'old': {n: before[n] for n in changed}, 'new': {n: after[n] for n in changed}}
+        if moved:
+            detail.update(moved)
+        event = system_log.record(SystemEvent.DEADLINE_CHANGED, user=request.user,
+                                  label='System administrator', detail=detail)
         if targets is not None:
             deadline.targets.all().delete()
             for target in targets:
                 target.deadline = deadline
                 target.save()
-            deadlines.materialise(deadline, request.user)
-        system_log.record(SystemEvent.DEADLINE_CHANGED, user=request.user,
-                          label='System administrator',
-                          detail={'deadline': deadline.pk, 'fields': sorted(
-                              list(fields) + (['targets'] if targets is not None else []))})
+            deadlines.materialise(deadline, request.user, event=event)
         deadline.refresh_from_db()
     return Response(_deadline_payload(deadline, today))
+
+
+def _shown(value):
+    """A field's value as the audit entry keeps it."""
+    if isinstance(value, DeadlineType):
+        return value.name
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return value
+
+
+def _targets_shown(targets):
+    """Targets in words, for the audit entry's before and after."""
+    words = []
+    for t in targets:
+        if t.kind == DeadlineTarget.ALL:
+            words.append('All offices')
+        elif t.kind == DeadlineTarget.OFFICE:
+            words.append(t.office.name + (' and the offices under it'
+                                          if t.include_descendants else ''))
+        elif t.kind == DeadlineTarget.SERIES:
+            words.append(f'Series {t.series.code}')
+        else:
+            words.append(f'Manual {t.manual.title}')
+    return sorted(words)
 
 
 @api_view(['POST'])
@@ -491,6 +538,10 @@ def admin_deadline_priority(request, deadline_id):
     if strangers:
         return _refuse(f'{office.name} does not concur on {", ".join(strangers)}.',
                        'not_concurring')
+    if 'priority' in request.data and not _truthy(request.data.get('priority')):
+        with transaction.atomic():
+            unflagged = deadlines.unset_priority(deadline, office, manuals, request.user)
+        return Response({'unset': len(unflagged)})
     with transaction.atomic():
         flagged = deadlines.set_priority(deadline, office, manuals, request.user)
     return Response({'priority': len(flagged), 'open': sum(
@@ -507,7 +558,8 @@ def admin_deadline_obligations(request, deadline_id):
     page = _page(request)
     if page is None:
         return _refuse('Pages are numbered from 1.', 'invalid_page')
-    rows = deadline.obligations.select_related('office', 'manual', 'met_by_proposal')
+    rows = deadline.obligations.exclude(state=DeadlineObligation.CANCELLED).select_related(
+        'office', 'manual', 'met_by_proposal')
     state = request.query_params.get('state', 'all')
     if state == 'open':
         rows = rows.filter(state=DeadlineObligation.OPEN)

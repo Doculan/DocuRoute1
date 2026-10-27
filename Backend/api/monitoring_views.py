@@ -103,7 +103,8 @@ class Scope:
         return query if self.everything else query.filter(initiating_office_id__in=self.ids)
 
     def obligations(self):
-        query = DeadlineObligation.objects.filter(deadline__active=True)
+        query = DeadlineObligation.objects.filter(deadline__active=True).exclude(
+            state=DeadlineObligation.CANCELLED)
         if getattr(self, 'deadline_id', None):
             query = query.filter(deadline_id=self.deadline_id)
         return query if self.everything else query.filter(office_id__in=self.ids)
@@ -319,7 +320,9 @@ def _flat(request, scope, show):
     start = (page - 1) * lists.PAGE_SIZE
     deadlines = Deadline.objects.filter(active=True).order_by('due_on')
     if not scope.everything:
-        deadlines = deadlines.filter(obligations__office_id__in=scope.ids).distinct()
+        deadlines = deadlines.filter(pk__in=DeadlineObligation.objects.filter(
+            office_id__in=scope.ids).exclude(state=DeadlineObligation.CANCELLED)
+            .values('deadline_id'))
     return Response({'offices': rows[start:start + lists.PAGE_SIZE], 'count': len(rows),
                      'page': page, 'pages': max(1, -(-len(rows) // lists.PAGE_SIZE)),
                      'deadlines': [{'id': d.pk, 'title': d.title, 'due_on': d.due_on}
@@ -440,7 +443,8 @@ def _proposal_rows(proposals, now):
 
 def _obligation_page(office_ids, bucket, page):
     today = timezone.localdate()
-    query = DeadlineObligation.objects.filter(deadline__active=True, office_id__in=office_ids)
+    query = DeadlineObligation.objects.filter(deadline__active=True, office_id__in=office_ids) \
+        .exclude(state=DeadlineObligation.CANCELLED)
     if bucket in ('unmet', 'overdue'):
         query = query.filter(state=DeadlineObligation.OPEN)
     if bucket == 'overdue':
@@ -470,7 +474,8 @@ def _advised_page(office_ids, page):
     today = timezone.localdate(now)
     query = DeadlineObligation.objects.filter(
         deadline__active=True, manual__isnull=False, office_id__in=office_ids,
-    ).select_related('deadline__type', 'office', 'manual').annotate(
+    ).exclude(state=DeadlineObligation.CANCELLED).select_related(
+        'deadline__type', 'office', 'manual').annotate(
         still_open=Count('id', filter=Q(state=DeadlineObligation.OPEN)),
     ).order_by('-still_open', 'deadline__due_on', 'office__name', 'pk')
     rows, paging = lists.page_of(query, page)

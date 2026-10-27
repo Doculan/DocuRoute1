@@ -140,7 +140,7 @@ def deadline_tags_for(user, manual_ids, today=None):
     today = today or timezone.localdate()
     rows = list(DeadlineObligation.objects.filter(
         manual_id__in=ids, deadline__active=True,
-    ).filter(
+    ).exclude(state=DeadlineObligation.CANCELLED).filter(
         Q(state=DeadlineObligation.OPEN) | Q(deadline__due_on__gte=today),
     ).select_related('deadline__type', 'office'))
     if not rows:

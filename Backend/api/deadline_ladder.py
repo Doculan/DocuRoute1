@@ -294,7 +294,8 @@ def clear(pairs, by=None, now=None):
     query = Q()
     for deadline_id, office_id in done:
         query |= Q(kind__in=UNIT_NOTICES, dedupe_key__startswith=unit_key(deadline_id, office_id))
-        query |= Q(kind=Notification.DEADLINE_SET, dedupe_key=f'deadline:{deadline_id}:set',
+        query |= Q(kind=Notification.DEADLINE_SET,
+                   dedupe_key__startswith=f'deadline:{deadline_id}:set',
                    addressed_office_id=office_id)
     return notifications.resolve(Notification.objects.filter(query), by=by, now=now,
                                  reason='deadline met')

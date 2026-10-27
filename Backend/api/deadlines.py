@@ -103,20 +103,56 @@ def _in_flight(office_ids):
     return by_pair, by_office
 
 
-def materialise(deadline, actor, now=None):
+def changes(deadline, targets):
+    """Which offices new targets would add and remove, before saving: an
+    office is added when it holds nothing on the deadline now, removed when
+    it owes something now and is no longer targeted at all."""
+    return _changes(deadline, resolve(targets))
+
+
+def _changes(deadline, wanted):
+    held = list(deadline.obligations.exclude(state=DeadlineObligation.CANCELLED)
+                .values_list('office_id', 'manual_id', 'state'))
+    targeted = {o for o, _ in wanted}
+    removed = {o for o, m, state in held
+               if state == DeadlineObligation.OPEN and (o, m) not in wanted} - targeted
+    return {'offices_added': sorted(targeted - {o for o, _, _ in held}),
+            'offices_removed': sorted(removed)}
+
+
+def materialise(deadline, actor, now=None, event=None):
     """Bring the obligations into line with the targets. Returns the ones
-    created. Open obligations no longer targeted go; met ones stay, since
-    they are a record of work done. Call inside a transaction."""
+    created or reopened. Open obligations no longer targeted are
+    **cancelled**, never deleted: their notices clear, and an office left
+    owing nothing is told, under `event` (the edit's log entry). Met ones
+    stay, a record of work done. An office targeted again has its cancelled
+    obligation reopened. Call inside a transaction."""
     now = now or timezone.now()
     wanted = resolve(deadline.targets.all())
+    removed = _changes(deadline, wanted)['offices_removed']
     existing = {(ob.office_id, ob.manual_id): ob for ob in deadline.obligations.all()}
-    gone = [ob.pk for key, ob in existing.items()
+    gone = [ob for key, ob in existing.items()
             if key not in wanted and ob.state == DeadlineObligation.OPEN]
     if gone:
-        DeadlineObligation.objects.filter(pk__in=gone).delete()
+        DeadlineObligation.objects.filter(pk__in=[ob.pk for ob in gone]).update(
+            state=DeadlineObligation.CANCELLED)
+        _clear_set_notices({(deadline.pk, ob.office_id) for ob in gone}, by=actor, now=now)
+
+    back = [ob for key, ob in existing.items()
+            if key in wanted and ob.state == DeadlineObligation.CANCELLED]
+    by_pair, by_office = _in_flight({o for o, _ in wanted - set(existing)}
+                                    | {ob.office_id for ob in back})
+    for ob in back:
+        proposal = by_pair.get((ob.office_id, ob.manual_id)) if ob.manual_id \
+            else by_office.get(ob.office_id)
+        ob.state = DeadlineObligation.SUBMITTED if proposal else DeadlineObligation.OPEN
+        ob.office_met_at = now if proposal else None
+        ob.met_by_proposal_id = proposal
+        ob.created_at = now
+    DeadlineObligation.objects.bulk_update(
+        back, ['state', 'office_met_at', 'met_by_proposal', 'created_at'])
 
     fresh = sorted(wanted - set(existing), key=lambda pair: (pair[0], pair[1] or 0))
-    by_pair, by_office = _in_flight({o for o, _ in fresh})
     rows = []
     for office, manual in fresh:
         proposal = by_pair.get((office, manual)) if manual else by_office.get(office)
@@ -129,14 +165,34 @@ def materialise(deadline, actor, now=None):
     refresh_counts([deadline.pk])
     created = list(deadline.obligations.filter(created_at=now))
     _notify_set(deadline, created, actor, now)
+    _notify_removed(deadline, removed, actor, now, event)
     return created
+
+
+def _notify_removed(deadline, office_ids, actor, now, event=None):
+    """One notice to the Heads and Encoders of each office the deadline no
+    longer applies to, for information."""
+    if not office_ids:
+        return
+    event = event or system_log.record(
+        SystemEvent.DEADLINE_CHANGED, user=actor, label='System administrator', at=now,
+        detail={'deadline': deadline.pk, 'offices_removed': office_ids})
+    recipients = notifications.office_recipients(office_ids, head=notifications.INFO,
+                                                 encoder=notifications.INFO)
+    notifications.create(
+        Notification.DEADLINE_SET, recipients,
+        title=f'{deadline.title} no longer applies to your office',
+        body='The system administrator changed who this deadline is for.',
+        dedupe_key=f'deadline:{deadline.pk}:removed:{now:%Y%m%d%H%M%S%f}', office_level=True,
+        target=('deadline', deadline.pk), system_event=event, now=now)
 
 
 def refresh_counts(deadline_ids):
     """The deadline's three counts, from its obligations. One query per
     deadline touched, inside the caller's transaction."""
     for deadline_id in set(deadline_ids):
-        counts = DeadlineObligation.objects.filter(deadline_id=deadline_id).aggregate(
+        counts = DeadlineObligation.objects.filter(deadline_id=deadline_id).exclude(
+            state=DeadlineObligation.CANCELLED).aggregate(
             total=Count('pk'),
             open=Count('pk', filter=Q(state=DeadlineObligation.OPEN)),
         )
@@ -184,8 +240,11 @@ def _notify_set(deadline, obligations, actor, now):
             # it is about the office's obligations as a whole.
             'manual_id': manual_ids[0] if len(manual_ids) == 1 else None,
         })
+    first = not Notification.objects.filter(dedupe_key=f'deadline:{deadline.pk}:set').exists()
     notifications.create_batch(
-        Notification.DEADLINE_SET, entries, dedupe_key=f'deadline:{deadline.pk}:set',
+        Notification.DEADLINE_SET, entries,
+        dedupe_key=(f'deadline:{deadline.pk}:set' if first
+                    else f'deadline:{deadline.pk}:set:{now:%Y%m%d%H%M%S%f}'),
         system_event=event, target=('deadline', deadline.pk), now=now,
     )
 
@@ -208,6 +267,15 @@ def set_priority(deadline, office, manuals, actor, now=None):
     existing = {ob.manual_id: ob for ob in deadline.obligations.filter(
         office=office, manual__in=manuals)}
     by_pair, _ = _in_flight({office.pk})
+    back = [ob for ob in existing.values() if ob.state == DeadlineObligation.CANCELLED]
+    for ob in back:
+        proposal = by_pair.get((office.pk, ob.manual_id))
+        ob.state = DeadlineObligation.SUBMITTED if proposal else DeadlineObligation.OPEN
+        ob.office_met_at = now if proposal else None
+        ob.met_by_proposal_id = proposal
+        ob.created_at = now
+    DeadlineObligation.objects.bulk_update(
+        back, ['state', 'office_met_at', 'met_by_proposal', 'created_at'])
     fresh = []
     for manual in manuals:
         if manual.pk in existing:
@@ -238,6 +306,30 @@ def set_priority(deadline, office, manuals, actor, now=None):
             dedupe_key=f'deadline:{deadline.pk}:office:{office.pk}:priority:{now:%Y%m%d%H%M%S%f}',
             system_event=event, now=now,
         )
+    return flagged
+
+
+def unset_priority(deadline, office, manuals, actor, now=None):
+    """No longer priority. An open obligation that only the priority made
+    - its office and manual not among the targets - is cancelled, and the
+    office's notices clear if it now owes nothing. Returns those unflagged."""
+    now = now or timezone.now()
+    flagged = list(deadline.obligations.filter(office=office, manual__in=manuals, priority=True))
+    if not flagged:
+        return []
+    DeadlineObligation.objects.filter(pk__in=[ob.pk for ob in flagged]).update(priority=False)
+    wanted = resolve(deadline.targets.all())
+    extra = [ob.pk for ob in flagged if ob.state == DeadlineObligation.OPEN
+             and (office.pk, ob.manual_id) not in wanted]
+    DeadlineObligation.objects.filter(pk__in=extra).update(state=DeadlineObligation.CANCELLED)
+    refresh_counts([deadline.pk])
+    system_log.record(
+        SystemEvent.PRIORITY_SET, user=actor, label='System administrator', office=office, at=now,
+        detail={'deadline': deadline.pk, 'unset': [ob.pk for ob in flagged],
+                'cancelled': extra, 'manuals': [m.pk for m in manuals]},
+    )
+    if extra:
+        _clear_set_notices({(deadline.pk, office.pk)}, by=actor, now=now)
     return flagged
 
 

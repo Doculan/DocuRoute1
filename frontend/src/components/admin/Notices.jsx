@@ -470,14 +470,30 @@ function targetLabel(t) {
   return `Manual ${t.name}`;
 }
 
-function DeadlineForm({ onDone }) {
+/** The saved targets as the form holds them. */
+function formTargets(saved) {
+  return saved.map((t) => ({
+    ...t, name: t.office || t.series || t.manual,
+    key: t.kind === "all" ? "all" : t.kind === "office" ? `o${t.office_id}${t.include_descendants ? "+" : ""}`
+      : t.kind === "series" ? `s${t.series_id}` : `m${t.manual_id}`,
+  }));
+}
+
+const targetKeys = (list) => list.map((t) => t.key).sort().join(",");
+
+/** New deadline, or - given `editing`, the deadline's detail - its edit. */
+function DeadlineForm({ onDone, editing = null }) {
   const offices = useOffices();
   const [types, setTypes] = useState([]);
   const [series, setSeries] = useState([]);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(editing ? {
+    title: editing.title, type_id: String(editing.type_id), new_type: "", due_on: editing.due_on,
+    note: editing.note || "", reminders: editing.reminder_days.join(", "),
+  } : {
     title: "", type_id: "", new_type: "", due_on: "", note: "", reminders: DEFAULT_REMINDERS,
   });
-  const [targets, setTargets] = useState([]);
+  const saved = useMemo(() => (editing ? formTargets(editing.targets) : []), [editing]);
+  const [targets, setTargets] = useState(saved);
   const [adding, setAdding] = useState("office");
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
@@ -495,21 +511,29 @@ function DeadlineForm({ onDone }) {
     setPreview(null);
   };
 
+  // An edit sends the targets only when they changed: past the due date
+  // they cannot.
+  const targetsChanged = !editing || targetKeys(targets) !== targetKeys(saved);
   const body = () => ({
     title: form.title,
     ...(form.type_id === "new" ? { new_type: form.new_type } : { type_id: Number(form.type_id) || null }),
     due_on: form.due_on,
     note: form.note,
     reminder_days: form.reminders.split(",").map((d) => Number(d.trim())).filter((d) => d),
-    targets: targets.map(({ kind, office_id, include_descendants, series_id, manual_id }) =>
-      ({ kind, office_id, include_descendants, series_id, manual_id })),
+    ...(targetsChanged ? {
+      targets: targets.map(({ kind, office_id, include_descendants, series_id, manual_id }) =>
+        ({ kind, office_id, include_descendants, series_id, manual_id })),
+    } : {}),
   });
 
   const send = async (previewOnly) => {
     setBusy(true);
     setError("");
     try {
-      const res = await axios.post("/api/admin/deadlines/", { ...body(), preview: previewOnly }, getAuth());
+      const payload = { ...body(), preview: previewOnly };
+      const res = editing
+        ? await axios.patch(`/api/admin/deadlines/${editing.id}/`, payload, getAuth())
+        : await axios.post("/api/admin/deadlines/", payload, getAuth());
       if (previewOnly) setPreview(res.data);
       else onDone();
     } catch (err) {
@@ -522,7 +546,7 @@ function DeadlineForm({ onDone }) {
   return (
     <div className="card card-pad col" style={{ gap: "1rem", maxWidth: "46rem" }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2 className="section-title" style={{ margin: 0 }}>New deadline</h2>
+        <h2 className="section-title" style={{ margin: 0 }}>{editing ? "Edit deadline" : "New deadline"}</h2>
         <button className="btn btn-ghost btn-sm" onClick={onDone}><Icon name="back" />Back</button>
       </div>
       <div className="field">
@@ -607,7 +631,7 @@ function DeadlineForm({ onDone }) {
                onChange={(e) => change({ reminders: e.target.value })} />
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
-      {preview && (
+      {preview && !editing && (
         <div className="alert alert-info">
           <div className="strong">
             This will notify {preview.offices} office{preview.offices === 1 ? "" : "s"}
@@ -616,19 +640,39 @@ function DeadlineForm({ onDone }) {
           {preview.warnings.map((w) => <div key={w} className="text-sm">{w}</div>)}
         </div>
       )}
+      {preview && editing && <EditPreview preview={preview} />}
       <div className="row" style={{ gap: "0.5rem" }}>
         <button className="btn btn-ghost" disabled={busy} onClick={() => send(true)}>Preview</button>
         <button className="btn btn-primary" disabled={busy || !preview} onClick={() => send(false)}
                 title={preview ? "" : "Preview first"}>
-          Save and notify
+          {editing ? "Save changes" : "Save and notify"}
         </button>
       </div>
     </div>
   );
 }
 
+/** What an edit would do to who owes the deadline. */
+function EditPreview({ preview }) {
+  const added = preview.offices_added || [];
+  const removed = preview.offices_removed || [];
+  const names = (list) => list.slice(0, 8).join(", ") + (list.length > 8 ? `, and ${list.length - 8} more` : "");
+  return (
+    <div className="alert alert-info">
+      {!added.length && !removed.length && <div className="strong">No office is added or removed.</div>}
+      {added.length > 0 && <div><span className="strong">Added, and told:</span> {names(added)}</div>}
+      {removed.length > 0 && (
+        <div><span className="strong">Removed, and told:</span> {names(removed)}.
+          {" "}Their open notices clear; work already submitted still counts.</div>
+      )}
+      {(preview.warnings || []).map((w) => <div key={w} className="text-sm">{w}</div>)}
+    </div>
+  );
+}
+
 function DeadlineDetail({ id, onBack, readOnly = false }) {
   const { data, reload: load } = useServerData(`/api/admin/deadlines/${id}/`);
+  const [editing, setEditing] = useState(false);
   const [branch, setBranch] = useState(null);
   const [rows, setRows] = useState(null);
   const [page, setPage] = useState(1);
@@ -644,7 +688,19 @@ function DeadlineDetail({ id, onBack, readOnly = false }) {
     load();
   };
 
+  const unmark = async (o) => {
+    await axios.post(`/api/admin/deadlines/${id}/priority/`,
+      { office_id: o.office_id, manual_ids: [o.manual_id], priority: false }, getAuth());
+    load();
+    setRows(null);
+    setBranch(null);
+  };
+
   if (!data) return <div className="loading-row"><span className="spinner" /> Loading…</div>;
+  if (editing) {
+    return <DeadlineForm editing={data}
+                         onDone={() => { setEditing(false); load(); setRows(null); setBranch(null); }} />;
+  }
   return (
     <div>
       <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="back" />Deadlines</button>
@@ -653,7 +709,12 @@ function DeadlineDetail({ id, onBack, readOnly = false }) {
           <h2 className="page-title">{data.title}</h2>
           <p className="page-subtitle">{data.type} · {dueText(data)} · {data.unmet}</p>
         </div>
-        {data.active && !readOnly && <button className="btn btn-ghost btn-sm" onClick={deactivate}>Deactivate</button>}
+        {data.active && !readOnly && (
+          <div className="row" style={{ gap: "0.5rem" }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit</button>
+            <button className="btn btn-ghost btn-sm" onClick={deactivate}>Deactivate</button>
+          </div>
+        )}
       </header>
       <p className="subtle text-sm">For: {data.targets.map((t) => targetLabel({
         ...t, name: t.office || t.series || t.manual })).join("; ")}</p>
@@ -673,6 +734,11 @@ function DeadlineDetail({ id, onBack, readOnly = false }) {
                     <span>{o.office}</span>
                     <span className="subtle text-xs">{o.manual || "office-wide"}</span>
                     {o.priority && <span className="badge badge-warning">Priority</span>}
+                    {o.priority && !readOnly && data.active && (
+                      <button type="button" className="link-btn text-xs" onClick={() => unmark(o)}>
+                        unmark
+                      </button>
+                    )}
                     <span className={`status-mark is-${o.state === "open" ? "pending" : "approved"}`}>{o.state_label}</span>
                     {o.met_by && <span className="subtle text-xs">by {o.met_by.dcr_number || `proposal ${o.met_by.proposal_id}`}</span>}
                   </div>

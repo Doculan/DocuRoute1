@@ -148,15 +148,18 @@ class TargetsBecomeObligations(DeadlineFixture):
         self.assertEqual(deadline.obligations.get(office=self.bud, manual__isnull=True).state,
                          DeadlineObligation.OPEN)
 
-    def test_changing_targets_drops_open_rows_and_keeps_met_ones(self):
+    def test_changing_targets_cancels_open_rows_and_keeps_met_ones(self):
         self.proposal(self.acc, self.m1)
         deadline = self.deadline(DeadlineTarget(kind='series', series=self.fam))
         deadline.targets.all().delete()
         DeadlineTarget.objects.create(deadline=deadline, kind='manual', manual=self.m2)
         deadlines.materialise(deadline, self.admin)
-        self.assertEqual(self.pairs(deadline), {('ACC', 'FAM 1'),       # met, kept
-                                                ('ACC', 'FAM 2'), ('CU', 'FAM 2'),
-                                                ('BUD', 'FAM 2')})
+        cancelled = deadline.obligations.filter(state=DeadlineObligation.CANCELLED)
+        self.assertEqual(self.pairs(deadline) - {(ob.office.abbreviation, ob.manual.title)
+                                                 for ob in cancelled},
+                         {('ACC', 'FAM 1'),                             # met, kept
+                          ('ACC', 'FAM 2'), ('CU', 'FAM 2'), ('BUD', 'FAM 2')})
+        self.assertEqual(cancelled.count(), 3)                         # kept, not deleted
 
 
 class MeetingThem(DeadlineFixture):
