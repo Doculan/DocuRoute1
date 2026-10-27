@@ -35,7 +35,6 @@ const NAV_GROUPS = [
     label: "Read documents",
     items: [
       { key: "manuals", icon: manualsIcon, label: "My Manuals" },
-      { key: "sections", icon: sectionsIcon, label: "Sections" },
     ],
   },
   {
@@ -175,7 +174,7 @@ export default function StaffDashboard({ onLogout }) {
           <StaffSections
             manualId={selectedManualId}
             focusSectionId={focusSectionId}
-            onBack={() => handleNav("sections")}
+            onBack={backToManuals}
             onPropose={(id) => {
               setProposeForManual(id);
               setActivePage("proposals");

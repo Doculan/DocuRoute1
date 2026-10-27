@@ -31,7 +31,7 @@ const TAGS = [
  * Opening a section here leads to exactly the view the My Manuals
  * drill-down reaches. One view, two routes.
  */
-export default function StaffSectionSearch({ onOpenSection }) {
+export default function StaffSectionSearch({ onOpenSection, embedded = false }) {
   const [query, setQuery] = useState("");
   const [manualFilter, setManualFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
@@ -49,6 +49,13 @@ export default function StaffSectionSearch({ onOpenSection }) {
   }, []);
 
   const load = useCallback(async () => {
+    // Inside My Manuals the list waits for a search: it is not a second
+    // table of contents.
+    if (embedded && !query.trim() && !manualFilter && !tagFilter) {
+      setSections([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -66,7 +73,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
     } finally {
       setLoading(false);
     }
-  }, [query, manualFilter, tagFilter]);
+  }, [query, manualFilter, tagFilter, embedded]);
 
   // Typing a phrase should not fire a query per keystroke against a
   // content-wide LIKE.
@@ -89,7 +96,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
 
   return (
     <div>
-      <header className="page-head">
+      {!embedded && <header className="page-head">
         <div>
           <h1 className="page-title">Sections</h1>
           <p className="page-subtitle">
@@ -97,7 +104,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
             number, or the words inside it.
           </p>
         </div>
-      </header>
+      </header>}
 
       <div className="toc-filters" style={{ marginBottom: "1.25rem" }}>
         <input
@@ -107,6 +114,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search sections and their content…"
           aria-label="Search sections"
+          autoFocus={embedded}
         />
         <select
           className="select"
@@ -145,7 +153,7 @@ export default function StaffSectionSearch({ onOpenSection }) {
 
       {loading ? (
         <div className="loading-row"><span className="spinner" /> Searching…</div>
-      ) : sections.length === 0 ? (
+      ) : embedded && !filtering ? null : sections.length === 0 ? (
         <div className="empty-state">
           <p className="empty-title">
             {filtering ? "Nothing matched that" : "No sections yet"}

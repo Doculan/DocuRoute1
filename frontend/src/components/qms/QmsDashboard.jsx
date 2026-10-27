@@ -45,6 +45,7 @@ export default function QmsDashboard({ onLogout }) {
   // Where Monitoring opens when a dashboard count is clicked.
   const [monitorStart, setMonitorStart] = useState(null);
   const [manualId, setManualId] = useState(null);
+  const [focusSectionId, setFocusSectionId] = useState(null);
   const [openRequest, setOpenRequest] = useState(null);
   const [waiting, setWaiting] = useState(0);
   const [me, setMe] = useState(null);
@@ -104,12 +105,15 @@ export default function QmsDashboard({ onLogout }) {
       return <QmsRequests onCount={onCount} openId={openRequest} onOpen={setOpenRequest} />;
     }
     return manualId ? (
-      <StaffSections manualId={manualId} onBack={() => setManualId(null)} readOnly />
+      <StaffSections manualId={manualId} focusSectionId={focusSectionId}
+                     onBack={() => { setManualId(null); setFocusSectionId(null); }} readOnly />
     ) : (
       <>
         {/* Reading comes first: this shows only when something is waiting. */}
         <NeedsAction compact onGo={() => go("requests")} />
-        <StaffManuals onSelectManual={(id) => setManualId(id)} title="Manuals"
+        <StaffManuals onSelectManual={(id) => { setFocusSectionId(null); setManualId(id); }}
+                      onSelectSection={(id, sectionId) => { setFocusSectionId(sectionId); setManualId(id); }}
+                      title="Manuals"
                       subtitle="Every controlled document, by series." />
       </>
     );

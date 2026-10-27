@@ -4,6 +4,7 @@ import { formatDate, formatRevision } from "../documentStatus";
 import DeadlineTag from "../DeadlineTag";
 import Pager from "../Pager";
 import { seriesToOpen } from "../manualPicker";
+import StaffSectionSearch from "./StaffSectionSearch";
 
 // Empty on purpose: every request goes out as a relative path, so the
 // browser sends it to whatever host served the page and Vite's proxy
@@ -32,6 +33,7 @@ export default function StaffManuals({
   const [error, setError]     = useState("");
   const [query, setQuery]     = useState("");
   const [needle, setNeedle]   = useState("");
+  const [inSections, setInSections] = useState(false);
 
   useEffect(() => {
     axios.get(`${BASE_URL}/api/staff/manuals/`, getAuth())
@@ -72,6 +74,16 @@ export default function StaffManuals({
         </div>
       ) : (
         <>
+          {onSelectSection && (
+            <button type="button" className="link-btn text-sm" style={{ marginBottom: "0.5rem" }}
+                    onClick={() => setInSections(!inSections)}>
+              {inSections ? "Search manuals instead" : "Search inside sections"}
+            </button>
+          )}
+          {inSections ? (
+            <StaffSectionSearch embedded
+                                onOpenSection={(s) => onSelectSection(s.manual_id, s.id)} />
+          ) : (<>
           <input
             type="search"
             className="input manual-filter"
@@ -98,6 +110,7 @@ export default function StaffManuals({
               </div>
             </>
           )}
+          </>)}
         </>
       )}
     </div>
