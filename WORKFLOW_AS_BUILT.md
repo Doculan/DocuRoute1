@@ -287,6 +287,57 @@ everything owed, priority manuals first.
   capped batch itself if the scheduler has not run for 15 minutes.
   `--dry-run [--as-of]` prints what would be sent and writes nothing.
 
+### Editing a deadline
+
+The system admin can change a deadline's title, type, due date, note,
+reminder days, targets and priority manuals. No password is asked:
+setting a deadline commits no office, and neither does changing one.
+
+- **Preview first.** Save stays disabled until a preview has run, and
+  any change to the form clears the preview. The preview saves nothing.
+  It names:
+  - the offices added, which will be told;
+  - the offices removed, which will be told and whose notices clear;
+  - offices whose removed target still covers them through another, as
+    in "Cash Management Office still owes this through the FAM series".
+- **Removing cancels, never deletes.**
+  - An open obligation that is no longer targeted becomes `cancelled`
+    (migration 0052, choices only).
+  - The office's open notices clear: the "deadline set" notice and every
+    rung of the ladder.
+  - An office left owing nothing gets one information notice: "… no
+    longer applies to your office".
+  - Met obligations stay, as a record of work done.
+- **Adding back reopens.** The same obligation row is reopened, met at
+  once if a proposal is already in flight, and the office is told again.
+- **Cancelled obligations count nowhere:** not in counts, banners, tags,
+  reminders, escalation, Monitoring, the Deadlines tabs or the trail.
+- **Targets are fixed after the due date.** An edit may keep a due date
+  that has passed, but cannot set a new one in the past.
+- **The audit entry.** One `deadline_changed` entry per edit, holding:
+  - the fields that actually changed, each with its old and new value;
+  - the targets before and after, in words;
+  - the offices added and removed.
+
+  The removal notices hang from this entry.
+- **Priority manuals.** The Priority badge on an office's row has
+  "unmark", which clears the flag.
+  - An open obligation that only the priority created is cancelled.
+  - Marking that manual again reopens it.
+
+### The Deadlines tabs
+
+- **Staff** (Head and Encoder): **Deadlines** in the navigation, before
+  Proposals. It shows what the office owes, most urgent first. Each
+  manual shows where the office has got ("Not started", or its request's
+  stage), with priority manuals first. A manual with a request opens it.
+  It replaced the panel on Home. The action banner and the office's own
+  deadline tags open it.
+- **QMS staff:** a read-only **Deadlines** tab with the admin's list and
+  detail, without New, Edit, Deactivate or the priority controls. The
+  server allows QMS staff to read and refuses them every change (403).
+  Office staff get 403 on all of it.
+
 ## Delegation and maker-checker
 
 - **Who names a delegate:** a Head on leave, in their own post, or the
@@ -416,6 +467,15 @@ stored summary.
 
   Owed against unmet shows which offices have submitted and which have
   not. Every number opens its list.
+- **Show:** the tree by default, or a flat list of each office on its
+  own counts, not rolled up:
+  - **Not submitted:** offices with an unmet obligation;
+  - **Overdue:** offices with an obligation open past its due date;
+  - **All:** every office in scope.
+- **One deadline:** a picker narrows the flat list to one active
+  deadline. It lists only deadlines the viewer's offices owe.
+- **Scope** is the same as the tree. No office outside it appears in
+  either the list or the picker.
 
 ### The offices chart
 
@@ -590,15 +650,24 @@ read-only.
   **History exports are not recorded in the export log**: that log
   records one request per row, and a History export covers many.
 
+### Reading sections
+
+- **Staff:** the Sections tab is gone from the navigation. Its page stays
+  as the document viewer, which a manual, a deadline or a notice opens.
+  The viewer's "Back to manuals" returns to My Manuals.
+- **Finding a section:** My Manuals (staff) and Manuals (QMS) each have
+  a "Search inside sections" link. It searches section titles and the
+  words inside them, with the manual and type filters, and lists nothing
+  until a search is typed. A result opens the viewer at that section.
+
 ### Not built
 
-- the critical-times timeline
+- critical times
 - office timeliness columns
 - the By manual and By deadline views
 - saved views
 - stored summary counts (counts are read live)
-- section edits, and notices read or acted on, in the audit trail
-- the generated draft copy holding the whole manual
+- section edits, and notifications read or acted on, as lines in the
+  audit trail
+- the draft copy holding only the changed sections
 - the error message for scanned PDFs
-- the per-proposal audit hash chain: the proposal trail is not
-  tamper-evident
