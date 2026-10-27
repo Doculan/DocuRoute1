@@ -28,6 +28,18 @@ from .models import (
 from .org_tree import Tree, concurring_office_ids, concurring_offices_of, expand_offices
 from .views import IsAdminRole
 
+
+class AdminOrQmsReading(IsAdminRole):
+    """The system admin, or QMS staff reading (GET only): the QMS portal's
+    Deadlines tab is read-only. Setting, changing and deactivating stay
+    the admin's."""
+
+    def has_permission(self, request, view):
+        from . import access
+        if super().has_permission(request, view):
+            return True
+        return request.method in ('GET', 'HEAD', 'OPTIONS') and access.is_qms_staff(request.user)
+
 PAGE_SIZE = 50
 BANNER_SHOWN = 5
 
@@ -354,7 +366,7 @@ def _clean_deadline(data, user, partial, deadline=None):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAdminRole])
+@permission_classes([AdminOrQmsReading])
 def admin_deadlines(request):
     """GET: counts first, then deadlines paged (`?status=open|past|inactive|all`).
     POST: create - or, with `preview`, say what saving would do, saving
@@ -402,7 +414,7 @@ def admin_deadlines(request):
 
 
 @api_view(['GET', 'PATCH'])
-@permission_classes([IsAdminRole])
+@permission_classes([AdminOrQmsReading])
 def admin_deadline_detail(request, deadline_id):
     today = timezone.localdate()
     deadline = Deadline.objects.select_related('type').filter(pk=deadline_id).first()
@@ -486,7 +498,7 @@ def admin_deadline_priority(request, deadline_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminRole])
+@permission_classes([AdminOrQmsReading])
 def admin_deadline_obligations(request, deadline_id):
     """`?state=open|met|all&branch=<office id>&page=`, unmet first."""
     deadline = Deadline.objects.filter(pk=deadline_id).first()

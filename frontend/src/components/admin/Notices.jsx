@@ -311,7 +311,22 @@ function FreezeForm({ onCancel, onDone, confirm, pending, run, cancel }) {
 
 // ─── Deadlines ──────────────────────────────────────────────────
 
-function Deadlines() {
+/** The QMS portal's Deadlines tab: the same list and detail, read-only. */
+export function DeadlinesReadOnly() {
+  return (
+    <div>
+      <header className="page-head">
+        <div>
+          <h1 className="page-title">Deadlines</h1>
+          <p className="page-subtitle">Every deadline, and the offices that have not met it. Read-only.</p>
+        </div>
+      </header>
+      <Deadlines readOnly />
+    </div>
+  );
+}
+
+function Deadlines({ readOnly = false }) {
   const [status, setStatus] = useState("open");
   const [page, setPage] = useState(1);
   const { data, error, reload: load } = useServerData("/api/admin/deadlines/", { status, page },
@@ -319,7 +334,7 @@ function Deadlines() {
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState(null);
 
-  if (openId) return <DeadlineDetail id={openId} onBack={() => { setOpenId(null); load(); }} />;
+  if (openId) return <DeadlineDetail id={openId} readOnly={readOnly} onBack={() => { setOpenId(null); load(); }} />;
   if (creating) return <DeadlineForm onDone={() => { setCreating(false); load(); }} />;
 
   return (
@@ -344,7 +359,7 @@ function Deadlines() {
           <option value="inactive">Deactivated</option>
           <option value="all">All</option>
         </select>
-        <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>New deadline</button>
+        {!readOnly && <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>New deadline</button>}
       </div>
       {!data ? (
         <div className="loading-row"><span className="spinner" /> Loading…</div>
@@ -612,7 +627,7 @@ function DeadlineForm({ onDone }) {
   );
 }
 
-function DeadlineDetail({ id, onBack }) {
+function DeadlineDetail({ id, onBack, readOnly = false }) {
   const { data, reload: load } = useServerData(`/api/admin/deadlines/${id}/`);
   const [branch, setBranch] = useState(null);
   const [rows, setRows] = useState(null);
@@ -638,11 +653,11 @@ function DeadlineDetail({ id, onBack }) {
           <h2 className="page-title">{data.title}</h2>
           <p className="page-subtitle">{data.type} · {dueText(data)} · {data.unmet}</p>
         </div>
-        {data.active && <button className="btn btn-ghost btn-sm" onClick={deactivate}>Deactivate</button>}
+        {data.active && !readOnly && <button className="btn btn-ghost btn-sm" onClick={deactivate}>Deactivate</button>}
       </header>
       <p className="subtle text-sm">For: {data.targets.map((t) => targetLabel({
         ...t, name: t.office || t.series || t.manual })).join("; ")}</p>
-      {data.active && <PriorityPanel deadlineId={id} onDone={() => { load(); setRows(null); setBranch(null); }} />}
+      {data.active && !readOnly && <PriorityPanel deadlineId={id} onDone={() => { load(); setRows(null); setBranch(null); }} />}
       <h3 className="section-title">By branch</h3>
       <div className="col" style={{ gap: "0.15rem" }}>
         {data.by_branch.map((b) => (
