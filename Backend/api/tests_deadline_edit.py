@@ -188,3 +188,17 @@ class EditingPastDue(DeadlineFixture):
         moved = client.patch(url, {'due_on': (past - datetime.timedelta(days=1)).isoformat()},
                              format='json')
         self.assertEqual((moved.status_code, moved.data['reason']), (400, 'due_in_past'))
+
+
+class StillOwedThroughAnother(DeadlineFixture):
+
+    def test_the_preview_says_which_target_still_covers_an_office(self):
+        made = self.deadline(DeadlineTarget(kind=OFFICE, office=self.cash),
+                             DeadlineTarget(kind='series', series=self.fam))
+        response = self.as_(self.admin).patch(
+            f'/api/admin/deadlines/{made.pk}/',
+            {'targets': [{'kind': 'series', 'series_id': self.fam.pk}], 'preview': True},
+            format='json')
+        self.assertEqual(response.data['offices_removed'], [])
+        self.assertEqual(response.data['still_owed'],
+                         ['Cash Unit still owes this through the FAM series'])

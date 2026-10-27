@@ -455,6 +455,8 @@ def admin_deadline_detail(request, deadline_id):
                      .values_list('pk', 'name'))
         for key in ('offices_added', 'offices_removed'):
             told[key] = sorted(names[o] for o in (moved or {}).get(key, []))
+        if targets is not None:
+            told['still_owed'] = _still_owed(deadline, targets)
         return Response(told)
     with transaction.atomic():
         if 'new_type' in fields:
@@ -489,6 +491,40 @@ def admin_deadline_detail(request, deadline_id):
     return Response(_deadline_payload(deadline, today))
 
 
+def _still_owed(deadline, targets, limit=5):
+    """Offices a removed target named that still owe the deadline through
+    another target: "Cash Management Office still owes this through the
+    FAM series". The first few, then how many more."""
+    kept = {_target_words(t) for t in targets}
+    removed = [t for t in deadline.targets.select_related('office', 'series', 'manual')
+               if _target_words(t) not in kept]
+    if not removed:
+        return []
+    covers = [(t, {o for o, _ in deadlines.resolve([t])}) for t in targets]
+    lines = {}
+    for gone in removed:
+        for office in sorted({o for o, _ in deadlines.resolve([gone])}):
+            through = next((t for t, offices in covers if office in offices), None)
+            if through is not None and office not in lines:
+                lines[office] = through
+    names = dict(Office.objects.filter(pk__in=list(lines)).values_list('pk', 'name'))
+    said = sorted(f'{names[o]} still owes this through {_target_words(t, through=True)}'
+                  for o, t in lines.items())
+    if len(said) > limit:
+        said = said[:limit] + [f'and {len(said) - limit} more offices still owe it']
+    return said
+
+
+def _target_words(t, through=False):
+    if t.kind == DeadlineTarget.ALL:
+        return 'all offices' if through else 'All offices'
+    if t.kind == DeadlineTarget.OFFICE:
+        return t.office.name + (' and the offices under it' if t.include_descendants else '')
+    if t.kind == DeadlineTarget.SERIES:
+        return f'the {t.series.code} series' if through else f'Series {t.series.code}'
+    return f'{t.manual.title}' if through else f'Manual {t.manual.title}'
+
+
 def _shown(value):
     """A field's value as the audit entry keeps it."""
     if isinstance(value, DeadlineType):
@@ -500,18 +536,7 @@ def _shown(value):
 
 def _targets_shown(targets):
     """Targets in words, for the audit entry's before and after."""
-    words = []
-    for t in targets:
-        if t.kind == DeadlineTarget.ALL:
-            words.append('All offices')
-        elif t.kind == DeadlineTarget.OFFICE:
-            words.append(t.office.name + (' and the offices under it'
-                                          if t.include_descendants else ''))
-        elif t.kind == DeadlineTarget.SERIES:
-            words.append(f'Series {t.series.code}')
-        else:
-            words.append(f'Manual {t.manual.title}')
-    return sorted(words)
+    return sorted(_target_words(t) for t in targets)
 
 
 @api_view(['POST'])

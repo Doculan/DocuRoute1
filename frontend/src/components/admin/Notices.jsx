@@ -665,6 +665,7 @@ function EditPreview({ preview }) {
         <div><span className="strong">Removed, and told:</span> {names(removed)}.
           {" "}Their open notices clear; work already submitted still counts.</div>
       )}
+      {(preview.still_owed || []).map((w) => <div key={w} className="text-sm">{w}.</div>)}
       {(preview.warnings || []).map((w) => <div key={w} className="text-sm">{w}</div>)}
     </div>
   );
