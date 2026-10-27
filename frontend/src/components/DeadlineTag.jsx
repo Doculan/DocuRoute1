@@ -19,9 +19,21 @@ export default function DeadlineTag({ tag }) {
     tag.note || null,
   ].filter(Boolean).join(" · ");
 
+  // The office's own deadline opens its Deadlines page. A span, not a
+  // button: tags often sit inside a clickable row.
+  const opens = tag.view === "own";
+  const open = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent("docuroute:open-deadlines"));
+  };
   return (
-    <span className={`deadline-tag ${tone}`} title={detail}
-          aria-label={detail ? `${tag.label}. ${detail}` : tag.label}>
+    <span className={`deadline-tag ${tone}${opens ? " is-link" : ""}`} title={detail}
+          aria-label={detail ? `${tag.label}. ${detail}` : tag.label}
+          {...(opens ? {
+            role: "link", tabIndex: 0, onClick: open,
+            onKeyDown: (e) => { if (e.key === "Enter") open(e); },
+          } : {})}>
       {tag.label}
       {tag.more > 0 && <span className="deadline-tag-more">+{tag.more} more</span>}
       {tag.frozen && (

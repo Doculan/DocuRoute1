@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import Icon from "../Icon";
 import NeedsAction from "../NeedsAction";
-import DeadlinesPage from "../DeadlinesPage";
 import DeadlineTag from "../DeadlineTag";
 
 // Relative, so the browser sends it to whichever host served the page and
@@ -80,8 +79,6 @@ export default function StaffHome({ onGo, onOpenSection, onOpenManual, onOpenPro
         </div>
 
         <div className="col" style={{ gap: "1.5rem", minWidth: 0 }}>
-          <DeadlinesPage limit={5} onShowAll={() => onGo("deadlines")}
-                         onOpenManual={onOpenManual} />
           <AtAGlance stats={stats} proposalsMine={proposalsMine} />
         </div>
       </div>

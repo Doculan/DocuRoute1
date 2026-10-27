@@ -754,6 +754,8 @@ a:hover { color: var(--brand-500); }
 /* Previous / Next under a paged list. */
 .pager { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.85rem; }
 
+.deadline-tag.is-link { cursor: pointer; }
+.deadline-tag.is-link:hover { text-decoration: underline; }
 .deadline-tag-more { margin-left: 0.35em; opacity: 0.75; font-weight: 400; }
 .action-banner.is-collapsed { padding-top: 0.3rem; padding-bottom: 0.3rem; }
 .action-banner-line { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }

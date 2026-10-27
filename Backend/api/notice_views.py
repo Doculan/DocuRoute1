@@ -23,7 +23,7 @@ from . import access, deadlines, system_log
 from .deadline_tags import tag_rows
 from .models import (
     Announcement, AnnouncementDismissal, AnnouncementOffice, Deadline, DeadlineObligation,
-    DeadlineTarget, DeadlineType, Manual, ManualSeries, Office, Position, SystemEvent,
+    DeadlineTarget, DeadlineType, Manual, ManualSeries, Office, Position, Proposal, SystemEvent,
 )
 from .org_tree import Tree, concurring_office_ids, concurring_offices_of, expand_offices
 from .views import IsAdminRole
@@ -543,7 +543,8 @@ def deadline_groups(user, today=None):
         group = groups.setdefault(key, {
             'deadline_id': ob.deadline_id, 'title': ob.deadline.title,
             'type': ob.deadline.type.name, 'due_on': ob.deadline.due_on,
-            'urgency': level, 'days': days, 'office': ob.office.name, 'manuals': [],
+            'urgency': level, 'days': days, 'office': ob.office.name,
+            'office_id': ob.office_id, 'manuals': [],
             'office_level': False, 'note': ob.deadline.note,
         })
         if ob.manual_id:
@@ -569,9 +570,29 @@ def my_deadlines(request):
         return _refuse('Pages are numbered from 1.', 'invalid_page')
     groups = deadline_groups(request.user)
     start = (page - 1) * PAGE_SIZE
+    shown = groups[start:start + PAGE_SIZE]
+    _with_status(shown)
     return Response({'count': len(groups), 'page': page,
                      'pages': max(1, -(-len(groups) // PAGE_SIZE)),
-                     'deadlines': groups[start:start + PAGE_SIZE]})
+                     'deadlines': shown})
+
+
+def _with_status(groups):
+    """Each manual owed, with where the office has got: Not started, or
+    its request's stage in the §7.2 words. One query for the page."""
+    from .monitoring_views import STATUS_WORDS
+    pairs = {(m['id'], g['office_id']) for g in groups for m in g['manuals']}
+    stage = {}
+    if pairs:
+        for manual_id, office_id, pk, status in Proposal.objects.filter(
+                manual_id__in={m for m, _ in pairs}, initiating_office_id__in={o for _, o in pairs},
+        ).exclude(status__in=Proposal.CLOSED_STATUSES).values_list(
+                'manual_id', 'initiating_office_id', 'pk', 'status'):
+            stage[(manual_id, office_id)] = (pk, STATUS_WORDS.get(status, status))
+    for g in groups:
+        for m in g['manuals']:
+            pk, word = stage.get((m['id'], g['office_id']), (None, 'Not started'))
+            m['status'], m['proposal_id'] = word, pk
 
 
 @api_view(['GET'])

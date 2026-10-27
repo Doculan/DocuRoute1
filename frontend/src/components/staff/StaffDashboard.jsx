@@ -41,6 +41,7 @@ const NAV_GROUPS = [
   {
     label: "Change workflow",
     items: [
+      { key: "deadlines", icon: sectionsIcon, label: "Deadlines" },
       { key: "proposals", icon: sectionsIcon, label: "Proposals" },
       { key: "monitoring", icon: sectionsIcon, label: "Office monitoring" },
       { key: "history", icon: sectionsIcon, label: "History" },
@@ -105,6 +106,13 @@ export default function StaffDashboard({ onLogout }) {
   }, []);
 
   useEffect(() => { refreshAwaiting(); }, [refreshAwaiting]);
+
+  // A deadline tag on the office's own work opens Deadlines (DeadlineTag).
+  useEffect(() => {
+    const open = () => setActivePage("deadlines");
+    window.addEventListener("docuroute:open-deadlines", open);
+    return () => window.removeEventListener("docuroute:open-deadlines", open);
+  }, []);
 
   const openProposal = (id) => {
     setOpenRequest({ id });
@@ -196,7 +204,7 @@ export default function StaffDashboard({ onLogout }) {
       case "notifications":
         return <NotificationsPage onOpen={openNotice} />;
       case "deadlines":
-        return <DeadlinesPage onOpenManual={openManual} />;
+        return <DeadlinesPage onOpenManual={openManual} onOpenProposal={openProposal} />;
       case "monitoring":
         return <Monitoring title="Office monitoring" />;
       case "history":

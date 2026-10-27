@@ -150,3 +150,23 @@ class OncePerManual(BoardFixture):
         rows = self.section('due')
         self.assertEqual([(r['manual'], r['due']['days_late']) for r in rows], [('FAM 9.01', 4)])
         self.assertEqual(self.board()['sections'][0]['count'], 1)
+
+
+class TheDeadlinesTab(BoardFixture):
+    """Staff Deadlines: what the office owes, each manual with its status,
+    priority manuals first."""
+
+    def test_each_manual_owed_with_its_status_priority_first(self):
+        deadline = Deadline.objects.create(title='Audit', type=self.dtype, created_by=self.acc_head,
+                                           due_on=self.today + datetime.timedelta(days=9))
+        for manual, priority in ((self.m[1], False), (self.manual, False), (self.m[2], True)):
+            DeadlineObligation.objects.create(deadline=deadline, office=self.accounting,
+                                              manual=manual, priority=priority)
+        proposal_id = self.a_draft()
+        groups = self.as_(self.acc_enc).get('/api/my-deadlines/').data['deadlines']
+        manuals = groups[0]['manuals']
+        self.assertEqual([(m['title'], m['status']) for m in manuals], [
+            ('FAM 9.02', 'Not started'), ('FAM 6.02', 'Drafting'), ('FAM 9.01', 'Not started'),
+        ])
+        self.assertTrue(manuals[0]['priority'])
+        self.assertEqual(manuals[1]['proposal_id'], proposal_id)
